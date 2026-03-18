@@ -1,7 +1,10 @@
 """Train a CFD surrogate model.
 
+Template training script — fill in your model architecture.
+The data loading, loss computation, validation, and W&B logging are ready to use.
+
 Run:
-  python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
+  uv run train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
 
 import os
@@ -24,9 +27,9 @@ class ResBlock(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 4),
+            nn.Linear(dim, dim * 2),
             nn.GELU(),
-            nn.Linear(dim * 4, dim),
+            nn.Linear(dim * 2, dim),
         )
 
     def forward(self, x):
@@ -34,7 +37,7 @@ class ResBlock(nn.Module):
 
 
 class ResidualMLP(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=12):
+    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
@@ -66,12 +69,11 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 1e-3
+        lr: float = 5e-4
         weight_decay: float = 1e-4
-        batch_size: int = 4
-        val_batch_size: int = 1
+        batch_size: int = 2
         surf_weight: float = 10.0
-        epochs: int = 100
+        epochs: int = 50
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -99,22 +101,17 @@ if __name__ == "__main__":
                                   sampler=sampler, **loader_kwargs)
 
     val_loaders = {
-        name: DataLoader(ds, batch_size=cfg.val_batch_size, shuffle=False, **loader_kwargs)
+        name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
         for name, ds in val_splits.items()
     }
 
     # --- Build model ---
-    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=12).to(device)
+    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Parameters: {n_params:,}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS,
-        steps_per_epoch=len(train_loader),
-    )
-
-    scaler = torch.amp.GradScaler("cuda")
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
     # --- W&B ---
     run = wandb.init(
@@ -140,7 +137,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": 256, "n_blocks": 12}, f)
+        yaml.dump({"n_params": n_params, "hidden": 512, "n_blocks": 8}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -165,34 +162,29 @@ if __name__ == "__main__":
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
-                pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+            pred = model({"x": x})["preds"]
+            sq_err = (pred - y_norm) ** 2
 
-                vol_mask = mask & ~is_surface
-                surf_mask = mask & is_surface
-                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-                loss = vol_loss + cfg.surf_weight * surf_loss
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
+            optimizer.step()
             global_step += 1
+            wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
             epoch_vol += vol_loss.item()
             epoch_surf += surf_loss.item()
             n_batches += 1
 
+        scheduler.step()
         epoch_vol /= n_batches
         epoch_surf /= n_batches
-        wandb.log({"train/vol_loss": epoch_vol, "train/surf_loss": epoch_surf,
-                    "train/loss": epoch_vol + cfg.surf_weight * epoch_surf,
-                    "global_step": global_step})
 
         # --- Validate (do not modify — ensures consistent metrics) ---
         model.eval()
@@ -214,8 +206,7 @@ if __name__ == "__main__":
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                    # Use float32 for validation to avoid numerical issues
-                    pred = model({"x": x})["preds"].float()
+                    pred = model({"x": x})["preds"]
                     sq_err = (pred - y_norm) ** 2
 
                     vol_mask = mask & ~is_surface

@@ -42,7 +42,7 @@ splits_dir = Path(cfg.splits_dir)
 # ---------------------------------------------------------------------------
 from train import ResidualMLP
 
-model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
+model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=12).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
