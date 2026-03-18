@@ -38,7 +38,8 @@ class CFDModel(nn.Module):
     def forward(self, data, **kwargs):
         x = self.proj_in(data["x"])
         x = self.blocks(x)
-        return {"preds": self.head(x)}
+        preds = self.head(x)
+        return {"preds": torch.nan_to_num(preds, nan=0.0, posinf=1e4, neginf=-1e4)}
 
 
 if __name__ == "__main__":
@@ -149,14 +150,9 @@ if __name__ == "__main__":
             is_surface = is_surface.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
 
-            # Exclude nodes with inf/nan targets
-            valid_y = y.isfinite().all(dim=-1)
-            mask = mask & valid_y
-
             # Normalize inputs and targets
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
-            y_norm = torch.nan_to_num(y_norm, nan=0.0, posinf=0.0, neginf=0.0)
 
             # Forward pass — your model takes {"x": normalized_x} and returns {"preds": [B, N, 3]}
             pred = model({"x": x})["preds"]
@@ -202,13 +198,8 @@ if __name__ == "__main__":
                     is_surface = is_surface.to(device, non_blocking=True)
                     mask = mask.to(device, non_blocking=True)
 
-                    # Exclude nodes with inf/nan targets
-                    valid_y = y.isfinite().all(dim=-1)
-                    mask = mask & valid_y
-
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
-                    y_norm = torch.nan_to_num(y_norm, nan=0.0, posinf=0.0, neginf=0.0)
 
                     pred = model({"x": x})["preds"]
                     sq_err = (pred - y_norm) ** 2
