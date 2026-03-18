@@ -38,17 +38,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 # ---------------------------------------------------------------------------
-# Load your model here. Example:
-#
-#   from train import MyModel
-#   model = MyModel(...).to(device)
-#   model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
-#
-# Or if you saved the full model:
-#
-#   model = torch.load(cfg.checkpoint, map_location=device)
+# Load model
 # ---------------------------------------------------------------------------
-raise NotImplementedError("Load your model above and remove this line")
+from train import ResidualMLP
+
+model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
+model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
