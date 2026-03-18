@@ -165,14 +165,13 @@ if __name__ == "__main__":
 
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
-            finite = y.isfinite().all(dim=-1)  # mask out samples with inf targets
 
             with torch.amp.autocast("cuda", dtype=torch.bfloat16):
                 pred = model({"x": x})["preds"]
                 sq_err = (pred - y_norm) ** 2
 
-                vol_mask = mask & ~is_surface & finite
-                surf_mask = mask & is_surface & finite
+                vol_mask = mask & ~is_surface
+                surf_mask = mask & is_surface
                 vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
                 surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
                 loss = vol_loss + cfg.surf_weight * surf_loss
@@ -215,13 +214,13 @@ if __name__ == "__main__":
 
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
-                    finite = y.isfinite().all(dim=-1)
 
+                    # Use float32 for validation to avoid numerical issues
                     pred = model({"x": x})["preds"].float()
                     sq_err = (pred - y_norm) ** 2
 
-                    vol_mask = mask & ~is_surface & finite
-                    surf_mask = mask & is_surface & finite
+                    vol_mask = mask & ~is_surface
+                    surf_mask = mask & is_surface
                     val_vol += (sq_err * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
                     val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
                     n_vb += 1
