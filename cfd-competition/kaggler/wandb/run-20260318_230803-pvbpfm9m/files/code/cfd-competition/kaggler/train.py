@@ -158,10 +158,6 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        # Mask out nodes with inf/nan targets
-        finite_mask = y.isfinite().all(dim=-1) & y_norm.isfinite().all(dim=-1)
-        mask = mask & finite_mask
-
         # Forward pass — your model takes {"x": normalized_x} and returns {"preds": [B, N, 3]}
         pred = model({"x": x})["preds"]
         sq_err = (pred - y_norm) ** 2
@@ -209,11 +205,10 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                # Mask out nodes with inf/nan targets (bad data)
-                finite_mask = y.isfinite().all(dim=-1) & y_norm.isfinite().all(dim=-1)
-                mask = mask & finite_mask
-
                 pred = model({"x": x})["preds"]
+                if pred.isnan().any():
+                    print(f"  WARNING: NaN in predictions for {split_name}, skipping batch")
+                    continue
                 sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
@@ -224,7 +219,6 @@ for epoch in range(MAX_EPOCHS):
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
                 err = (pred_orig - y).abs()
-                err = err.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
                 mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 n_surf += surf_mask.sum().item()
