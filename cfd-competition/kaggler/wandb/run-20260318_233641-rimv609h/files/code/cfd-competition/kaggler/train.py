@@ -164,9 +164,8 @@ if __name__ == "__main__":
             mask = mask.to(device, non_blocking=True)
 
             x = (x - stats["x_mean"]) / stats["x_std"]
-            finite = y.isfinite().all(dim=-1)
-            y_safe = torch.where(finite.unsqueeze(-1), y, torch.zeros_like(y))
-            y_norm = (y_safe - stats["y_mean"]) / stats["y_std"]
+            y_norm = (y - stats["y_mean"]) / stats["y_std"]
+            finite = y.isfinite().all(dim=-1)  # mask out samples with inf targets
 
             with torch.amp.autocast("cuda", dtype=torch.bfloat16):
                 pred = model({"x": x})["preds"]
@@ -215,9 +214,8 @@ if __name__ == "__main__":
                     mask = mask.to(device, non_blocking=True)
 
                     x = (x - stats["x_mean"]) / stats["x_std"]
+                    y_norm = (y - stats["y_mean"]) / stats["y_std"]
                     finite = y.isfinite().all(dim=-1)
-                    y_safe = torch.where(finite.unsqueeze(-1), y, torch.zeros_like(y))
-                    y_norm = (y_safe - stats["y_mean"]) / stats["y_std"]
 
                     pred = model({"x": x})["preds"].float()
                     sq_err = (pred - y_norm) ** 2
@@ -229,7 +227,7 @@ if __name__ == "__main__":
                     n_vb += 1
 
                     pred_orig = pred * stats["y_std"] + stats["y_mean"]
-                    err = (pred_orig - y_safe).abs()
+                    err = (pred_orig - y).abs()
                     mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                     mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))
                     n_surf += surf_mask.sum().item()
