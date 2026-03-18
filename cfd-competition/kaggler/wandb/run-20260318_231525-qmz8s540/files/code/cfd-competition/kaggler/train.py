@@ -87,20 +87,19 @@ if __name__ == "__main__":
     train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
     stats = {k: v.to(device) for k, v in stats.items()}
 
-    train_loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
-                               persistent_workers=True, prefetch_factor=2)
-    val_loader_kwargs = dict(collate_fn=pad_collate, num_workers=0, pin_memory=True)
+    loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
+                         persistent_workers=True, prefetch_factor=2)
 
     if cfg.debug:
         train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                                  shuffle=True, **train_loader_kwargs)
+                                  shuffle=True, **loader_kwargs)
     else:
         sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
         train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                                  sampler=sampler, **train_loader_kwargs)
+                                  sampler=sampler, **loader_kwargs)
 
     val_loaders = {
-        name: DataLoader(ds, batch_size=cfg.val_batch_size, shuffle=False, **val_loader_kwargs)
+        name: DataLoader(ds, batch_size=cfg.val_batch_size, shuffle=False, **loader_kwargs)
         for name, ds in val_splits.items()
     }
 
