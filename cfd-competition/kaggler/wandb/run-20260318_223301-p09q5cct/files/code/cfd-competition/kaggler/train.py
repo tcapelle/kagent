@@ -7,7 +7,6 @@ Run:
   uv run train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
 
-import math
 import os
 import time
 from dataclasses import dataclass, asdict
@@ -171,7 +170,6 @@ for epoch in range(MAX_EPOCHS):
 
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -187,7 +185,6 @@ for epoch in range(MAX_EPOCHS):
     # --- Validate (do not modify — ensures consistent metrics) ---
     model.eval()
     val_loss_sum = 0.0
-    n_valid_splits = 0
     split_metrics: dict[str, dict] = {}
 
     for split_name, vloader in val_loaders.items():
@@ -206,9 +203,6 @@ for epoch in range(MAX_EPOCHS):
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
                 pred = model({"x": x})["preds"]
-                if pred.isnan().any():
-                    print(f"  WARNING: NaN in predictions for {split_name}, skipping batch")
-                    continue
                 sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
@@ -241,11 +235,9 @@ for epoch in range(MAX_EPOCHS):
             f"{split_name}/mae_surf_Uy": mae_surf[1].item(),
             f"{split_name}/mae_surf_p": mae_surf[2].item(),
         }
-        if not math.isnan(split_loss):
-            val_loss_sum += split_loss
-            n_valid_splits += 1
+        val_loss_sum += split_loss
 
-    mean_val_loss = val_loss_sum / max(n_valid_splits, 1)
+    mean_val_loss = val_loss_sum / len(val_loaders)
     dt = time.time() - t0
 
     metrics = {
