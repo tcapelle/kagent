@@ -72,7 +72,7 @@ MAX_TIMEOUT = 30.0  # minutes
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 4
     surf_weight: float = 10.0  # surface loss multiplier
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
@@ -107,7 +107,7 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=6).to(device)
+model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
