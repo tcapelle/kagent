@@ -1,0 +1,15 @@
+torch
+torch_geometric
+einops
+timm
+rich
+python-dotenv
+simple-parsing
+wandb
+tqdm
+matplotlib
+pyyaml
+
+[dev]
+ipython
+jupyter
