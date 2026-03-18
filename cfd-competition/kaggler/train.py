@@ -24,27 +24,34 @@ from data import X_DIM, VAL_SPLIT_NAMES, pad_collate, load_data
 from viz import visualize
 
 
-# ---------------------------------------------------------------------------
-# YOUR MODEL HERE
-#
-# Requirements:
-#   - Input:  dict with key "x" → tensor [B, N, 24]
-#   - Output: dict with key "preds" → tensor [B, N, 3]  (Ux, Uy, p)
-#
-# Example minimal model:
-#
-#   class MyModel(nn.Module):
-#       def __init__(self, in_dim=24, out_dim=3, hidden=256):
-#           super().__init__()
-#           self.net = nn.Sequential(
-#               nn.Linear(in_dim, hidden), nn.GELU(),
-#               nn.Linear(hidden, hidden), nn.GELU(),
-#               nn.Linear(hidden, out_dim),
-#           )
-#       def forward(self, data, **kwargs):
-#           return {"preds": self.net(data["x"])}
-#
-# ---------------------------------------------------------------------------
+class ResBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        )
+
+    def forward(self, x):
+        return x + self.net(x)
+
+
+class CFDModel(nn.Module):
+    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8):
+        super().__init__()
+        self.proj_in = nn.Linear(in_dim, hidden)
+        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.head = nn.Sequential(
+            nn.LayerNorm(hidden),
+            nn.Linear(hidden, out_dim),
+        )
+
+    def forward(self, data, **kwargs):
+        x = self.proj_in(data["x"])
+        x = self.blocks(x)
+        return {"preds": self.head(x)}
 
 
 # ---------------------------------------------------------------------------
@@ -94,9 +101,7 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-# --- Build your model here ---
-# model = MyModel(...).to(device)
-raise NotImplementedError("Define your model above and remove this line")
+model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -165,6 +170,7 @@ for epoch in range(MAX_EPOCHS):
 
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
