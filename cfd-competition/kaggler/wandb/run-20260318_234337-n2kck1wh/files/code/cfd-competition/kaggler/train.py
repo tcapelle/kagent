@@ -158,10 +158,9 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        # Mask out nodes with inf/nan targets and sanitize
+        # Mask out nodes with inf/nan targets
         finite_mask = y.isfinite().all(dim=-1) & y_norm.isfinite().all(dim=-1)
         mask = mask & finite_mask
-        y_norm = y_norm.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
 
         # Forward pass — your model takes {"x": normalized_x} and returns {"preds": [B, N, 3]}
         pred = model({"x": x})["preds"]
@@ -213,7 +212,6 @@ for epoch in range(MAX_EPOCHS):
                 # Mask out nodes with inf/nan targets (bad data)
                 finite_mask = y.isfinite().all(dim=-1) & y_norm.isfinite().all(dim=-1)
                 mask = mask & finite_mask
-                y_norm = y_norm.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
 
                 pred = model({"x": x})["preds"]
                 sq_err = (pred - y_norm) ** 2
