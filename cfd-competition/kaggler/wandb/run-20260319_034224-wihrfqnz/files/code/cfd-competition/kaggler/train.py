@@ -27,22 +27,15 @@ class CFDModel(nn.Module):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.norm = nn.LayerNorm(hidden)
-        # Separate heads for velocity (2 channels) and pressure (1 channel)
-        self.vel_head = nn.Linear(hidden, 2)
-        self.p_head = nn.Sequential(
-            nn.Linear(hidden, hidden // 2),
-            nn.GELU(),
-            nn.Linear(hidden // 2, 1),
+        self.head = nn.Sequential(
+            nn.LayerNorm(hidden),
+            nn.Linear(hidden, out_dim),
         )
 
     def forward(self, data, **kwargs):
         x = self.proj_in(data["x"])
         x = self.blocks(x)
-        x = self.norm(x)
-        vel = self.vel_head(x)
-        p = self.p_head(x)
-        return {"preds": torch.cat([vel, p], dim=-1)}
+        return {"preds": self.head(x)}
 
 
 if __name__ == "__main__":
@@ -70,7 +63,7 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         surf_weight: float = 10.0
         hidden: int = 512
-        n_blocks: int = 4
+        n_blocks: int = 3
         epochs: int = 50
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
