@@ -16,12 +16,37 @@ from pathlib import Path
 
 import simple_parsing as sp
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 
 from data import X_DIM
 
 PREDICTIONS_DIR = Path("/mnt/new-pvc/predictions")
 SPLITS_DIR = Path("/mnt/new-pvc/datasets/tandemfoil/splits")
+
+
+class ResBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.LayerNorm(dim), nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim),
+        )
+
+    def forward(self, x):
+        return x + self.net(x)
+
+
+class CFDModel(nn.Module):
+    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8):
+        super().__init__()
+        self.proj_in = nn.Linear(in_dim, hidden)
+        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.head = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+
+    def forward(self, data, **kwargs):
+        x = self.proj_in(data["x"])
+        x = self.blocks(x)
+        return {"preds": self.head(x)}
 
 
 @dataclass
@@ -37,7 +62,6 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import CFDModel
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
