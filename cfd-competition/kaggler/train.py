@@ -212,7 +212,9 @@ if __name__ == "__main__":
             y[~finite] = 0.0
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
-            y_norm = y_norm.clamp(-10, 10)
+            # Mask out nodes with extreme normalized targets (outliers)
+            reasonable = (y_norm.abs() <= 10).all(dim=-1)
+            mask = mask & reasonable
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
@@ -283,7 +285,8 @@ if __name__ == "__main__":
                     y[~finite] = 0.0
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
-                    y_norm = y_norm.clamp(-10, 10)
+                    reasonable = (y_norm.abs() <= 10).all(dim=-1)
+                    mask = mask & reasonable
 
                     pred = eval_model({"x": x})["preds"]
                     sq_err = (pred - y_norm) ** 2
