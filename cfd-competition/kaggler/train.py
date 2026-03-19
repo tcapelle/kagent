@@ -17,7 +17,7 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 
 # ---------------------------------------------------------------------------
-# Model: Residual MLP with LayerNorm
+# Model: MLP backbone + surface attention refinement
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -34,20 +34,57 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
+class SurfaceAttention(nn.Module):
+    """Self-attention refinement for surface nodes only."""
+    def __init__(self, dim, n_heads=4, n_layers=2):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        for _ in range(n_layers):
+            self.layers.append(nn.TransformerEncoderLayer(
+                d_model=dim, nhead=n_heads, dim_feedforward=dim * 2,
+                dropout=0.0, activation="gelu", batch_first=True,
+                norm_first=True,
+            ))
+
+    def forward(self, h, is_surface):
+        # h: [B, N, D], is_surface: [B, N] bool
+        B, N, D = h.shape
+        refined = h.clone()
+
+        for b in range(B):
+            surf_idx = is_surface[b].nonzero(as_tuple=True)[0]
+            if surf_idx.numel() == 0:
+                continue
+            surf_h = h[b, surf_idx].unsqueeze(0)  # [1, S, D]
+            for layer in self.layers:
+                surf_h = layer(surf_h)
+            refined[b, surf_idx] = surf_h.squeeze(0)
+
+        return refined
+
+
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6, **kwargs):
+    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6,
+                 surf_attn_heads=4, surf_attn_layers=2, **kwargs):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.surf_attn = SurfaceAttention(hidden, n_heads=surf_attn_heads, n_layers=surf_attn_layers)
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, out_dim),
         )
 
     def forward(self, data, **kwargs):
-        x = self.proj_in(data["x"])
-        x = self.blocks(x)
-        return {"preds": self.head(x)}
+        x = data["x"]
+        # is_surface is dim 12 of x (before normalization it's 0/1, after it's normalized)
+        # We use a threshold on normalized value: surface nodes have high is_surface values
+        is_surface = x[..., 12] > 0  # After normalization, surface=1 normalizes to a positive value
+
+        h = self.proj_in(x)
+        h = self.blocks(h)
+        h = self.surf_attn(h, is_surface)
+        return {"preds": self.head(h)}
 
 
 # ---------------------------------------------------------------------------
