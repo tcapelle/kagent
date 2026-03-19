@@ -1,0 +1,2 @@
+commit	val_loss	mae_surf_p	status	description
+4cca861	3.1712	139.20	keep	baseline resmlp 512h 8blocks, inf fix in val_ood_re

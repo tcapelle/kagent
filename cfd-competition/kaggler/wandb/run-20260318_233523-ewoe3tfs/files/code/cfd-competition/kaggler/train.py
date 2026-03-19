@@ -1,5 +1,8 @@
 """Train a CFD surrogate model.
 
+Template training script — fill in your model architecture.
+The data loading, loss computation, validation, and W&B logging are ready to use.
+
 Run:
   uv run train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
@@ -57,13 +60,11 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 1e-3
+        lr: float = 5e-4
         weight_decay: float = 1e-4
         batch_size: int = 4
         val_batch_size: int = 2
         surf_weight: float = 10.0
-        hidden: int = 512
-        n_blocks: int = 8
         epochs: int = 50
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
@@ -96,20 +97,11 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-
-    # OneCycleLR: fast warmup then cosine decay
-    steps_per_epoch = len(train_loader)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
-        pct_start=0.1, anneal_strategy="cos",
-    )
-
-    # AMP for faster training + lower memory
-    scaler = torch.amp.GradScaler("cuda")
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
     # --- W&B ---
     run = wandb.init(
@@ -135,7 +127,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks}, f)
+        yaml.dump({"n_params": n_params, "hidden": 512, "n_blocks": 8}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -166,24 +158,21 @@ if __name__ == "__main__":
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
             y_norm = torch.nan_to_num(y_norm, nan=0.0, posinf=0.0, neginf=0.0)
 
-            with torch.amp.autocast("cuda"):
-                pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+            # Forward pass — your model takes {"x": normalized_x} and returns {"preds": [B, N, 3]}
+            pred = model({"x": x})["preds"]
+            sq_err = (pred - y_norm) ** 2
 
-                vol_mask = mask & ~is_surface
-                surf_mask = mask & is_surface
-                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-                loss = vol_loss + cfg.surf_weight * surf_loss
+            # Loss: separate volume and surface, weight surface higher
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
-
+            optimizer.step()
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -191,6 +180,7 @@ if __name__ == "__main__":
             epoch_surf += surf_loss.item()
             n_batches += 1
 
+        scheduler.step()
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
