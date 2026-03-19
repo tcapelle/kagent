@@ -147,6 +147,7 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 20.0
     epochs: int = 50
+    resume: str | None = None  # path to checkpoint for warm restart
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -181,6 +182,13 @@ val_loaders = {
 
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8,
                  n_fourier=64, cond_dim=128).to(device)
+
+if cfg.resume:
+    state = torch.load(cfg.resume, map_location=device, weights_only=True)
+    state = {k.replace("_orig_mod.", ""): v for k, v in state.items()}
+    model.load_state_dict(state)
+    print(f"Resumed from {cfg.resume}")
+
 model = torch.compile(model)
 ema = EMA(model, decay=0.999)
 
