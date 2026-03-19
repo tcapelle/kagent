@@ -1,5 +1,8 @@
 """Train a CFD surrogate model.
 
+Template training script — fill in your model architecture.
+The data loading, loss computation, validation, and W&B logging are ready to use.
+
 Run:
   uv run train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
@@ -69,13 +72,10 @@ if __name__ == "__main__":
     class Config:
         lr: float = 5e-4
         weight_decay: float = 1e-4
-        batch_size: int = 1
-        accum_steps: int = 4
+        batch_size: int = 2
         surf_weight: float = 10.0
         epochs: int = 50
         grad_clip: float = 1.0
-        hidden: int = 512
-        n_blocks: int = 8
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -107,13 +107,11 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=6).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"Model params: {n_params:,}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
-    scaler = torch.amp.GradScaler("cuda")
 
     # --- W&B ---
     run = wandb.init(
@@ -139,7 +137,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks}, f)
+        yaml.dump({"n_params": n_params, "hidden": 256, "n_blocks": 6}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -155,9 +153,8 @@ if __name__ == "__main__":
         model.train()
         epoch_vol = epoch_surf = 0.0
         n_batches = 0
-        optimizer.zero_grad()
 
-        for step, (x, y, is_surface, mask) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False)):
+        for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             is_surface = is_surface.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
@@ -165,25 +162,21 @@ if __name__ == "__main__":
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-            with torch.amp.autocast("cuda"):
-                pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+            pred = model({"x": x})["preds"]
+            sq_err = (pred - y_norm) ** 2
 
-                vol_mask = mask & ~is_surface
-                surf_mask = mask & is_surface
-                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-                loss = (vol_loss + cfg.surf_weight * surf_loss) / cfg.accum_steps
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
-            scaler.scale(loss).backward()
-
-            if (step + 1) % cfg.accum_steps == 0 or step == len(train_loader) - 1:
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-                scaler.step(optimizer)
-                scaler.update()
-                optimizer.zero_grad()
-                global_step += 1
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+            optimizer.step()
+            global_step += 1
+            wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
             epoch_vol += vol_loss.item()
             epoch_surf += surf_loss.item()
@@ -195,7 +188,6 @@ if __name__ == "__main__":
 
         # --- Validate (do not modify — ensures consistent metrics) ---
         model.eval()
-        torch.cuda.empty_cache()
         val_loss_sum = 0.0
         split_metrics: dict[str, dict] = {}
 
@@ -250,6 +242,7 @@ if __name__ == "__main__":
             val_loss_sum += split_loss
 
         mean_val_loss = val_loss_sum / len(val_loaders)
+        # Use nan-safe mean for checkpoint selection (nan splits don't block saving)
         finite_losses = [split_metrics[n][f"{n}/loss"] for n in VAL_SPLIT_NAMES if math.isfinite(split_metrics[n][f"{n}/loss"])]
         safe_val_loss = sum(finite_losses) / len(finite_losses) if finite_losses else float("inf")
         dt = time.time() - t0
