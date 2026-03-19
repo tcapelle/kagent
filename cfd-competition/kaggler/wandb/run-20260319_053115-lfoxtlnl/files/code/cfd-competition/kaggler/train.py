@@ -30,9 +30,9 @@ class FiLMResBlock(nn.Module):
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=4, cond_dim=13):
+    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=4, cond_dim=11):
         super().__init__()
-        # cond_dim=13: features 13-23 (11) + log(Re^2) + log(Re^0.5) (2)
+        # cond_dim=11: features 13-23 (log(Re), AoA1, NACA1x3, AoA2, NACA2x3, gap, stagger)
         self.cond_start = 13
         self.cond_end = 24
         self.proj_in = nn.Linear(in_dim, hidden)
@@ -54,12 +54,7 @@ class CFDModel(nn.Module):
         x_in = data["x"]  # [B, N, 24]
         # Extract global conditioning (same for all nodes in a sample)
         cond_raw = x_in[:, 0, self.cond_start:self.cond_end]  # [B, 11] - take from first node
-        # Add physics-motivated features: Re^2 and Re^0.5 for pressure scaling
-        log_re = cond_raw[:, 0:1]  # log(Re)
-        re_sq = (2 * log_re)  # log(Re^2) = 2*log(Re)
-        re_sqrt = (0.5 * log_re)  # log(Re^0.5) = 0.5*log(Re)
-        cond_aug = torch.cat([cond_raw, re_sq, re_sqrt], dim=-1)  # [B, 13]
-        cond = self.cond_proj(cond_aug)  # [B, hidden//2]
+        cond = self.cond_proj(cond_raw)  # [B, hidden//2]
         cond = cond.unsqueeze(1)  # [B, 1, hidden//2] for broadcasting
 
         x = self.proj_in(x_in)
@@ -96,7 +91,7 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         surf_weight: float = 10.0
         hidden: int = 512
-        n_blocks: int = 4
+        n_blocks: int = 6
         epochs: int = 50
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
