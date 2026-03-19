@@ -34,15 +34,10 @@ class ResBlock(nn.Module):
 
 
 class ResidualMLP(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=12):
+    def __init__(self, in_dim=24, out_dim=3, hidden=192, n_blocks=16):
         super().__init__()
-        n_pre = n_blocks // 2
-        n_post = n_blocks - n_pre
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.pre_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_pre)])
-        # After pre-blocks: concat global max-pool features
-        self.proj_mid = nn.Linear(hidden * 2, hidden)
-        self.post_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_post)])
+        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, out_dim),
@@ -50,11 +45,7 @@ class ResidualMLP(nn.Module):
 
     def forward(self, data, **kwargs):
         x = self.proj_in(data["x"])
-        x = self.pre_blocks(x)
-        # Global max-pool per sample, broadcast to all nodes
-        g = x.max(dim=1, keepdim=True).values.expand_as(x)  # [B, N, hidden]
-        x = self.proj_mid(torch.cat([x, g], dim=-1))
-        x = self.post_blocks(x)
+        x = self.blocks(x)
         return {"preds": self.head(x)}
 
 
@@ -81,7 +72,7 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 13
+        epochs: int = 18
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -115,7 +106,7 @@ if __name__ == "__main__":
     }
 
     # --- Build model ---
-    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=12).to(device)
+    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=192, n_blocks=16).to(device)
     model = torch.compile(model)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -153,7 +144,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": 256, "n_blocks": 12}, f)
+        yaml.dump({"n_params": n_params, "hidden": 192, "n_blocks": 16}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
