@@ -104,7 +104,6 @@ class Config:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 2
-    grad_accum: int = 4
     surf_weight: float = 10.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
@@ -125,7 +124,7 @@ stats = {k: v.to(device) for k, v in stats.items()}
 
 
 class CleanDataset(torch.utils.data.Dataset):
-    """Wrapper that replaces inf/nan in targets with 0 (masked out by is_surface/mask)."""
+    """Wrapper that replaces inf/nan in targets with 0."""
     def __init__(self, ds):
         self.ds = ds
     def __len__(self):
@@ -139,7 +138,6 @@ class CleanDataset(torch.utils.data.Dataset):
         return x, y, is_surface
 
 
-# Wrap datasets to handle inf/nan in targets (val_ood_re sample 65 has -inf in pressure)
 train_ds = CleanDataset(train_ds)
 val_splits = {k: CleanDataset(v) for k, v in val_splits.items()}
 
@@ -165,11 +163,7 @@ ema = EMA(model, decay=0.999)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-steps_per_epoch = (len(train_ds) // cfg.batch_size + 1) // cfg.grad_accum + 1
-scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
-    pct_start=0.1, anneal_strategy="cos",
-)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 scaler = torch.amp.GradScaler("cuda")
 
 
@@ -220,7 +214,6 @@ for epoch in range(MAX_EPOCHS):
     epoch_vol = epoch_surf = 0.0
     n_batches = 0
 
-    optimizer.zero_grad()
     for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         is_surface = is_surface.to(device, non_blocking=True)
@@ -237,25 +230,23 @@ for epoch in range(MAX_EPOCHS):
             surf_mask = mask & is_surface
             vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
             surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-            loss = (vol_loss + cfg.surf_weight * surf_loss) / cfg.grad_accum
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
+        optimizer.zero_grad()
         scaler.scale(loss).backward()
-
-        if (n_batches + 1) % cfg.grad_accum == 0 or (n_batches + 1) == len(train_loader):
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
-            optimizer.zero_grad()
-            ema.update(model)
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(optimizer)
+        scaler.update()
+        ema.update(model)
         global_step += 1
-        wandb.log({"train/loss": loss.item() * cfg.grad_accum, "global_step": global_step})
+        wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
         epoch_vol += vol_loss.item()
         epoch_surf += surf_loss.item()
         n_batches += 1
 
+    scheduler.step()
     epoch_vol /= n_batches
     epoch_surf /= n_batches
 

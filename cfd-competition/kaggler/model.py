@@ -6,24 +6,45 @@ import torch
 import torch.nn as nn
 
 
-class ResMLPBlock(nn.Module):
-    def __init__(self, dim, dropout=0.0):
+class FiLMResMLPBlock(nn.Module):
+    """ResMLPBlock with FiLM conditioning from global features."""
+    def __init__(self, dim, cond_dim, dropout=0.0):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.fc1 = nn.Linear(dim, dim * 4)
         self.fc2 = nn.Linear(dim * 4, dim)
         self.act = nn.GELU()
         self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        # FiLM: condition produces scale and shift
+        self.film = nn.Linear(cond_dim, dim * 2)
 
-    def forward(self, x):
-        return x + self.drop(self.fc2(self.act(self.fc1(self.norm(x)))))
+    def forward(self, x, cond):
+        h = self.norm(x)
+        # Apply FiLM conditioning
+        gamma_beta = self.film(cond)  # [B, 1, 2*dim] or [B, 2*dim]
+        if gamma_beta.dim() == 2:
+            gamma_beta = gamma_beta.unsqueeze(1)
+        gamma, beta = gamma_beta.chunk(2, dim=-1)
+        h = h * (1 + gamma) + beta
+        return x + self.drop(self.fc2(self.act(self.fc1(h))))
 
 
 class ResMLP(nn.Module):
-    def __init__(self, in_dim=24, hidden=256, n_blocks=8, out_dim=3, dropout=0.0):
+    def __init__(self, in_dim=24, hidden=256, n_blocks=8, out_dim=3, dropout=0.0,
+                 local_dim=13, global_dim=11):
         super().__init__()
+        self.local_dim = local_dim
+        self.global_dim = global_dim
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.ModuleList([ResMLPBlock(hidden, dropout) for _ in range(n_blocks)])
+        # Condition encoder: process global features (dims 13-23)
+        cond_hidden = 64
+        self.cond_encoder = nn.Sequential(
+            nn.Linear(global_dim, cond_hidden), nn.GELU(),
+            nn.Linear(cond_hidden, cond_hidden), nn.GELU(),
+        )
+        self.blocks = nn.ModuleList([
+            FiLMResMLPBlock(hidden, cond_hidden, dropout) for _ in range(n_blocks)
+        ])
         self.norm_out = nn.LayerNorm(hidden)
         # Separate heads for each output channel
         self.head_ux = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
@@ -31,9 +52,12 @@ class ResMLP(nn.Module):
         self.head_p = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
 
     def forward(self, data, **kwargs):
-        x = self.proj_in(data["x"])
+        x_full = data["x"]  # [B, N, 24]
+        # Extract global condition from first node (constant across all nodes)
+        cond = self.cond_encoder(x_full[:, 0, self.local_dim:])  # [B, cond_hidden]
+        x = self.proj_in(x_full)
         for block in self.blocks:
-            x = block(x)
+            x = block(x, cond)
         x = self.norm_out(x)
         ux = self.head_ux(x)
         uy = self.head_uy(x)
