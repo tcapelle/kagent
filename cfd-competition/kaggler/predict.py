@@ -31,7 +31,7 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None  # kaggler name for output path
     batch_size: int = 4
-    hidden: int = 320
+    hidden: int = 256
     n_blocks: int = 8
 
 
