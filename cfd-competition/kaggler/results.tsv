@@ -9,4 +9,5 @@ e98ace6	2.3669	?	discard	2x expand bottleneck too slow
 d17a410	1.6172	58.51	keep	512h 3b lr=1e-3, 50 epochs
 1c2bd82	1.5969	63.73	keep	512h 4b split vel/p heads, 37 epochs
 fd62f12	1.5912	52.95	keep	FiLM conditioning + split heads, 36 epochs
-4fe8d92	1.5784	54.91	keep	FiLM + Re power-law features, 36 epochs - BEST val/loss
+4fe8d92	1.5784	54.91	keep	FiLM + Re power-law features, 36 epochs
+b2ab030	1.4936	49.29	keep	FiLM + Re + EMA(0.999), 34 epochs - BEST
