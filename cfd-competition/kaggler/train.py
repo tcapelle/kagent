@@ -126,8 +126,8 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 20
-        val_every: int = 5  # validate every N epochs
+        epochs: int = 25
+        val_every: int = 8  # validate every N epochs
         ema_decay: float = 0.998
         hidden: int = 256
         n_blocks: int = 8
