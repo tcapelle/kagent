@@ -31,12 +31,8 @@ class FiLMResBlock(nn.Module):
         self.fc1 = nn.Linear(dim, dim * 4)
         self.fc2 = nn.Linear(dim * 4, dim)
         self.act = nn.GELU()
-        # FiLM: conditioning -> (gamma, beta)
-        self.film = nn.Sequential(
-            nn.Linear(cond_dim, dim),
-            nn.GELU(),
-            nn.Linear(dim, dim * 2),
-        )
+        # FiLM: conditioning -> (gamma, beta) via single linear
+        self.film = nn.Linear(cond_dim, dim * 2)
 
     def forward(self, x, cond):
         # cond: [B, 1, cond_dim] broadcast to all nodes
@@ -130,11 +126,11 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 50
-        val_every: int = 3  # validate every N epochs
+        epochs: int = 20
+        val_every: int = 5  # validate every N epochs
         ema_decay: float = 0.998
         hidden: int = 256
-        n_blocks: int = 12
+        n_blocks: int = 8
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
