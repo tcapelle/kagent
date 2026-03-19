@@ -34,7 +34,7 @@ class ResBlock(nn.Module):
 
 
 class ResidualMLP(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=12):
+    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=6):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
@@ -66,12 +66,13 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 1e-3
+        lr: float = 2e-3
         weight_decay: float = 1e-4
         batch_size: int = 4
         val_batch_size: int = 1
+        accum_steps: int = 2
         surf_weight: float = 10.0
-        epochs: int = 100
+        epochs: int = 12
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -105,14 +106,15 @@ if __name__ == "__main__":
     }
 
     # --- Build model ---
-    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=12).to(device)
+    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=6).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Parameters: {n_params:,}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    steps_per_epoch = len(train_loader) // cfg.accum_steps
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS,
-        steps_per_epoch=len(train_loader),
+        steps_per_epoch=steps_per_epoch,
     )
 
     scaler = torch.amp.GradScaler("cuda")
@@ -141,7 +143,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": 256, "n_blocks": 12}, f)
+        yaml.dump({"n_params": n_params, "hidden": 512, "n_blocks": 6}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -158,7 +160,7 @@ if __name__ == "__main__":
         epoch_vol = epoch_surf = 0.0
         n_batches = 0
 
-        for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+        for step_i, (x, y, is_surface, mask) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False)):
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             is_surface = is_surface.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
@@ -176,19 +178,21 @@ if __name__ == "__main__":
                 surf_mask = mask & is_surface & finite
                 vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
                 surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-                loss = vol_loss + cfg.surf_weight * surf_loss
+                loss = (vol_loss + cfg.surf_weight * surf_loss) / cfg.accum_steps
 
-            optimizer.zero_grad()
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
-            global_step += 1
 
-            epoch_vol += vol_loss.item()
-            epoch_surf += surf_loss.item()
+            if (step_i + 1) % cfg.accum_steps == 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+                scheduler.step()
+                global_step += 1
+
+            epoch_vol += vol_loss.item() * cfg.accum_steps
+            epoch_surf += surf_loss.item() * cfg.accum_steps
             n_batches += 1
 
         epoch_vol /= n_batches
