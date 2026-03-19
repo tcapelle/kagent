@@ -41,6 +41,8 @@ class CFDModel(nn.Module):
             nn.GELU(),
             nn.Linear(hidden // 2, hidden // 2),
         )
+        self.global_proj = nn.Linear(hidden, hidden // 4)
+        self.cond_merge = nn.Linear(hidden // 2 + hidden // 4, hidden // 2)
         self.blocks = nn.ModuleList([FiLMResBlock(hidden, hidden // 2) for _ in range(n_blocks)])
         self.norm = nn.LayerNorm(hidden)
         self.vel_head = nn.Linear(hidden, 2)
@@ -60,9 +62,14 @@ class CFDModel(nn.Module):
         re_sqrt = (0.5 * log_re)  # log(Re^0.5) = 0.5*log(Re)
         cond_aug = torch.cat([cond_raw, re_sq, re_sqrt], dim=-1)  # [B, 13]
         cond = self.cond_proj(cond_aug)  # [B, hidden//2]
-        cond = cond.unsqueeze(1)  # [B, 1, hidden//2] for broadcasting
 
+        # Add global context from mean of projected features
         x = self.proj_in(x_in)
+        global_ctx = x.mean(dim=1)  # [B, hidden]
+        global_feat = self.global_proj(global_ctx)  # [B, hidden//4]
+        cond = torch.cat([cond, global_feat], dim=-1)  # [B, hidden//2 + hidden//4]
+        cond = self.cond_merge(cond)  # [B, hidden//2]
+        cond = cond.unsqueeze(1)  # [B, 1, hidden//2] for broadcasting
         for block in self.blocks:
             x = block(x, cond)
         x = self.norm(x)
