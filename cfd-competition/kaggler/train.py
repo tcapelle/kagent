@@ -18,21 +18,33 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 
 # ---------------------------------------------------------------------------
-# Model: ResBlock MLP with separate per-channel output heads + EMA
+# Model: FiLM-conditioned ResBlock MLP with separate per-channel heads + EMA
 # ---------------------------------------------------------------------------
 
-class ResBlock(nn.Module):
-    def __init__(self, dim):
+# Condition feature indices in normalized x: Re, AoA1, NACA1(3), AoA2, NACA2(3), gap, stagger
+COND_DIMS = list(range(13, 24))  # 11 condition features
+
+
+class FiLMResBlock(nn.Module):
+    """ResBlock with FiLM conditioning: gamma * norm(h) + beta from conditions."""
+    def __init__(self, dim, cond_dim):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
+        self.norm = nn.LayerNorm(dim)
+        self.ff = nn.Sequential(
             nn.Linear(dim, dim * 2),
             nn.GELU(),
             nn.Linear(dim * 2, dim),
         )
+        # FiLM: condition -> (gamma, beta)
+        self.film = nn.Linear(cond_dim, dim * 2)
 
-    def forward(self, x):
-        return x + self.net(x)
+    def forward(self, x, cond):
+        # x: [B, N, D], cond: [B, 1, cond_dim] (broadcast over N)
+        film_params = self.film(cond)  # [B, 1, 2*D]
+        gamma, beta = film_params.chunk(2, dim=-1)  # each [B, 1, D]
+        h = self.norm(x)
+        h = (1 + gamma) * h + beta  # FiLM modulation
+        return x + self.ff(h)
 
 
 class ChannelHead(nn.Module):
@@ -51,18 +63,32 @@ class ChannelHead(nn.Module):
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=320, n_blocks=8, **kwargs):
+    def __init__(self, in_dim=24, out_dim=3, hidden=320, n_blocks=8,
+                 cond_hidden=64, **kwargs):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        # Condition encoder: project global flow params to a condition embedding
+        self.cond_enc = nn.Sequential(
+            nn.Linear(len(COND_DIMS), cond_hidden),
+            nn.GELU(),
+            nn.Linear(cond_hidden, cond_hidden),
+        )
+        self.blocks = nn.ModuleList([
+            FiLMResBlock(hidden, cond_hidden) for _ in range(n_blocks)
+        ])
         self.final_norm = nn.LayerNorm(hidden)
-        # Separate heads for Ux, Uy, p
         self.heads = nn.ModuleList([ChannelHead(hidden) for _ in range(out_dim)])
 
     def forward(self, data, **kwargs):
         x = data["x"]
+        # Extract condition features (same for all nodes in a sample)
+        # Use first node's condition values (they're global/identical across nodes)
+        cond = x[:, :1, COND_DIMS]  # [B, 1, 11]
+        cond = self.cond_enc(cond)  # [B, 1, cond_hidden]
+
         h = self.proj_in(x)
-        h = self.blocks(h)
+        for block in self.blocks:
+            h = block(h, cond)
         h = self.final_norm(h)
         return {"preds": torch.cat([head(h) for head in self.heads], dim=-1)}
 
@@ -110,12 +136,12 @@ if __name__ == "__main__":
         batch_size: int = 4
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 50
+        epochs: int = 26
         grad_clip: float = 1.0
         hidden: int = 320
         n_blocks: int = 8
         ema_decay: float = 0.999
-        val_every: int = 4
+        val_every: int = 5
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
