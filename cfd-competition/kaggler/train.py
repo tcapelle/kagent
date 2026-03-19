@@ -69,8 +69,8 @@ if __name__ == "__main__":
     class Config:
         lr: float = 5e-4
         weight_decay: float = 1e-4
-        batch_size: int = 1
-        accum_steps: int = 4
+        batch_size: int = 2
+        accum_steps: int = 2
         surf_weight: float = 10.0
         epochs: int = 50
         grad_clip: float = 1.0
@@ -164,6 +164,7 @@ if __name__ == "__main__":
 
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
+            mask = mask & y.isfinite().all(dim=-1)
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
@@ -213,6 +214,7 @@ if __name__ == "__main__":
 
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
+                    mask = mask & y.isfinite().all(dim=-1)
 
                     pred = model({"x": x})["preds"]
                     sq_err = (pred - y_norm) ** 2
