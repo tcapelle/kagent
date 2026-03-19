@@ -69,7 +69,7 @@ class CFDModel(nn.Module):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.surf_attn = SurfaceAttention(hidden, n_heads=surf_attn_heads, n_layers=4)
+        self.surf_attn = SurfaceAttention(hidden, n_heads=surf_attn_heads, n_layers=surf_attn_layers)
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, out_dim),
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         epochs: int = 50
         grad_clip: float = 1.0
         hidden: int = 256
-        n_blocks: int = 6
+        n_blocks: int = 8
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
