@@ -2,3 +2,6 @@ commit	val_loss	mae_surf_p	status	description
 6df5472	3.6451	148.72	keep	baseline ResidualMLP 256x12, AMP bfloat16, OneCycleLR 1e-3, 11 epochs
 62e8fa9	2.4345	108.95	keep	same model, epochs=15 OneCycleLR, val_batch_size=2, 11 epochs run
 7ce7eb2	2.1417	84.67	keep	torch.compile, epochs=13 matched to 30min, full schedule
+816c6ed	2.1883	55.66	keep	v12: FiLM + sep heads + EMA, 8M params, 15 epochs (timeout)
+2bd1930	1.4889	46.64	keep	v13: slim FiLM 8 blocks, 20 epochs completed
+28ee951	1.3487	~46	keep	v14: 25 epochs val_every=8, best yet
