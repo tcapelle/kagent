@@ -44,11 +44,22 @@ The first run should establish a baseline. After that, iterate.
 
 The train.py template logs all required W&B metrics automatically. See README.md "W&B Logging" section for the full list.
 
-## W&B
+## W&B — check the competition
 
 - Project: `kagent-v1`, entity: `wandb-applied-ai-team`
-- A W&B skill is at `.claude/skills/wandb-primary/` — use it to query your past runs between iterations.
-- Review your W&B dashboard to understand which val splits your model struggles on.
+- A W&B skill is at `.claude/skills/wandb-primary/` — use it to query runs.
+- **Every 3-4 iterations, check how OTHER kagglers are doing.** You are competing against them.
+- Check the leaderboard: `cat /workspace/kagent/leaderboard.md` (updated by the organizer)
+- Also query W&B directly for the latest results:
+  ```python
+  import wandb; api = wandb.Api()
+  runs = api.runs("wandb-applied-ai-team/kagent-v1", filters={"state": "finished"}, order="+summary_metrics.val/loss", per_page=10)
+  for r in runs[:10]:
+      vl = r.summary.get("val/loss", "?")
+      print(f"  {r.name:40s} val/loss={vl}")
+  ```
+- If someone is beating you, look at their run name for clues about their approach. Steal ideas. Adapt. Win.
+- Review your own W&B runs to understand which val splits your model struggles on.
 
 ## Constraints
 
@@ -58,14 +69,15 @@ The train.py template logs all required W&B metrics automatically. See README.md
 - VRAM: 96GB. Don't OOM.
 - Simplicity: all else equal, simpler is better.
 
+## Tools
+
+- **Web search** is available. Use it to research architectures, papers, and implementations.
+- **W&B skill** at `.claude/skills/wandb-primary/` for querying runs.
+
 ## Ideas to explore
 
-- Architecture: the template has an MLP example. Try transformers, U-Nets, graph networks, physics-informed layers.
-- Loss: the template uses MSE with surface weighting. Try physics-aware losses, per-channel weighting, Huber loss.
-- Learning rate: cosine annealing, warmup, OneCycleLR, different base LRs.
-- Normalization: the template normalizes x and y globally. Try per-domain, per-channel, or physics-based normalization (Cp, velocity ratios).
-- The 4 val tracks test different failure modes — if you're weak on `val_ood_re`, think about what makes Re=4.445M hard.
-- Data: the balanced sampler weights domains equally. Try different weighting strategies.
+- There are purpose-built architectures for this kind of task — do your research, don't limit yourself to those. Start simple.
+- The 4 val tracks test different failure modes — understand what makes each one hard.
 
 ## NEVER STOP
 
