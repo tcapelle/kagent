@@ -63,7 +63,7 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         surf_weight: float = 10.0
         hidden: int = 512
-        n_blocks: int = 4
+        n_blocks: int = 3
         epochs: int = 50
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
