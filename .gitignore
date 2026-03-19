@@ -1,0 +1,30 @@
+# Training artifacts
+wandb/
+models/
+plots/
+*.pt
+*.pth
+run.log
+pred.log
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+*.egg
+*.so
+.eggs/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Environment
+.venv/
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
