@@ -28,12 +28,16 @@ from viz import visualize
 
 # --- Model ---
 
-class FourierFeatures(nn.Module):
-    """Random Fourier features for positional encoding."""
+class MultiscaleFourierFeatures(nn.Module):
+    """Multi-scale random Fourier features for positional encoding."""
 
-    def __init__(self, in_dim, n_freq=64, scale=10.0):
+    def __init__(self, in_dim, n_freq=64, scales=(1.0, 5.0, 25.0)):
         super().__init__()
-        self.register_buffer("B", torch.randn(in_dim, n_freq) * scale)
+        freqs_per_scale = n_freq // len(scales)
+        parts = []
+        for s in scales:
+            parts.append(torch.randn(in_dim, freqs_per_scale) * s)
+        self.register_buffer("B", torch.cat(parts, dim=1))
 
     def forward(self, x):
         proj = x @ self.B
@@ -69,11 +73,12 @@ class CFDModel(nn.Module):
         self.local_dim = 13
         self.global_dim = in_dim - 13  # 11
 
-        # Fourier features on spatial positions (dims 0-1)
-        self.fourier = FourierFeatures(2, n_fourier, scale=10.0)
+        # Multi-scale Fourier features on spatial positions (dims 0-1)
+        self.fourier = MultiscaleFourierFeatures(2, n_fourier, scales=(1.0, 5.0, 25.0))
 
         # Input projection: local features + fourier features
-        proj_in_dim = self.local_dim + 2 * n_fourier
+        n_fourier_actual = (n_fourier // 3) * 3  # round to multiple of 3
+        proj_in_dim = self.local_dim + 2 * n_fourier_actual
         self.proj_in = nn.Linear(proj_in_dim, hidden)
 
         # Global condition encoder
@@ -142,11 +147,11 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 1e-3
+    lr: float = 5e-4
     weight_decay: float = 5e-4
-    batch_size: int = 4
+    batch_size: int = 2
     surf_weight: float = 20.0
-    epochs: int = 50
+    epochs: int = 30
     resume: str | None = None  # path to checkpoint for warm restart
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
     wandb_group: str | None = None
@@ -180,8 +185,13 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8,
-                 n_fourier=64, cond_dim=128).to(device)
+HIDDEN = 768
+N_BLOCKS = 6
+N_FOURIER = 66  # divisible by 3 for multi-scale
+COND_DIM = 192
+
+model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=HIDDEN, n_blocks=N_BLOCKS,
+                 n_fourier=N_FOURIER, cond_dim=COND_DIM).to(device)
 
 if cfg.resume:
     state = torch.load(cfg.resume, map_location=device, weights_only=True)
@@ -229,8 +239,8 @@ model_dir = Path(f"models/model-{run.id}")
 model_dir.mkdir(parents=True)
 model_path = model_dir / "checkpoint.pt"
 with open(model_dir / "config.yaml", "w") as f:
-    yaml.dump({"n_params": n_params, "hidden": 512, "n_blocks": 8,
-               "n_fourier": 64, "cond_dim": 128}, f)
+    yaml.dump({"n_params": n_params, "hidden": HIDDEN, "n_blocks": N_BLOCKS,
+               "n_fourier": N_FOURIER, "cond_dim": COND_DIM}, f)
 
 best_val = float("inf")
 best_metrics: dict = {}

@@ -20,10 +20,14 @@ PREDICTIONS_DIR = Path("/mnt/new-pvc/predictions")
 SPLITS_DIR = Path("/mnt/new-pvc/datasets/tandemfoil/splits")
 
 
-class FourierFeatures(nn.Module):
-    def __init__(self, in_dim, n_freq=64, scale=10.0):
+class MultiscaleFourierFeatures(nn.Module):
+    def __init__(self, in_dim, n_freq=66, scales=(1.0, 5.0, 25.0)):
         super().__init__()
-        self.register_buffer("B", torch.randn(in_dim, n_freq) * scale)
+        freqs_per_scale = n_freq // len(scales)
+        parts = []
+        for s in scales:
+            parts.append(torch.randn(in_dim, freqs_per_scale) * s)
+        self.register_buffer("B", torch.cat(parts, dim=1))
 
     def forward(self, x):
         proj = x @ self.B
@@ -47,14 +51,15 @@ class FiLMResBlock(nn.Module):
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8,
-                 n_fourier=64, cond_dim=128):
+    def __init__(self, in_dim=24, out_dim=3, hidden=768, n_blocks=6,
+                 n_fourier=66, cond_dim=192):
         super().__init__()
         self.local_dim = 13
         self.global_dim = in_dim - 13
 
-        self.fourier = FourierFeatures(2, n_fourier, scale=10.0)
-        proj_in_dim = self.local_dim + 2 * n_fourier
+        self.fourier = MultiscaleFourierFeatures(2, n_fourier, scales=(1.0, 5.0, 25.0))
+        n_fourier_actual = (n_fourier // 3) * 3
+        proj_in_dim = self.local_dim + 2 * n_fourier_actual
         self.proj_in = nn.Linear(proj_in_dim, hidden)
 
         self.cond_enc = nn.Sequential(
@@ -89,14 +94,19 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 4
+    # Model config - must match training
+    hidden: int = 768
+    n_blocks: int = 6
+    n_fourier: int = 66
+    cond_dim: int = 192
 
 
 cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8,
-                 n_fourier=64, cond_dim=128).to(device)
+model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks,
+                 n_fourier=cfg.n_fourier, cond_dim=cfg.cond_dim).to(device)
 state = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
 state = {k.replace("_orig_mod.", ""): v for k, v in state.items()}
 model.load_state_dict(state)
