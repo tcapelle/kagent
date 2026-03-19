@@ -17,8 +17,8 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 # Global conditioning feature indices (same for all nodes in a sample)
 COND_DIMS = list(range(13, 24))  # Re, AoA1, NACA1(3), AoA2, NACA2(3), gap, stagger
-# Spatial dims for Fourier encoding (positions + signed arc-length)
-FOURIER_DIMS = [0, 1, 2, 3]  # x, z, saf_x, saf_z
+# Per-node geometric dims for Fourier encoding (pos + saf + dsdf)
+FOURIER_DIMS = list(range(12))  # x, z, saf(2), dsdf(8)
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +159,7 @@ if __name__ == "__main__":
         epochs: int = 25
         val_every: int = 12  # validate every N epochs
         ema_decay: float = 0.998
-        n_fourier_freq: int = 6
+        n_fourier_freq: int = 4
         hidden: int = 256
         n_blocks: int = 8
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"

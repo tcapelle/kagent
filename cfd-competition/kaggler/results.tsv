@@ -5,3 +5,4 @@ commit	val_loss	mae_surf_p	status	description
 816c6ed	2.1883	55.66	keep	v12: FiLM + sep heads + EMA, 8M params, 15 epochs (timeout)
 2bd1930	1.4889	46.64	keep	v13: slim FiLM 8 blocks, 20 epochs completed
 28ee951	1.3487	~46	keep	v14: 25 epochs val_every=8, best yet
+420fa8d	1.2715	38.13	keep	v21: Fourier pos+saf (4 dims, 6 freq), val_every=12
