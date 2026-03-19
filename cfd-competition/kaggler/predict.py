@@ -38,7 +38,20 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 from train import CFDModel
-model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
+import yaml
+
+# Load model config from checkpoint directory
+ckpt_dir = Path(cfg.checkpoint).parent
+config_path = ckpt_dir / "config.yaml"
+if config_path.exists():
+    with open(config_path) as f:
+        model_cfg = yaml.safe_load(f)
+    hidden = model_cfg.get("hidden", 512)
+    n_blocks = model_cfg.get("n_blocks", 8)
+else:
+    hidden, n_blocks = 512, 8
+
+model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=hidden, n_blocks=n_blocks).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()

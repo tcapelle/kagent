@@ -57,13 +57,13 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
+        lr: float = 1e-3
         weight_decay: float = 1e-4
         batch_size: int = 4
         val_batch_size: int = 2
         surf_weight: float = 10.0
         hidden: int = 512
-        n_blocks: int = 6
+        n_blocks: int = 8
         epochs: int = 50
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
@@ -97,11 +97,16 @@ if __name__ == "__main__":
     }
 
     model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
-    model = torch.compile(model)
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+    # OneCycleLR: fast warmup then cosine decay
+    steps_per_epoch = len(train_loader)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
+        pct_start=0.1, anneal_strategy="cos",
+    )
 
     # AMP for faster training + lower memory
     scaler = torch.amp.GradScaler("cuda")
@@ -177,6 +182,7 @@ if __name__ == "__main__":
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -185,7 +191,6 @@ if __name__ == "__main__":
             epoch_surf += surf_loss.item()
             n_batches += 1
 
-        scheduler.step()
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
