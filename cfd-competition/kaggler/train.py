@@ -155,7 +155,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
-    use_amp = True
+    use_amp = cfg.resume is None  # disable AMP for warm restarts (numerical stability)
     scaler = torch.amp.GradScaler("cuda") if use_amp else None
 
     # --- W&B ---
@@ -247,8 +247,8 @@ if __name__ == "__main__":
             n_batches += 1
 
         scheduler.step()
-        epoch_vol /= n_batches
-        epoch_surf /= n_batches
+        epoch_vol /= max(n_batches, 1)
+        epoch_surf /= max(n_batches, 1)
 
         do_val = (epoch + 1) % cfg.val_every == 0 or epoch == 0 or epoch == MAX_EPOCHS - 1
         if not do_val:
