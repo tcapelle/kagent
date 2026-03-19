@@ -155,8 +155,8 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
-    use_amp = cfg.resume is None  # disable AMP for warm restarts (numerical stability)
-    scaler = torch.amp.GradScaler("cuda") if use_amp else None
+    use_amp = True
+    scaler = torch.amp.GradScaler("cuda")
 
     # --- W&B ---
     run = wandb.init(
@@ -213,7 +213,7 @@ if __name__ == "__main__":
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
             y_norm = torch.nan_to_num(y_norm, nan=0.0, posinf=0.0, neginf=0.0)
 
-            with torch.amp.autocast("cuda", enabled=use_amp):
+            with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
                 sq_err = (pred - y_norm) ** 2
 
@@ -224,19 +224,15 @@ if __name__ == "__main__":
                 loss = vol_loss + cfg.surf_weight * surf_loss
 
             if not loss.isfinite():
-                continue  # skip NaN/inf batches
+                optimizer.zero_grad()
+                continue
 
             optimizer.zero_grad()
-            if scaler is not None:
-                scaler.scale(loss).backward()
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
             ema_model.update_parameters(raw_model)
 
             global_step += 1
