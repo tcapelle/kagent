@@ -73,12 +73,13 @@ class CFDModel(nn.Module):
         self.local_dim = 13
         self.global_dim = in_dim - 13  # 11
 
-        # Multi-scale Fourier features on spatial positions (dims 0-1)
-        self.fourier = MultiscaleFourierFeatures(2, n_fourier, scales=(1.0, 5.0, 25.0))
+        # Multi-scale Fourier on position (2d) and on saf+dsdf (10d)
+        self.fourier_pos = MultiscaleFourierFeatures(2, n_fourier, scales=(1.0, 5.0, 25.0))
+        self.fourier_geom = MultiscaleFourierFeatures(10, n_fourier, scales=(1.0, 5.0, 25.0))
 
-        # Input projection: local features + fourier features
-        n_fourier_actual = (n_fourier // 3) * 3  # round to multiple of 3
-        proj_in_dim = self.local_dim + 2 * n_fourier_actual
+        # Input projection: local features + fourier features (pos + geom)
+        n_fourier_actual = (n_fourier // 3) * 3
+        proj_in_dim = self.local_dim + 2 * n_fourier_actual * 2
         self.proj_in = nn.Linear(proj_in_dim, hidden)
 
         # Global condition encoder
@@ -102,11 +103,12 @@ class CFDModel(nn.Module):
         local = x[:, :, :self.local_dim]
         global_feat = x[:, 0, self.local_dim:]  # same for all nodes
 
-        # Fourier features on spatial positions
-        ff = self.fourier(x[:, :, :2])
+        # Fourier features on position and geometry
+        ff_pos = self.fourier_pos(x[:, :, :2])
+        ff_geom = self.fourier_geom(x[:, :, 2:12])
 
         # Combine and project
-        h = torch.cat([local, ff], dim=-1)
+        h = torch.cat([local, ff_pos, ff_geom], dim=-1)
         h = self.proj_in(h)
 
         # Condition encoding
@@ -186,7 +188,7 @@ val_loaders = {
 }
 
 HIDDEN = 768
-N_BLOCKS = 6
+N_BLOCKS = 10
 N_FOURIER = 66  # divisible by 3 for multi-scale
 COND_DIM = 192
 

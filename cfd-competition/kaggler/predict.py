@@ -57,9 +57,10 @@ class CFDModel(nn.Module):
         self.local_dim = 13
         self.global_dim = in_dim - 13
 
-        self.fourier = MultiscaleFourierFeatures(2, n_fourier, scales=(1.0, 5.0, 25.0))
+        self.fourier_pos = MultiscaleFourierFeatures(2, n_fourier, scales=(1.0, 5.0, 25.0))
+        self.fourier_geom = MultiscaleFourierFeatures(10, n_fourier, scales=(1.0, 5.0, 25.0))
         n_fourier_actual = (n_fourier // 3) * 3
-        proj_in_dim = self.local_dim + 2 * n_fourier_actual
+        proj_in_dim = self.local_dim + 2 * n_fourier_actual * 2
         self.proj_in = nn.Linear(proj_in_dim, hidden)
 
         self.cond_enc = nn.Sequential(
@@ -76,8 +77,9 @@ class CFDModel(nn.Module):
         x = data["x"]
         local = x[:, :, :self.local_dim]
         global_feat = x[:, 0, self.local_dim:]
-        ff = self.fourier(x[:, :, :2])
-        h = torch.cat([local, ff], dim=-1)
+        ff_pos = self.fourier_pos(x[:, :, :2])
+        ff_geom = self.fourier_geom(x[:, :, 2:12])
+        h = torch.cat([local, ff_pos, ff_geom], dim=-1)
         h = self.proj_in(h)
         cond = self.cond_enc(global_feat)
         for block in self.blocks:
@@ -96,7 +98,7 @@ class Config:
     batch_size: int = 4
     # Model config - must match training
     hidden: int = 768
-    n_blocks: int = 6
+    n_blocks: int = 10
     n_fourier: int = 66
     cond_dim: int = 192
 
