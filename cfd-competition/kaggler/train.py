@@ -8,27 +8,41 @@ import torch
 import torch.nn as nn
 
 
-class ResBlock(nn.Module):
-    def __init__(self, dim):
+class FiLMResBlock(nn.Module):
+    """Residual block with FiLM conditioning from global flow parameters."""
+    def __init__(self, dim, cond_dim):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim),
-            nn.GELU(),
-            nn.Linear(dim, dim),
-        )
+        self.norm = nn.LayerNorm(dim)
+        self.fc1 = nn.Linear(dim, dim)
+        self.fc2 = nn.Linear(dim, dim)
+        # FiLM: condition generates scale and shift
+        self.film = nn.Linear(cond_dim, dim * 2)
 
-    def forward(self, x):
-        return x + self.net(x)
+    def forward(self, x, cond):
+        h = self.norm(x)
+        # Apply FiLM conditioning after first linear
+        h = self.fc1(h)
+        gamma, beta = self.film(cond).chunk(2, dim=-1)
+        h = h * (1 + gamma) + beta  # FiLM modulation
+        h = torch.nn.functional.gelu(h)
+        h = self.fc2(h)
+        return x + h
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8):
+    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=4, cond_dim=11):
         super().__init__()
+        # cond_dim=11: features 13-23 (log(Re), AoA1, NACA1x3, AoA2, NACA2x3, gap, stagger)
+        self.cond_start = 13
+        self.cond_end = 24
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.cond_proj = nn.Sequential(
+            nn.Linear(cond_dim, hidden // 2),
+            nn.GELU(),
+            nn.Linear(hidden // 2, hidden // 2),
+        )
+        self.blocks = nn.ModuleList([FiLMResBlock(hidden, hidden // 2) for _ in range(n_blocks)])
         self.norm = nn.LayerNorm(hidden)
-        # Separate heads for velocity (2 channels) and pressure (1 channel)
         self.vel_head = nn.Linear(hidden, 2)
         self.p_head = nn.Sequential(
             nn.Linear(hidden, hidden // 2),
@@ -37,8 +51,15 @@ class CFDModel(nn.Module):
         )
 
     def forward(self, data, **kwargs):
-        x = self.proj_in(data["x"])
-        x = self.blocks(x)
+        x_in = data["x"]  # [B, N, 24]
+        # Extract global conditioning (same for all nodes in a sample)
+        cond_raw = x_in[:, 0, self.cond_start:self.cond_end]  # [B, 11] - take from first node
+        cond = self.cond_proj(cond_raw)  # [B, hidden//2]
+        cond = cond.unsqueeze(1)  # [B, 1, hidden//2] for broadcasting
+
+        x = self.proj_in(x_in)
+        for block in self.blocks:
+            x = block(x, cond)
         x = self.norm(x)
         vel = self.vel_head(x)
         p = self.p_head(x)
