@@ -17,38 +17,66 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 
 # ---------------------------------------------------------------------------
-# Model: Residual MLP with LayerNorm + Dropout
+# Model: FiLM-conditioned Residual MLP
+# Global flow conditions modulate hidden features via FiLM layers.
 # ---------------------------------------------------------------------------
 
-class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.0):
+class FiLMResBlock(nn.Module):
+    """Residual block with FiLM conditioning from global parameters."""
+    def __init__(self, dim, cond_dim):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim * 2, dim),
-        )
+        self.norm = nn.LayerNorm(dim)
+        self.fc1 = nn.Linear(dim, dim * 2)
+        self.fc2 = nn.Linear(dim * 2, dim)
+        # FiLM: predict scale and shift from conditioning
+        self.film = nn.Linear(cond_dim, dim * 2)  # gamma and beta
 
-    def forward(self, x):
-        return x + self.net(x)
+    def forward(self, x, cond):
+        h = self.norm(x)
+        # Apply FiLM modulation
+        film_params = self.film(cond)  # [B, 1, 2*dim] or [B, dim*2]
+        if film_params.dim() == 2:
+            film_params = film_params.unsqueeze(1)
+        gamma, beta = film_params.chunk(2, dim=-1)
+        h = h * (1 + gamma) + beta
+        h = self.fc2(nn.functional.gelu(self.fc1(h)))
+        return x + h
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6, dropout=0.0):
+    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6, cond_dim=64):
         super().__init__()
+        # Indices for spatial features (per-node) vs global flow params
+        # Dims 0-12: per-node (position, arc-length, dsdf, is_surface)
+        # Dims 13-23: global flow params (Re, AoA, NACA, gap, stagger)
+        self.n_local = 13
+        self.n_global = in_dim - 13  # 11
+
+        # Conditioning encoder for global flow parameters
+        self.cond_enc = nn.Sequential(
+            nn.Linear(self.n_global, cond_dim),
+            nn.GELU(),
+            nn.Linear(cond_dim, cond_dim),
+        )
+
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
+        self.blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_blocks)])
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, out_dim),
         )
 
     def forward(self, data, **kwargs):
-        x = self.proj_in(data["x"])
-        x = self.blocks(x)
-        return {"preds": self.head(x)}
+        x = data["x"]
+        # Extract global conditioning (same for all nodes in a sample)
+        # Take from first node since global params are constant per sample
+        global_params = x[:, 0, self.n_local:]  # [B, 11]
+        cond = self.cond_enc(global_params)  # [B, cond_dim]
+
+        h = self.proj_in(x)
+        for block in self.blocks:
+            h = block(h, cond)
+        return {"preds": self.head(h)}
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +96,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 2e-3
+        lr: float = 1e-3
         weight_decay: float = 1e-4
         batch_size: int = 2
         accum_steps: int = 2
@@ -77,8 +105,6 @@ if __name__ == "__main__":
         grad_clip: float = 1.0
         hidden: int = 256
         n_blocks: int = 6
-        dropout: float = 0.05
-        input_noise: float = 0.01
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -110,8 +136,7 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks,
-                     dropout=cfg.dropout).to(device)
+    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
@@ -146,8 +171,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks,
-                    "dropout": cfg.dropout}, f)
+        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -176,10 +200,6 @@ if __name__ == "__main__":
             y[~finite] = 0.0
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
-
-            # Input noise augmentation (only during training)
-            if cfg.input_noise > 0:
-                x = x + cfg.input_noise * torch.randn_like(x)
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]

@@ -6,3 +6,6 @@ ec232fc	1.5644	106.58	keep	baseline rmlp 256h/6b, grad_clip=1.0, nan-safe val, b
 7a6e84a	1.6915	61.83	keep	256h/6b + inf fix + OneCycleLR(1e-3) + AMP, 32 epochs
 537f980	2.6516	126.31	discard	384h/8b too slow (16 epochs), underfitting
 f5ef593	1.6128	62.14	keep	256h/6b + Fourier pos features, marginal improvement
+1322372	3.0511	63.92	discard	surf_weight=20 didn't help
+f093faa	1.7117	68.19	discard	bs=4 no help, fewer effective epochs
+ef82f8a	1.7371	66.98	discard	FiLM conditioning redundant with input features
