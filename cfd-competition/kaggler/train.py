@@ -165,12 +165,12 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 27
-        val_every: int = 24  # validate every N epochs
+        epochs: int = 35
+        val_every: int = 17  # validate every N epochs
         ema_decay: float = 0.998
         n_fourier_freq: int = 4
         hidden: int = 256
-        n_blocks: int = 8
+        n_blocks: int = 6
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
