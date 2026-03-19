@@ -188,7 +188,7 @@ val_loaders = {
 }
 
 HIDDEN = 768
-N_BLOCKS = 10
+N_BLOCKS = 6
 N_FOURIER = 66  # divisible by 3 for multi-scale
 COND_DIM = 192
 

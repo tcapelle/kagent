@@ -98,7 +98,7 @@ class Config:
     batch_size: int = 4
     # Model config - must match training
     hidden: int = 768
-    n_blocks: int = 10
+    n_blocks: int = 6
     n_fourier: int = 66
     cond_dim: int = 192
 
