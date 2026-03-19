@@ -51,16 +51,28 @@ class ChannelHead(nn.Module):
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=8, **kwargs):
+    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=8,
+                 n_fourier=32, **kwargs):
         super().__init__()
-        self.proj_in = nn.Linear(in_dim, hidden)
+        # Random Fourier features for spatial coordinates (dims 0-1)
+        self.n_fourier = n_fourier
+        self.register_buffer("fourier_B",
+                             torch.randn(2, n_fourier) * 2 * math.pi)
+        # Input: original features + Fourier features (sin + cos)
+        self.proj_in = nn.Linear(in_dim + 2 * n_fourier, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.final_norm = nn.LayerNorm(hidden)
         self.heads = nn.ModuleList([ChannelHead(hidden) for _ in range(out_dim)])
 
     def forward(self, data, **kwargs):
         x = data["x"]
-        h = self.proj_in(x)
+        # Compute Fourier features from spatial coords (dims 0-1)
+        coords = x[..., :2]  # [B, N, 2]
+        proj = coords @ self.fourier_B  # [B, N, n_fourier]
+        fourier_feats = torch.cat([proj.sin(), proj.cos()], dim=-1)  # [B, N, 2*n_fourier]
+        x_aug = torch.cat([x, fourier_feats], dim=-1)
+
+        h = self.proj_in(x_aug)
         h = self.blocks(h)
         h = self.final_norm(h)
         return {"preds": torch.cat([head(h) for head in self.heads], dim=-1)}
