@@ -98,13 +98,14 @@ if __name__ == "__main__":
     @dataclass
     class Config:
         lr: float = 1e-3
-        weight_decay: float = 1e-4
+        weight_decay: float = 5e-4
         batch_size: int = 4
         val_batch_size: int = 2
         surf_weight: float = 10.0
         hidden: int = 512
         n_blocks: int = 4
-        epochs: int = 50
+        val_every: int = 5
+        epochs: int = 45
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -232,6 +233,15 @@ if __name__ == "__main__":
         scheduler.step()
         epoch_vol /= n_batches
         epoch_surf /= n_batches
+
+        do_val = (epoch + 1) % cfg.val_every == 0 or epoch == 0 or epoch == MAX_EPOCHS - 1
+        if not do_val:
+            dt = time.time() - t0
+            wandb.log({"train/vol_loss": epoch_vol, "train/surf_loss": epoch_surf,
+                        "train/loss": epoch_vol + cfg.surf_weight * epoch_surf,
+                        "lr": scheduler.get_last_lr()[0], "global_step": global_step})
+            print(f"Epoch {epoch+1:3d} ({dt:.0f}s) train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}] (skip val)")
+            continue
 
         # --- Validate using EMA model ---
         model.eval()
