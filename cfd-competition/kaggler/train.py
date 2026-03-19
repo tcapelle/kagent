@@ -156,8 +156,8 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 25
-        val_every: int = 12  # validate every N epochs
+        epochs: int = 27
+        val_every: int = 24  # validate every N epochs
         ema_decay: float = 0.998
         n_fourier_freq: int = 4
         hidden: int = 256
