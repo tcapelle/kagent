@@ -112,7 +112,7 @@ if __name__ == "__main__":
         epochs: int = 50
         grad_clip: float = 1.0
         hidden: int = 256
-        n_blocks: int = 8
+        n_blocks: int = 6
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
