@@ -34,7 +34,7 @@ class ResBlock(nn.Module):
 
 
 class ResidualMLP(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=6):
+    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=12):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
@@ -66,13 +66,13 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 2e-3
+        lr: float = 1e-3
         weight_decay: float = 1e-4
         batch_size: int = 4
-        val_batch_size: int = 1
-        accum_steps: int = 2
+        val_batch_size: int = 2
+        accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 12
+        epochs: int = 15
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     }
 
     # --- Build model ---
-    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=6).to(device)
+    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=12).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Parameters: {n_params:,}")
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": 512, "n_blocks": 6}, f)
+        yaml.dump({"n_params": n_params, "hidden": 256, "n_blocks": 12}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
