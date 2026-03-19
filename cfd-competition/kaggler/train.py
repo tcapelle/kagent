@@ -17,8 +17,8 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 # Global conditioning feature indices (same for all nodes in a sample)
 COND_DIMS = list(range(13, 24))  # Re, AoA1, NACA1(3), AoA2, NACA2(3), gap, stagger
-# Spatial position dims for Fourier encoding
-POS_DIMS = [0, 1]  # x, z coordinates
+# Spatial dims for Fourier encoding (positions + signed arc-length)
+FOURIER_DIMS = [0, 1, 2, 3]  # x, z, saf_x, saf_z
 
 
 # ---------------------------------------------------------------------------
@@ -36,11 +36,11 @@ class FourierEncoding(nn.Module):
 
     @property
     def out_dim(self):
-        return len(POS_DIMS) * self.n_freq * 2  # sin + cos for each freq and dim
+        return len(FOURIER_DIMS) * self.n_freq * 2  # sin + cos for each freq and dim
 
     def forward(self, x):
         # x: [B, N, D] — extract spatial dims
-        pos = x[..., POS_DIMS]  # [B, N, 2]
+        pos = x[..., FOURIER_DIMS]  # [B, N, 2]
         # pos * freqs: [B, N, 2, n_freq]
         scaled = pos.unsqueeze(-1) * self.freqs  # broadcast
         # [B, N, 2*n_freq*2]
@@ -157,9 +157,9 @@ if __name__ == "__main__":
         accum_steps: int = 1
         surf_weight: float = 10.0
         epochs: int = 25
-        val_every: int = 8  # validate every N epochs
+        val_every: int = 12  # validate every N epochs
         ema_decay: float = 0.998
-        n_fourier_freq: int = 8
+        n_fourier_freq: int = 6
         hidden: int = 256
         n_blocks: int = 8
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
