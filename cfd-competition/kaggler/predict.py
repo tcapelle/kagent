@@ -49,8 +49,10 @@ config_path = ckpt_dir / "config.yaml"
 model_cfg = yaml.safe_load(open(config_path)) if config_path.exists() else {}
 hidden = model_cfg.get("hidden", 256)
 n_blocks = model_cfg.get("n_blocks", 8)
+n_fourier_freq = model_cfg.get("n_fourier_freq", 8)
 
-model = FiLMResidualMLP(in_dim=X_DIM, out_dim=3, hidden=hidden, n_blocks=n_blocks).to(device)
+model = FiLMResidualMLP(in_dim=X_DIM, out_dim=3, hidden=hidden, n_blocks=n_blocks,
+                         n_fourier_freq=n_fourier_freq).to(device)
 state_dict = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
 state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
 model.load_state_dict(state_dict)

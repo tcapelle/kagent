@@ -4,7 +4,7 @@ Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
 
-import copy
+import math
 import os
 import time
 from dataclasses import dataclass, asdict
@@ -17,10 +17,39 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 # Global conditioning feature indices (same for all nodes in a sample)
 COND_DIMS = list(range(13, 24))  # Re, AoA1, NACA1(3), AoA2, NACA2(3), gap, stagger
+# Spatial position dims for Fourier encoding
+POS_DIMS = [0, 1]  # x, z coordinates
 
 
 # ---------------------------------------------------------------------------
-# FiLM-conditioned ResidualMLP with separate heads
+# Fourier positional encoding
+# ---------------------------------------------------------------------------
+
+class FourierEncoding(nn.Module):
+    """Fourier features for spatial positions. Adds sin/cos at multiple frequencies."""
+    def __init__(self, n_freq=8):
+        super().__init__()
+        self.n_freq = n_freq
+        # Logarithmically spaced frequencies
+        freqs = 2.0 ** torch.arange(n_freq).float()  # [1, 2, 4, ..., 128]
+        self.register_buffer("freqs", freqs)
+
+    @property
+    def out_dim(self):
+        return len(POS_DIMS) * self.n_freq * 2  # sin + cos for each freq and dim
+
+    def forward(self, x):
+        # x: [B, N, D] — extract spatial dims
+        pos = x[..., POS_DIMS]  # [B, N, 2]
+        # pos * freqs: [B, N, 2, n_freq]
+        scaled = pos.unsqueeze(-1) * self.freqs  # broadcast
+        # [B, N, 2*n_freq*2]
+        fourier = torch.cat([scaled.sin(), scaled.cos()], dim=-1)  # [B, N, 2, 2*n_freq]
+        return fourier.reshape(*pos.shape[:-1], -1)  # [B, N, 2*2*n_freq]
+
+
+# ---------------------------------------------------------------------------
+# FiLM-conditioned ResidualMLP with separate heads + Fourier encoding
 # ---------------------------------------------------------------------------
 
 class FiLMResBlock(nn.Module):
@@ -31,54 +60,55 @@ class FiLMResBlock(nn.Module):
         self.fc1 = nn.Linear(dim, dim * 4)
         self.fc2 = nn.Linear(dim * 4, dim)
         self.act = nn.GELU()
-        # FiLM: conditioning -> (gamma, beta) via single linear
         self.film = nn.Linear(cond_dim, dim * 2)
 
     def forward(self, x, cond):
-        # cond: [B, 1, cond_dim] broadcast to all nodes
-        film_out = self.film(cond)  # [B, 1, dim*2]
-        gamma, beta = film_out.chunk(2, dim=-1)  # each [B, 1, dim]
+        film_out = self.film(cond)
+        gamma, beta = film_out.chunk(2, dim=-1)
         h = self.norm(x)
-        h = h * (1 + gamma) + beta  # FiLM modulation
+        h = h * (1 + gamma) + beta
         h = self.fc2(self.act(self.fc1(h)))
         return x + h
 
 
 class FiLMResidualMLP(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=12,
-                 cond_dim=len(COND_DIMS)):
+                 cond_dim=len(COND_DIMS), n_fourier_freq=8):
         super().__init__()
         self.hidden = hidden
+        self.fourier = FourierEncoding(n_freq=n_fourier_freq)
+        effective_in = in_dim + self.fourier.out_dim
+
         n_pre = n_blocks // 2
         n_post = n_blocks - n_pre
 
-        self.proj_in = nn.Linear(in_dim, hidden)
+        self.proj_in = nn.Linear(effective_in, hidden)
         self.pre_blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_pre)])
-        # Global max-pool concat
         self.proj_mid = nn.Linear(hidden * 2, hidden)
         self.post_blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_post)])
 
-        # Separate heads for velocity and pressure
         self.head_vel = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 2))
         self.head_p = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 1))
 
     def forward(self, data, **kwargs):
         x_in = data["x"]  # [B, N, in_dim]
-        # Extract global conditioning (same for all nodes, take first node)
-        cond = x_in[:, 0:1, COND_DIMS]  # [B, 1, cond_dim]
+        cond = x_in[:, 0:1, COND_DIMS]
 
-        x = self.proj_in(x_in)
+        # Append Fourier features to input
+        fourier_feats = self.fourier(x_in)
+        x_aug = torch.cat([x_in, fourier_feats], dim=-1)
+
+        x = self.proj_in(x_aug)
         for block in self.pre_blocks:
             x = block(x, cond)
-        # Global max-pool
         g = x.max(dim=1, keepdim=True).values.expand_as(x)
         x = self.proj_mid(torch.cat([x, g], dim=-1))
         for block in self.post_blocks:
             x = block(x, cond)
 
-        vel = self.head_vel(x)   # [B, N, 2]
-        p = self.head_p(x)      # [B, N, 1]
-        return {"preds": torch.cat([vel, p], dim=-1)}  # [B, N, 3]
+        vel = self.head_vel(x)
+        p = self.head_p(x)
+        return {"preds": torch.cat([vel, p], dim=-1)}
 
 
 # ---------------------------------------------------------------------------
@@ -126,9 +156,10 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 50
-        val_every: int = 25  # validate every N epochs
+        epochs: int = 25
+        val_every: int = 8  # validate every N epochs
         ema_decay: float = 0.998
+        n_fourier_freq: int = 8
         hidden: int = 256
         n_blocks: int = 8
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
@@ -154,7 +185,7 @@ if __name__ == "__main__":
         train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                                   shuffle=True, **train_loader_kwargs)
     else:
-        sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds) // 2, replacement=True)
+        sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
         train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                                   sampler=sampler, **train_loader_kwargs)
 
@@ -166,6 +197,7 @@ if __name__ == "__main__":
     # --- Build model ---
     model = FiLMResidualMLP(
         in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks,
+        n_fourier_freq=cfg.n_fourier_freq,
     ).to(device)
     model = torch.compile(model)
 
@@ -205,7 +237,8 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks}, f)
+        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks,
+                    "n_fourier_freq": cfg.n_fourier_freq}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -267,7 +300,6 @@ if __name__ == "__main__":
 
         # --- Skip validation on non-val epochs (except last) ---
         do_val = (epoch + 1) % cfg.val_every == 0 or epoch == MAX_EPOCHS - 1
-        # Also validate if we're close to timeout
         remaining_min = MAX_TIMEOUT - (time.time() - train_start) / 60.0
         if remaining_min < 3.0:
             do_val = True
@@ -359,7 +391,6 @@ if __name__ == "__main__":
             best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            # Save EMA weights (currently loaded)
             torch.save(model.state_dict(), model_path)
             tag = " *"
 
