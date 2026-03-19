@@ -4,6 +4,15 @@ cfd-competition/kaggler/data.py
 cfd-competition/kaggler/predict.py
 cfd-competition/kaggler/train.py
 cfd-competition/kaggler/viz.py
+cfd-competition/kaggler/wandb/latest-run/files/code/cfd-competition/kaggler/train.py
+cfd-competition/kaggler/wandb/run-20260318_223301-p09q5cct/files/code/cfd-competition/kaggler/train.py
+cfd-competition/kaggler/wandb/run-20260318_230803-pvbpfm9m/files/code/cfd-competition/kaggler/train.py
+cfd-competition/kaggler/wandb/run-20260318_234337-n2kck1wh/files/code/cfd-competition/kaggler/train.py
+cfd-competition/kaggler/wandb/run-20260319_003639-bok62fg4/files/code/cfd-competition/kaggler/train.py
+cfd-competition/kaggler/wandb/run-20260319_030329-fyhcm2kq/files/code/cfd-competition/kaggler/train.py
+cfd-competition/kaggler/wandb/run-20260319_033702-9wysn2h0/files/code/cfd-competition/kaggler/train.py
+cfd-competition/kaggler/wandb/run-20260319_053958-7bwku5co/files/code/cfd-competition/kaggler/train.py
+cfd-competition/kaggler/wandb/run-20260319_061326-rhztvlai/files/code/cfd-competition/kaggler/train.py
 cfd-competition/organizer/prepare_splits.py
 cfd-competition/organizer/score.py
 cfd-competition/organizer/train.py

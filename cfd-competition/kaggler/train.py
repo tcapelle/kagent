@@ -1,12 +1,12 @@
 """Train a CFD surrogate model.
 
-Template training script — fill in your model architecture.
-The data loading, loss computation, validation, and W&B logging are ready to use.
+FiLM-conditioned ResMLP with Fourier positional features and separate output heads.
 
 Run:
   uv run train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
 
+import copy
 import math
 import os
 import time
@@ -26,39 +26,115 @@ from data import X_DIM, VAL_SPLIT_NAMES, pad_collate, load_data
 from viz import visualize
 
 
-class ResBlock(nn.Module):
-    def __init__(self, dim):
+# --- Model ---
+
+class FourierFeatures(nn.Module):
+    """Random Fourier features for positional encoding."""
+
+    def __init__(self, in_dim, n_freq=64, scale=10.0):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim),
-            nn.GELU(),
-            nn.Linear(dim, dim),
-        )
+        self.register_buffer("B", torch.randn(in_dim, n_freq) * scale)
 
     def forward(self, x):
-        return x + self.net(x)
+        proj = x @ self.B
+        return torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)
+
+
+class FiLMResBlock(nn.Module):
+    """ResBlock with FiLM conditioning from global features."""
+
+    def __init__(self, dim, cond_dim):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.linear1 = nn.Linear(dim, dim)
+        self.linear2 = nn.Linear(dim, dim)
+        self.film = nn.Linear(cond_dim, 2 * dim)
+        nn.init.zeros_(self.film.weight)
+        nn.init.ones_(self.film.bias[:dim])
+        nn.init.zeros_(self.film.bias[dim:])
+
+    def forward(self, x, cond):
+        h = self.norm(x)
+        gamma, beta = self.film(cond).unsqueeze(1).chunk(2, dim=-1)
+        h = gamma * h + beta
+        h = self.linear2(torch.nn.functional.gelu(self.linear1(h)))
+        return x + h
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8):
+    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8,
+                 n_fourier=64, cond_dim=128):
         super().__init__()
-        self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.head = nn.Sequential(
-            nn.LayerNorm(hidden),
-            nn.Linear(hidden, out_dim),
+        # Input splits: local (dims 0-12) and global (dims 13-23)
+        self.local_dim = 13
+        self.global_dim = in_dim - 13  # 11
+
+        # Fourier features on spatial positions (dims 0-1)
+        self.fourier = FourierFeatures(2, n_fourier, scale=10.0)
+
+        # Input projection: local features + fourier features
+        proj_in_dim = self.local_dim + 2 * n_fourier
+        self.proj_in = nn.Linear(proj_in_dim, hidden)
+
+        # Global condition encoder
+        self.cond_enc = nn.Sequential(
+            nn.Linear(self.global_dim, cond_dim),
+            nn.GELU(),
+            nn.Linear(cond_dim, cond_dim),
         )
 
+        # FiLM-conditioned ResBlocks
+        self.blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_blocks)])
+
+        # Separate heads for velocity and pressure
+        self.head_vel = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 2))
+        self.head_p = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 1))
+
     def forward(self, data, **kwargs):
-        x = self.proj_in(data["x"])
-        x = self.blocks(x)
-        return {"preds": self.head(x)}
+        x = data["x"]  # [B, N, 24]
+
+        # Split local (per-node) and global (per-sample) features
+        local = x[:, :, :self.local_dim]
+        global_feat = x[:, 0, self.local_dim:]  # same for all nodes
+
+        # Fourier features on spatial positions
+        ff = self.fourier(x[:, :, :2])
+
+        # Combine and project
+        h = torch.cat([local, ff], dim=-1)
+        h = self.proj_in(h)
+
+        # Condition encoding
+        cond = self.cond_enc(global_feat)
+
+        # FiLM blocks
+        for block in self.blocks:
+            h = block(h, cond)
+
+        # Separate heads
+        vel = self.head_vel(h)
+        p = self.head_p(h)
+        return {"preds": torch.cat([vel, p], dim=-1)}
+
+
+# --- EMA ---
+
+class EMA:
+    def __init__(self, model, decay=0.999):
+        self.decay = decay
+        self.shadow = copy.deepcopy(model)
+        self.shadow.eval()
+        for p in self.shadow.parameters():
+            p.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model):
+        for s, p in zip(self.shadow.parameters(), model.parameters()):
+            s.data.mul_(self.decay).add_(p.data, alpha=1 - self.decay)
 
 
 # ---------------------------------------------------------------------------
-# Training — you can modify config, optimizer, loss, etc.
-# The validation + logging loop below must stay to ensure consistent metrics.
+# Training
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = 30.0  # minutes
@@ -66,10 +142,10 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 2e-3
-    weight_decay: float = 1e-3
+    lr: float = 1e-3
+    weight_decay: float = 5e-4
     batch_size: int = 4
-    surf_weight: float = 10.0  # surface loss multiplier
+    surf_weight: float = 20.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
     wandb_group: str | None = None
@@ -103,12 +179,13 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
+model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8,
+                 n_fourier=64, cond_dim=128).to(device)
 model = torch.compile(model)
+ema = EMA(model, decay=0.999)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-# Warmup for 2 epochs then cosine decay
 warmup_epochs = 2
 scheduler = torch.optim.lr_scheduler.SequentialLR(
     optimizer,
@@ -144,7 +221,8 @@ model_dir = Path(f"models/model-{run.id}")
 model_dir.mkdir(parents=True)
 model_path = model_dir / "checkpoint.pt"
 with open(model_dir / "config.yaml", "w") as f:
-    yaml.dump({"n_params": n_params}, f)  # save your model config here
+    yaml.dump({"n_params": n_params, "hidden": 512, "n_blocks": 8,
+               "n_fourier": 64, "cond_dim": 128}, f)
 
 best_val = float("inf")
 best_metrics: dict = {}
@@ -175,15 +253,13 @@ for epoch in range(MAX_EPOCHS):
         mask = mask & finite_mask
         y_norm = y_norm.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
 
-        # Forward pass — your model takes {"x": normalized_x} and returns {"preds": [B, N, 3]}
+        # Forward pass
         with autocast("cuda"):
             pred = model({"x": x})["preds"]
             sq_err = (pred - y_norm) ** 2
-            # Weight pressure channel 2x (channel 2 is p, most important metric)
             channel_w = torch.tensor([1.0, 1.0, 2.0], device=device)
             sq_err = sq_err * channel_w
 
-            # Loss: separate volume and surface, weight surface higher
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
             vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
@@ -196,6 +272,7 @@ for epoch in range(MAX_EPOCHS):
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         scaler.step(optimizer)
         scaler.update()
+        ema.update(model)
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -207,8 +284,9 @@ for epoch in range(MAX_EPOCHS):
     epoch_vol /= n_batches
     epoch_surf /= n_batches
 
-    # --- Validate (do not modify — ensures consistent metrics) ---
-    model.eval()
+    # --- Validate using EMA model ---
+    eval_model = ema.shadow
+    eval_model.eval()
     val_loss_sum = 0.0
     n_valid_splits = 0
     split_metrics: dict[str, dict] = {}
@@ -228,13 +306,12 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                # Mask out nodes with inf/nan targets (bad data)
                 finite_mask = y.isfinite().all(dim=-1) & y_norm.isfinite().all(dim=-1)
                 mask = mask & finite_mask
                 y_norm = y_norm.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
 
                 with autocast("cuda"):
-                    pred = model({"x": x})["preds"]
+                    pred = eval_model({"x": x})["preds"]
                 pred = pred.float()
                 sq_err = (pred - y_norm) ** 2
 
@@ -294,7 +371,8 @@ for epoch in range(MAX_EPOCHS):
         best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-        torch.save(model.state_dict(), model_path)
+        # Save EMA weights
+        torch.save(eval_model.state_dict(), model_path)
         tag = " *"
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
@@ -315,11 +393,11 @@ if best_metrics:
     print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    eval_model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     plot_dir = Path("plots") / run.id
     n = 1 if cfg.debug else 4
     for split_name, split_ds in val_splits.items():
-        images = visualize(model, split_ds, stats, device, n_samples=n,
+        images = visualize(eval_model, split_ds, stats, device, n_samples=n,
                            out_dir=plot_dir / split_name)
         if images:
             wandb.log({

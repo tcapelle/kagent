@@ -1,10 +1,5 @@
 """Generate predictions on the hidden test set.
 
-Adapt this to your model. The key contract:
-  - Load your model from a checkpoint
-  - Run inference on test/*.pt files
-  - Save predictions to PVC at /mnt/new-pvc/predictions/<agent>/<commit>/predictions.pt
-
 Run:
   uv run predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <your-name>
 """
@@ -25,36 +20,74 @@ PREDICTIONS_DIR = Path("/mnt/new-pvc/predictions")
 SPLITS_DIR = Path("/mnt/new-pvc/datasets/tandemfoil/splits")
 
 
-class ResBlock(nn.Module):
-    def __init__(self, dim):
+class FourierFeatures(nn.Module):
+    def __init__(self, in_dim, n_freq=64, scale=10.0):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim), nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim),
-        )
+        self.register_buffer("B", torch.randn(in_dim, n_freq) * scale)
 
     def forward(self, x):
-        return x + self.net(x)
+        proj = x @ self.B
+        return torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)
+
+
+class FiLMResBlock(nn.Module):
+    def __init__(self, dim, cond_dim):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.linear1 = nn.Linear(dim, dim)
+        self.linear2 = nn.Linear(dim, dim)
+        self.film = nn.Linear(cond_dim, 2 * dim)
+
+    def forward(self, x, cond):
+        h = self.norm(x)
+        gamma, beta = self.film(cond).unsqueeze(1).chunk(2, dim=-1)
+        h = gamma * h + beta
+        h = self.linear2(torch.nn.functional.gelu(self.linear1(h)))
+        return x + h
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8):
+    def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8,
+                 n_fourier=64, cond_dim=128):
         super().__init__()
-        self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.head = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        self.local_dim = 13
+        self.global_dim = in_dim - 13
+
+        self.fourier = FourierFeatures(2, n_fourier, scale=10.0)
+        proj_in_dim = self.local_dim + 2 * n_fourier
+        self.proj_in = nn.Linear(proj_in_dim, hidden)
+
+        self.cond_enc = nn.Sequential(
+            nn.Linear(self.global_dim, cond_dim),
+            nn.GELU(),
+            nn.Linear(cond_dim, cond_dim),
+        )
+
+        self.blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_blocks)])
+        self.head_vel = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 2))
+        self.head_p = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 1))
 
     def forward(self, data, **kwargs):
-        x = self.proj_in(data["x"])
-        x = self.blocks(x)
-        return {"preds": self.head(x)}
+        x = data["x"]
+        local = x[:, :, :self.local_dim]
+        global_feat = x[:, 0, self.local_dim:]
+        ff = self.fourier(x[:, :, :2])
+        h = torch.cat([local, ff], dim=-1)
+        h = self.proj_in(h)
+        cond = self.cond_enc(global_feat)
+        for block in self.blocks:
+            h = block(h, cond)
+        vel = self.head_vel(h)
+        p = self.head_p(h)
+        return {"preds": torch.cat([vel, p], dim=-1)}
 
 
 @dataclass
 class Config:
     """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    checkpoint: str
     splits_dir: str = str(SPLITS_DIR)
-    agent: str | None = None  # kaggler name for output path
+    agent: str | None = None
     batch_size: int = 4
 
 
@@ -62,16 +95,15 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
+model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8,
+                 n_fourier=64, cond_dim=128).to(device)
 state = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
-# Strip _orig_mod. prefix from torch.compile checkpoints
 state = {k.replace("_orig_mod.", ""): v for k, v in state.items()}
 model.load_state_dict(state)
 
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
-# Load stats
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
 x_mean = torch.tensor(stats_data["x_mean"], dtype=torch.float32, device=device)
@@ -79,11 +111,9 @@ x_std = torch.tensor(stats_data["x_std"], dtype=torch.float32, device=device)
 y_mean = torch.tensor(stats_data["y_mean"], dtype=torch.float32, device=device)
 y_std = torch.tensor(stats_data["y_std"], dtype=torch.float32, device=device)
 
-# Load test inputs
 test_files = sorted((splits_dir / "test").glob("*.pt"))
 print(f"Test samples: {len(test_files)}")
 
-# Run inference
 predictions = []
 with torch.no_grad():
     for i in tqdm(range(0, len(test_files), cfg.batch_size), desc="Predicting"):
@@ -103,7 +133,6 @@ with torch.no_grad():
         for j, x in enumerate(xs):
             predictions.append(pred[j, :x.shape[0]].cpu())
 
-# Save predictions keyed by agent + commit hash
 agent_name = cfg.agent or "unknown"
 commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
