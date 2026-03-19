@@ -40,9 +40,17 @@ splits_dir = Path(cfg.splits_dir)
 # ---------------------------------------------------------------------------
 # Load model
 # ---------------------------------------------------------------------------
+import yaml
 from train import FiLMResidualMLP
 
-model = FiLMResidualMLP(in_dim=X_DIM, out_dim=3).to(device)
+# Read model config from the checkpoint directory
+ckpt_dir = Path(cfg.checkpoint).parent
+config_path = ckpt_dir / "config.yaml"
+model_cfg = yaml.safe_load(open(config_path)) if config_path.exists() else {}
+hidden = model_cfg.get("hidden", 256)
+n_blocks = model_cfg.get("n_blocks", 8)
+
+model = FiLMResidualMLP(in_dim=X_DIM, out_dim=3, hidden=hidden, n_blocks=n_blocks).to(device)
 state_dict = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
 state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
 model.load_state_dict(state_dict)
