@@ -89,10 +89,17 @@ class FiLMResidualMLP(nn.Module):
 
         self.head_vel = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 2))
         self.head_p = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 1))
+        # Re-dependent pressure scaling for OOD Re generalization
+        # Learns a scale factor as function of conditioning (esp. log(Re))
+        self.p_scale = nn.Sequential(
+            nn.Linear(cond_dim, 32),
+            nn.GELU(),
+            nn.Linear(32, 1),
+        )
 
     def forward(self, data, **kwargs):
         x_in = data["x"]  # [B, N, in_dim]
-        cond = x_in[:, 0:1, COND_DIMS]
+        cond = x_in[:, 0:1, COND_DIMS]  # [B, 1, cond_dim]
 
         # Append Fourier features to input
         fourier_feats = self.fourier(x_in)
@@ -107,7 +114,9 @@ class FiLMResidualMLP(nn.Module):
             x = block(x, cond)
 
         vel = self.head_vel(x)
-        p = self.head_p(x)
+        p_base = self.head_p(x)  # [B, N, 1]
+        p_scale = self.p_scale(cond)  # [B, 1, 1]
+        p = p_base * (1 + p_scale)  # Re-dependent scaling
         return {"preds": torch.cat([vel, p], dim=-1)}
 
 
