@@ -40,9 +40,9 @@ splits_dir = Path(cfg.splits_dir)
 # ---------------------------------------------------------------------------
 # Load model
 # ---------------------------------------------------------------------------
-from train import ResidualMLP
+from train import FiLMResidualMLP
 
-model = ResidualMLP(in_dim=X_DIM, out_dim=3).to(device)
+model = FiLMResidualMLP(in_dim=X_DIM, out_dim=3).to(device)
 state_dict = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
 state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
 model.load_state_dict(state_dict)

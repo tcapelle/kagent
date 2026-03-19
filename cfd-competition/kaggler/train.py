@@ -4,6 +4,7 @@ Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
 
+import copy
 import os
 import time
 from dataclasses import dataclass, asdict
@@ -14,48 +15,96 @@ import torch.nn as nn
 
 from data import X_DIM, VAL_SPLIT_NAMES
 
+# Global conditioning feature indices (same for all nodes in a sample)
+COND_DIMS = list(range(13, 24))  # Re, AoA1, NACA1(3), AoA2, NACA2(3), gap, stagger
+
 
 # ---------------------------------------------------------------------------
-# Residual MLP — deep pointwise model with skip connections
+# FiLM-conditioned ResidualMLP with separate heads
 # ---------------------------------------------------------------------------
 
-class ResBlock(nn.Module):
-    def __init__(self, dim):
+class FiLMResBlock(nn.Module):
+    """ResBlock with Feature-wise Linear Modulation from global conditioning."""
+    def __init__(self, dim, cond_dim):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 4),
+        self.norm = nn.LayerNorm(dim)
+        self.fc1 = nn.Linear(dim, dim * 4)
+        self.fc2 = nn.Linear(dim * 4, dim)
+        self.act = nn.GELU()
+        # FiLM: conditioning -> (gamma, beta)
+        self.film = nn.Sequential(
+            nn.Linear(cond_dim, dim),
             nn.GELU(),
-            nn.Linear(dim * 4, dim),
+            nn.Linear(dim, dim * 2),
         )
 
-    def forward(self, x):
-        return x + self.net(x)
+    def forward(self, x, cond):
+        # cond: [B, 1, cond_dim] broadcast to all nodes
+        film_out = self.film(cond)  # [B, 1, dim*2]
+        gamma, beta = film_out.chunk(2, dim=-1)  # each [B, 1, dim]
+        h = self.norm(x)
+        h = h * (1 + gamma) + beta  # FiLM modulation
+        h = self.fc2(self.act(self.fc1(h)))
+        return x + h
 
 
-class ResidualMLP(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=12):
+class FiLMResidualMLP(nn.Module):
+    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=12,
+                 cond_dim=len(COND_DIMS)):
         super().__init__()
+        self.hidden = hidden
         n_pre = n_blocks // 2
         n_post = n_blocks - n_pre
+
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.pre_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_pre)])
-        # After pre-blocks: concat global max-pool features
+        self.pre_blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_pre)])
+        # Global max-pool concat
         self.proj_mid = nn.Linear(hidden * 2, hidden)
-        self.post_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_post)])
-        self.head = nn.Sequential(
-            nn.LayerNorm(hidden),
-            nn.Linear(hidden, out_dim),
-        )
+        self.post_blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_post)])
+
+        # Separate heads for velocity and pressure
+        self.head_vel = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 2))
+        self.head_p = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 1))
 
     def forward(self, data, **kwargs):
-        x = self.proj_in(data["x"])
-        x = self.pre_blocks(x)
-        # Global max-pool per sample, broadcast to all nodes
-        g = x.max(dim=1, keepdim=True).values.expand_as(x)  # [B, N, hidden]
+        x_in = data["x"]  # [B, N, in_dim]
+        # Extract global conditioning (same for all nodes, take first node)
+        cond = x_in[:, 0:1, COND_DIMS]  # [B, 1, cond_dim]
+
+        x = self.proj_in(x_in)
+        for block in self.pre_blocks:
+            x = block(x, cond)
+        # Global max-pool
+        g = x.max(dim=1, keepdim=True).values.expand_as(x)
         x = self.proj_mid(torch.cat([x, g], dim=-1))
-        x = self.post_blocks(x)
-        return {"preds": self.head(x)}
+        for block in self.post_blocks:
+            x = block(x, cond)
+
+        vel = self.head_vel(x)   # [B, N, 2]
+        p = self.head_p(x)      # [B, N, 1]
+        return {"preds": torch.cat([vel, p], dim=-1)}  # [B, N, 3]
+
+
+# ---------------------------------------------------------------------------
+# EMA helper
+# ---------------------------------------------------------------------------
+
+class EMA:
+    def __init__(self, model, decay=0.998):
+        self.decay = decay
+        self.shadow = {k: v.clone() for k, v in model.state_dict().items()}
+
+    @torch.no_grad()
+    def update(self, model):
+        for k, v in model.state_dict().items():
+            self.shadow[k].lerp_(v, 1 - self.decay)
+
+    def apply(self, model):
+        """Swap model weights with EMA shadow. Call again to restore."""
+        for k, v in model.state_dict().items():
+            tmp = v.data.clone()
+            v.data.copy_(self.shadow[k])
+            self.shadow[k] = tmp
 
 
 # ---------------------------------------------------------------------------
@@ -75,13 +124,17 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 1e-3
-        weight_decay: float = 1e-4
+        lr: float = 5e-4
+        weight_decay: float = 5e-4
         batch_size: int = 4
         val_batch_size: int = 2
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 13
+        epochs: int = 50
+        val_every: int = 3  # validate every N epochs
+        ema_decay: float = 0.998
+        hidden: int = 256
+        n_blocks: int = 12
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -115,7 +168,9 @@ if __name__ == "__main__":
     }
 
     # --- Build model ---
-    model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=12).to(device)
+    model = FiLMResidualMLP(
+        in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks,
+    ).to(device)
     model = torch.compile(model)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -128,6 +183,7 @@ if __name__ == "__main__":
     )
 
     scaler = torch.amp.GradScaler("cuda")
+    ema = EMA(model, decay=cfg.ema_decay)
 
     # --- W&B ---
     run = wandb.init(
@@ -153,7 +209,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": 256, "n_blocks": 12}, f)
+        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -161,7 +217,8 @@ if __name__ == "__main__":
     train_start = time.time()
 
     for epoch in range(MAX_EPOCHS):
-        if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
+        elapsed_min = (time.time() - train_start) / 60.0
+        if elapsed_min >= MAX_TIMEOUT:
             print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
             break
 
@@ -200,6 +257,7 @@ if __name__ == "__main__":
                 optimizer.zero_grad()
                 scheduler.step()
                 global_step += 1
+                ema.update(model)
 
             epoch_vol += vol_loss.item() * cfg.accum_steps
             epoch_surf += surf_loss.item() * cfg.accum_steps
@@ -211,7 +269,23 @@ if __name__ == "__main__":
                     "train/loss": epoch_vol + cfg.surf_weight * epoch_surf,
                     "global_step": global_step})
 
-        # --- Validate (do not modify — ensures consistent metrics) ---
+        # --- Skip validation on non-val epochs (except last) ---
+        do_val = (epoch + 1) % cfg.val_every == 0 or epoch == MAX_EPOCHS - 1
+        # Also validate if we're close to timeout
+        remaining_min = MAX_TIMEOUT - (time.time() - train_start) / 60.0
+        if remaining_min < 3.0:
+            do_val = True
+
+        if not do_val:
+            dt = time.time() - t0
+            print(
+                f"Epoch {epoch+1:3d} ({dt:.0f}s)  "
+                f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  (skip val)"
+            )
+            continue
+
+        # --- Validate with EMA weights ---
+        ema.apply(model)  # swap to EMA weights
         model.eval()
         val_loss_sum = 0.0
         split_metrics: dict[str, dict] = {}
@@ -289,8 +363,11 @@ if __name__ == "__main__":
             best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+            # Save EMA weights (currently loaded)
             torch.save(model.state_dict(), model_path)
             tag = " *"
+
+        ema.apply(model)  # swap back to training weights
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
         split_summary = "  ".join(
