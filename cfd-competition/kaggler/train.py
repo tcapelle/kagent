@@ -57,13 +57,13 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
+        lr: float = 1e-3
         weight_decay: float = 1e-4
         batch_size: int = 4
         val_batch_size: int = 2
         surf_weight: float = 10.0
         hidden: int = 512
-        n_blocks: int = 6
+        n_blocks: int = 4
         epochs: int = 50
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
