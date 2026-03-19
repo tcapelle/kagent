@@ -139,9 +139,6 @@ if __name__ == "__main__":
     raw_model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
     model = torch.compile(raw_model)
 
-    # EMA for better generalization
-    ema_model = torch.optim.swa_utils.AveragedModel(raw_model, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(0.999))
-
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
@@ -220,7 +217,6 @@ if __name__ == "__main__":
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
-            ema_model.update_parameters(raw_model)
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -233,9 +229,8 @@ if __name__ == "__main__":
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
-        # --- Validate using EMA model ---
+        # --- Validate (do not modify — ensures consistent metrics) ---
         model.eval()
-        ema_model.eval()
         torch.cuda.empty_cache()
         val_loss_sum = 0.0
         split_metrics: dict[str, dict] = {}
@@ -260,7 +255,7 @@ if __name__ == "__main__":
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
                     y_norm = torch.nan_to_num(y_norm, nan=0.0, posinf=0.0, neginf=0.0)
 
-                    pred = ema_model({"x": x})["preds"]
+                    pred = model({"x": x})["preds"]
                     sq_err = (pred - y_norm) ** 2
 
                     vol_mask = mask & ~is_surface
@@ -316,7 +311,7 @@ if __name__ == "__main__":
             best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(ema_model.module.state_dict(), model_path)
+            torch.save(raw_model.state_dict(), model_path)
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
@@ -337,11 +332,11 @@ if __name__ == "__main__":
         print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
         wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-        ema_model.module.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+        raw_model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
         plot_dir = Path("plots") / run.id
         n = 1 if cfg.debug else 4
         for split_name, split_ds in val_splits.items():
-            images = visualize(ema_model, split_ds, stats, device, n_samples=n,
+            images = visualize(model, split_ds, stats, device, n_samples=n,
                                out_dir=plot_dir / split_name)
             if images:
                 wandb.log({
