@@ -1,2 +1,3 @@
 commit	val_loss	mae_surf_p	status	description
 6df5472	3.6451	148.72	keep	baseline ResidualMLP 256x12, AMP bfloat16, OneCycleLR 1e-3, 11 epochs
+62e8fa9	2.4345	108.95	keep	same model, epochs=15 OneCycleLR, val_batch_size=2, 11 epochs run

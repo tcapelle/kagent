@@ -72,7 +72,7 @@ if __name__ == "__main__":
         val_batch_size: int = 2
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 15
+        epochs: int = 13
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -107,6 +107,7 @@ if __name__ == "__main__":
 
     # --- Build model ---
     model = ResidualMLP(in_dim=X_DIM, out_dim=3, hidden=256, n_blocks=12).to(device)
+    model = torch.compile(model)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Parameters: {n_params:,}")
