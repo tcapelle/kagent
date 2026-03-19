@@ -106,6 +106,7 @@ if __name__ == "__main__":
         n_blocks: int = 4
         val_every: int = 5
         epochs: int = 45
+        resume: str | None = None  # path to checkpoint for warm restart
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -138,6 +139,13 @@ if __name__ == "__main__":
     }
 
     raw_model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+
+    if cfg.resume:
+        state_dict = torch.load(cfg.resume, map_location=device, weights_only=True)
+        state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
+        raw_model.load_state_dict(state_dict)
+        print(f"Resumed from {cfg.resume}")
+
     model = torch.compile(raw_model)
 
     # EMA for better generalization
