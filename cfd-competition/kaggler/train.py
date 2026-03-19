@@ -390,9 +390,11 @@ if __name__ == "__main__":
         print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
         wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-        # Load EMA checkpoint for visualization
+        # Load EMA checkpoint for visualization (strip _orig_mod. prefix from compile)
         eval_model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
-        eval_model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+        sd = torch.load(model_path, map_location=device, weights_only=True)
+        sd = {k.replace("_orig_mod.", ""): v for k, v in sd.items()}
+        eval_model.load_state_dict(sd)
         eval_model.eval()
         plot_dir = Path("plots") / run.id
         n = 1 if cfg.debug else 4

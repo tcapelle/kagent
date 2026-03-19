@@ -41,7 +41,10 @@ splits_dir = Path(cfg.splits_dir)
 
 from train import CFDModel
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+state_dict = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
+# Strip _orig_mod. prefix from torch.compile checkpoints
+state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+model.load_state_dict(state_dict)
 
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")

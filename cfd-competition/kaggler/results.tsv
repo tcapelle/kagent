@@ -14,3 +14,6 @@ fc9649c	1.6418	66.61	discard	final clean v4 config, 32 epochs
 ac6b436	1.5123	57.90	keep	MLP + surface-only self-attention (BEST)
 c5933ed	1.6613	71.18	discard	4-layer surf attn too deep, slower convergence
 77466ed	1.8091	82.88	discard	8 MLP blocks too slow (23 epochs)
+b2e601d	1.5238	55.87	discard	sep-heads + EMA + 320h/8b, lr=5e-4, bs=4, compile (v15)
+d8e0742	1.6783	62.20	discard	cosine warm restarts T_max=8, 352h/8b, wd=5e-4 (v16)
+2197d5f	1.4823	49.70	keep	FiLM conditioning on flow params, 320h/8b, OneCycleLR 26ep (v17, NEW BEST)
