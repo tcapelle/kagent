@@ -104,7 +104,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
+        lr: float = 3e-4
         weight_decay: float = 1e-4
         batch_size: int = 4
         accum_steps: int = 1
@@ -113,7 +113,7 @@ if __name__ == "__main__":
         grad_clip: float = 1.0
         hidden: int = 256
         n_blocks: int = 8
-        ema_decay: float = 0.999
+        ema_decay: float = 0.998
         val_every: int = 4
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
