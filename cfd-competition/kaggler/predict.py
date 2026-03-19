@@ -40,7 +40,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 from train import CFDModel
-model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks, dropout=0.0).to(device)
+model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()

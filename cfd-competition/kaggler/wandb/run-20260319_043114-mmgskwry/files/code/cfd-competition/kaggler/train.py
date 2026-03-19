@@ -17,16 +17,17 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 
 # ---------------------------------------------------------------------------
-# Model: Residual MLP with LayerNorm
+# Model: Residual MLP with LayerNorm + Dropout
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 2, dim),
         )
 
@@ -35,10 +36,10 @@ class ResBlock(nn.Module):
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6, **kwargs):
+    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6, dropout=0.0):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, out_dim),
@@ -67,7 +68,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 1e-3
+        lr: float = 2e-3
         weight_decay: float = 1e-4
         batch_size: int = 2
         accum_steps: int = 2
@@ -76,6 +77,8 @@ if __name__ == "__main__":
         grad_clip: float = 1.0
         hidden: int = 256
         n_blocks: int = 6
+        dropout: float = 0.05
+        input_noise: float = 0.01
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -107,7 +110,8 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks,
+                     dropout=cfg.dropout).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
@@ -142,7 +146,8 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
-        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks}, f)
+        yaml.dump({"n_params": n_params, "hidden": cfg.hidden, "n_blocks": cfg.n_blocks,
+                    "dropout": cfg.dropout}, f)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -171,6 +176,10 @@ if __name__ == "__main__":
             y[~finite] = 0.0
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
+
+            # Input noise augmentation (only during training)
+            if cfg.input_noise > 0:
+                x = x + cfg.input_noise * torch.randn_like(x)
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]

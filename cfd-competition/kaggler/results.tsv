@@ -9,3 +9,4 @@ f5ef593	1.6128	62.14	keep	256h/6b + Fourier pos features, marginal improvement
 1322372	3.0511	63.92	discard	surf_weight=20 didn't help
 f093faa	1.7117	68.19	discard	bs=4 no help, fewer effective epochs
 ef82f8a	1.7371	66.98	discard	FiLM conditioning redundant with input features
+9fe5427	1.7909	71.80	discard	lr=2e-3 + dropout + noise, worse than v4

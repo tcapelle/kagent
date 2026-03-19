@@ -1,0 +1,143 @@
+_wandb:
+    value:
+        cli_version: 0.25.1
+        code_path: code/cfd-competition/kaggler/train.py
+        e:
+            11qrp4so8fy9ggc3oe86dixscag2xiw8:
+                args:
+                    - --agent
+                    - fern
+                    - --wandb_name
+                    - fern/v10-lr2e3-dropout-noise
+                codePath: cfd-competition/kaggler/train.py
+                codePathLocal: train.py
+                coreweave: {}
+                cpu_count: 64
+                cpu_count_logical: 128
+                cudaVersion: "13.1"
+                disk:
+                    /:
+                        total: "7679212060672"
+                        used: "297688289280"
+                email: tcapelle@wandb.com
+                executable: /usr/bin/python
+                git:
+                    commit: 9fe5427de6ccea53d8e61a9991f8db30307db1f3
+                    remote: https://github.com/tcapelle/kagent.git
+                gpu: NVIDIA RTX PRO 6000 Blackwell Server Edition
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Blackwell
+                      cudaCores: 24064
+                      memoryTotal: "102641958912"
+                      name: NVIDIA RTX PRO 6000 Blackwell Server Edition
+                      uuid: GPU-598588ec-1e99-aa24-f15c-8f59d6d03999
+                host: kagent-fern-b4c6f5bd7-lml8n
+                memory:
+                    total: "1080661327872"
+                os: Linux-6.8.12-680-6063-coreweave-amd64-f81899c8-x86_64-with-glibc2.35
+                program: /workspace/kagent/cfd-competition/kaggler/train.py
+                python: CPython 3.10.12
+                root: /workspace/kagent/cfd-competition/kaggler
+                startedAt: "2026-03-19T04:31:14.828041Z"
+                writerId: 11qrp4so8fy9ggc3oe86dixscag2xiw8
+        m:
+            - "1": global_step
+              "6":
+                - 3
+              "7": []
+            - "1": lr
+              "5": 1
+              "6":
+                - 1
+                - 3
+              "7": []
+            - "2": val_ood_cond/*
+              "5": 1
+              "6":
+                - 1
+              "7": []
+            - "2": val_ood_re/*
+              "5": 1
+              "6":
+                - 1
+              "7": []
+            - "2": train/*
+              "5": 1
+              "6":
+                - 1
+              "7": []
+            - "2": val/*
+              "5": 1
+              "6":
+                - 1
+              "7": []
+            - "2": val_in_dist/*
+              "5": 1
+              "6":
+                - 1
+              "7": []
+            - "2": val_tandem_transfer/*
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.10.12
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 2
+                - 7
+                - 13
+                - 15
+                - 16
+                - 62
+            "4": 3.10.12
+            "5": 0.25.1
+            "12": 0.25.1
+            "13": linux-x86_64
+accum_steps:
+    value: 2
+agent:
+    value: fern
+batch_size:
+    value: 2
+debug:
+    value: false
+dropout:
+    value: 0.05
+epochs:
+    value: 50
+grad_clip:
+    value: 1
+hidden:
+    value: 256
+input_noise:
+    value: 0.01
+lr:
+    value: 0.002
+n_blocks:
+    value: 6
+n_params:
+    value: 1588227
+splits_dir:
+    value: /mnt/new-pvc/datasets/tandemfoil/splits
+surf_weight:
+    value: 10
+train_samples:
+    value: 1606
+val_samples:
+    value:
+        val_in_dist: 76
+        val_ood_cond: 102
+        val_ood_re: 255
+        val_tandem_transfer: 255
+wandb_group:
+    value: null
+wandb_name:
+    value: fern/v10-lr2e3-dropout-noise
+weight_decay:
+    value: 0.0001
