@@ -67,15 +67,15 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
+        lr: float = 1e-3
         weight_decay: float = 1e-4
         batch_size: int = 2
         accum_steps: int = 2
         surf_weight: float = 10.0
         epochs: int = 50
         grad_clip: float = 1.0
-        hidden: int = 512
-        n_blocks: int = 8
+        hidden: int = 256
+        n_blocks: int = 6
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -112,7 +112,10 @@ if __name__ == "__main__":
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS,
+        steps_per_epoch=len(train_loader), pct_start=0.1,
+    )
     scaler = torch.amp.GradScaler("cuda")
 
     # --- W&B ---
@@ -189,11 +192,12 @@ if __name__ == "__main__":
                 optimizer.zero_grad()
                 global_step += 1
 
+            scheduler.step()
             epoch_vol += vol_loss.item()
             epoch_surf += surf_loss.item()
             n_batches += 1
 
-        scheduler.step()
+
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
