@@ -212,6 +212,7 @@ if __name__ == "__main__":
             y[~finite] = 0.0
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
+            y_norm = y_norm.clamp(-10, 10)
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
@@ -282,6 +283,7 @@ if __name__ == "__main__":
                     y[~finite] = 0.0
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
+                    y_norm = y_norm.clamp(-10, 10)
 
                     pred = eval_model({"x": x})["preds"]
                     sq_err = (pred - y_norm) ** 2
