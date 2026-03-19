@@ -189,7 +189,7 @@ val_loaders = {
 
 HIDDEN = 768
 N_BLOCKS = 6
-N_FOURIER = 66  # divisible by 3 for multi-scale
+N_FOURIER = 132  # more frequencies for higher resolution
 COND_DIM = 192
 
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=HIDDEN, n_blocks=N_BLOCKS,

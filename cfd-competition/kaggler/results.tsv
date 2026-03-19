@@ -5,4 +5,6 @@ cc900f1	1.9731	?	discard	+pressure weight 2x +warmup (superseded by lr=2e-3)
 6b6f84d	1.9114	?	discard	lr=2e-3 + pressure weight 2x + warmup (superseded)
 39296e3	2.9203	~60	discard	FiLM + Fourier + sep heads + EMA (24ep, timeout)
 fc5a678	2.4291	~49.5	discard	512h warm restarts (x3)
-4504aa0	2.4161	~48.7	best	768h wide + multiscale Fourier + warm restarts (x2)
+4504aa0	2.4161	~48.7	discard	768h wide + multiscale Fourier + warm restarts (x2)
+43cead2	5.5720	~44.9	discard	L1 loss + p3x + sw50 (single Fourier, 4 warm restarts)
+6565d83	5.8949	~42.8	best	dual Fourier (pos+geom) + L1 loss + 4 warm restarts
