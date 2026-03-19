@@ -25,28 +25,60 @@ from viz import visualize
 
 
 # ---------------------------------------------------------------------------
-# YOUR MODEL HERE
-#
-# Model contract:
-#   Input:  {"x": tensor [B, N, 24]}  (normalized features)
-#   Output: {"preds": tensor [B, N, 3]}  (predicted Ux, Uy, p in normalized space)
-#
-# Example:
-#
-#   class MyModel(nn.Module):
-#       def __init__(self, in_dim=24, hidden=256, out_dim=3):
-#           super().__init__()
-#           self.net = nn.Sequential(
-#               nn.Linear(in_dim, hidden), nn.GELU(),
-#               nn.Linear(hidden, hidden), nn.GELU(),
-#               nn.Linear(hidden, out_dim),
-#           )
-#       def forward(self, data, **kwargs):
-#           return {"preds": self.net(data["x"])}
-#
+# ResMLP with separate per-channel prediction heads + EMA
 # ---------------------------------------------------------------------------
 
-raise NotImplementedError("Define your model above and remove this line.")
+import copy
+
+
+class ResMLPBlock(nn.Module):
+    def __init__(self, dim, dropout=0.0):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.fc1 = nn.Linear(dim, dim * 4)
+        self.fc2 = nn.Linear(dim * 4, dim)
+        self.act = nn.GELU()
+        self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+
+    def forward(self, x):
+        return x + self.drop(self.fc2(self.act(self.fc1(self.norm(x)))))
+
+
+class ResMLP(nn.Module):
+    def __init__(self, in_dim=24, hidden=384, n_blocks=8, out_dim=3, dropout=0.0):
+        super().__init__()
+        self.proj_in = nn.Linear(in_dim, hidden)
+        self.blocks = nn.ModuleList([ResMLPBlock(hidden, dropout) for _ in range(n_blocks)])
+        self.norm_out = nn.LayerNorm(hidden)
+        # Separate heads for each output channel
+        self.head_ux = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
+        self.head_uy = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
+        self.head_p = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
+
+    def forward(self, data, **kwargs):
+        x = self.proj_in(data["x"])
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm_out(x)
+        ux = self.head_ux(x)
+        uy = self.head_uy(x)
+        p = self.head_p(x)
+        return {"preds": torch.cat([ux, uy, p], dim=-1)}
+
+
+class EMA:
+    """Exponential Moving Average of model parameters."""
+    def __init__(self, model, decay=0.999):
+        self.decay = decay
+        self.shadow = copy.deepcopy(model)
+        self.shadow.eval()
+        for p in self.shadow.parameters():
+            p.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model):
+        for sp, mp in zip(self.shadow.parameters(), model.parameters()):
+            sp.data.mul_(self.decay).add_(mp.data, alpha=1 - self.decay)
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +162,7 @@ MAX_TIMEOUT = 30.0  # minutes — do not increase
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 2
     surf_weight: float = 10.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
@@ -165,9 +197,9 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-# --- Build your model here ---
-# model = MyModel(...).to(device)
-raise NotImplementedError("Build your model above and remove this line.")
+# --- Build model ---
+model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=8, dropout=0.0).to(device)
+ema = EMA(model, decay=0.999)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -240,7 +272,9 @@ for epoch in range(MAX_EPOCHS):
 
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
+        ema.update(model)
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -252,8 +286,8 @@ for epoch in range(MAX_EPOCHS):
     epoch_vol /= n_batches
     epoch_surf /= n_batches
 
-    # --- Validate ---
-    mean_val_loss, split_metrics = validate(model, val_loaders, stats, device, global_step, cfg.surf_weight)
+    # --- Validate (use EMA model) ---
+    mean_val_loss, split_metrics = validate(ema.shadow, val_loaders, stats, device, global_step, cfg.surf_weight)
     dt = time.time() - t0
 
     wandb.log({"train/vol_loss": epoch_vol, "train/surf_loss": epoch_surf,
@@ -265,7 +299,7 @@ for epoch in range(MAX_EPOCHS):
         best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-        torch.save(model.state_dict(), model_path)
+        torch.save(ema.shadow.state_dict(), model_path)
         tag = " *"
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
@@ -286,11 +320,11 @@ if best_metrics:
     print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    ema.shadow.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     plot_dir = Path("plots") / run.id
     n = 1 if cfg.debug else 4
     for split_name, split_ds in val_splits.items():
-        images = visualize(model, split_ds, stats, device, n_samples=n,
+        images = visualize(ema.shadow, split_ds, stats, device, n_samples=n,
                            out_dir=plot_dir / split_name)
         if images:
             wandb.log({
