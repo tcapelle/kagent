@@ -163,8 +163,11 @@ if __name__ == "__main__":
             mask = mask.to(device, non_blocking=True)
 
             x = (x - stats["x_mean"]) / stats["x_std"]
+            finite = y.isfinite().all(dim=-1)
+            mask = mask & finite
+            y = y.clone()
+            y[~finite] = 0.0
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
-            mask = mask & y.isfinite().all(dim=-1)
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
@@ -213,8 +216,11 @@ if __name__ == "__main__":
                     mask = mask.to(device, non_blocking=True)
 
                     x = (x - stats["x_mean"]) / stats["x_std"]
+                    finite = y.isfinite().all(dim=-1)
+                    mask = mask & finite
+                    y = y.clone()
+                    y[~finite] = 0.0
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
-                    mask = mask & y.isfinite().all(dim=-1)
 
                     pred = model({"x": x})["preds"]
                     sq_err = (pred - y_norm) ** 2

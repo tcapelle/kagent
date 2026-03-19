@@ -1,0 +1,47 @@
+{
+  "os": "Linux-6.8.12-680-6063-coreweave-amd64-f81899c8-x86_64-with-glibc2.35",
+  "python": "CPython 3.10.12",
+  "startedAt": "2026-03-19T00:17:33.729111Z",
+  "args": [
+    "--agent",
+    "fern",
+    "--wandb_name",
+    "fern/v3-512h-8b-amp-inffix"
+  ],
+  "program": "/workspace/kagent/cfd-competition/kaggler/train.py",
+  "codePath": "cfd-competition/kaggler/train.py",
+  "codePathLocal": "train.py",
+  "git": {
+    "remote": "https://github.com/tcapelle/kagent.git",
+    "commit": "315941a1ec216e709611bcbd17280466d9dca55a"
+  },
+  "email": "tcapelle@wandb.com",
+  "root": "/workspace/kagent/cfd-competition/kaggler",
+  "host": "kagent-fern-b4c6f5bd7-lml8n",
+  "executable": "/usr/bin/python",
+  "cpu_count": 64,
+  "cpu_count_logical": 128,
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "7679212060672",
+      "used": "294306332672"
+    }
+  },
+  "memory": {
+    "total": "1080661327872"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "memoryTotal": "102641958912",
+      "cudaCores": 24064,
+      "architecture": "Blackwell",
+      "uuid": "GPU-598588ec-1e99-aa24-f15c-8f59d6d03999"
+    }
+  ],
+  "cudaVersion": "13.1",
+  "coreweave": {},
+  "writerId": "krdm9eg7dp2jafqbj2fksekvbhyhu5nq"
+}
