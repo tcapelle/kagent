@@ -2,3 +2,5 @@ commit	val_loss	mae_surf_p	status	description
 59c1f28	0.0	0.0	crash	baseline rmlp 512h/8b OOM
 c738d1e	0.0	0.0	crash	reduce to 256h/6b bs=2, no checkpoint saved (nan val_ood_re)
 ec232fc	1.5644	106.58	keep	baseline rmlp 256h/6b, grad_clip=1.0, nan-safe val, bs1 val
+5aa1043	2.7251	139.70	discard	512h/8b too slow, only 11 epochs
+7a6e84a	1.6915	61.83	keep	256h/6b + inf fix + OneCycleLR(1e-3) + AMP, 32 epochs
