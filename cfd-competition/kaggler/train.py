@@ -103,8 +103,8 @@ MAX_TIMEOUT = 30.0  # minutes — do not increase
 class Config:
     lr: float = 1e-3
     weight_decay: float = 1e-4
-    batch_size: int = 2
-    surf_weight: float = 10.0
+    batch_size: int = 4
+    surf_weight: float = 20.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
     wandb_group: str | None = None
@@ -159,12 +159,16 @@ val_loaders = {
 }
 
 # --- Build model ---
-model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=8, dropout=0.0).to(device)
+model = ResMLP(in_dim=X_DIM, hidden=384, n_blocks=10, dropout=0.0).to(device)
 ema = EMA(model, decay=0.999)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+steps_per_epoch = len(train_ds) // cfg.batch_size + 1
+scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
+    pct_start=0.1, anneal_strategy="cos",
+)
 scaler = torch.amp.GradScaler("cuda")
 
 
@@ -239,6 +243,7 @@ for epoch in range(MAX_EPOCHS):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         scaler.step(optimizer)
         scaler.update()
+        scheduler.step()
         ema.update(model)
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -247,7 +252,6 @@ for epoch in range(MAX_EPOCHS):
         epoch_surf += surf_loss.item()
         n_batches += 1
 
-    scheduler.step()
     epoch_vol /= n_batches
     epoch_surf /= n_batches
 
