@@ -122,6 +122,26 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
 
+
+class CleanDataset(torch.utils.data.Dataset):
+    """Wrapper that replaces inf/nan in targets with 0 (masked out by is_surface/mask)."""
+    def __init__(self, ds):
+        self.ds = ds
+    def __len__(self):
+        return len(self.ds)
+    def __getitem__(self, idx):
+        x, y, is_surface = self.ds[idx]
+        bad = y.isinf() | y.isnan()
+        if bad.any():
+            y = y.clone()
+            y[bad] = 0.0
+        return x, y, is_surface
+
+
+# Wrap datasets to handle inf/nan in targets (val_ood_re sample 65 has -inf in pressure)
+train_ds = CleanDataset(train_ds)
+val_splits = {k: CleanDataset(v) for k, v in val_splits.items()}
+
 loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
 
