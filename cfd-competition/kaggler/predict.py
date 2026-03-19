@@ -63,7 +63,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=512, n_blocks=8).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+state = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
+# Strip _orig_mod. prefix from torch.compile checkpoints
+state = {k.replace("_orig_mod.", ""): v for k, v in state.items()}
+model.load_state_dict(state)
 
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
