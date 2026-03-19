@@ -17,26 +17,8 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 
 # ---------------------------------------------------------------------------
-# Model: Residual MLP with Fourier Features
+# Model: Residual MLP with LayerNorm
 # ---------------------------------------------------------------------------
-
-class FourierFeatures(nn.Module):
-    """Fourier positional encoding for continuous coordinates."""
-    def __init__(self, n_pos_dims=2, n_freqs=16):
-        super().__init__()
-        self.n_pos_dims = n_pos_dims
-        freqs = 2.0 ** torch.arange(n_freqs)  # [1, 2, 4, ..., 2^(n-1)]
-        self.register_buffer("freqs", freqs)
-        self.out_dim = n_pos_dims * n_freqs * 2  # sin + cos
-
-    def forward(self, x):
-        # x: [..., D] — take first n_pos_dims channels as positions
-        pos = x[..., :self.n_pos_dims]  # [..., n_pos_dims]
-        # pos * freqs: [..., n_pos_dims, n_freqs]
-        proj = pos.unsqueeze(-1) * self.freqs
-        fourier = torch.cat([proj.sin(), proj.cos()], dim=-1)  # [..., n_pos_dims, 2*n_freqs]
-        return fourier.flatten(-2)  # [..., n_pos_dims * 2 * n_freqs]
-
 
 class ResBlock(nn.Module):
     def __init__(self, dim):
@@ -53,11 +35,9 @@ class ResBlock(nn.Module):
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6, n_fourier_freqs=16):
+    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6):
         super().__init__()
-        self.fourier = FourierFeatures(n_pos_dims=2, n_freqs=n_fourier_freqs)
-        total_in = in_dim + self.fourier.out_dim  # 24 + 64 = 88
-        self.proj_in = nn.Linear(total_in, hidden)
+        self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
@@ -65,10 +45,7 @@ class CFDModel(nn.Module):
         )
 
     def forward(self, data, **kwargs):
-        x = data["x"]
-        fourier = self.fourier(x)
-        x = torch.cat([x, fourier], dim=-1)
-        x = self.proj_in(x)
+        x = self.proj_in(data["x"])
         x = self.blocks(x)
         return {"preds": self.head(x)}
 
@@ -97,8 +74,8 @@ if __name__ == "__main__":
         surf_weight: float = 10.0
         epochs: int = 50
         grad_clip: float = 1.0
-        hidden: int = 256
-        n_blocks: int = 6
+        hidden: int = 384
+        n_blocks: int = 8
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
