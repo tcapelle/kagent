@@ -69,7 +69,7 @@ class CFDModel(nn.Module):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.surf_attn = SurfaceAttention(hidden, n_heads=surf_attn_heads, n_layers=surf_attn_layers)
+        self.surf_attn = SurfaceAttention(hidden, n_heads=surf_attn_heads, n_layers=4)
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, out_dim),
