@@ -69,7 +69,7 @@ class Config:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 10.0  # surface loss multiplier
+    surf_weight: float = 20.0  # surface loss multiplier
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
     wandb_group: str | None = None
@@ -108,16 +108,7 @@ model = torch.compile(model)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-# Warmup for 2 epochs then cosine decay
-warmup_epochs = 2
-scheduler = torch.optim.lr_scheduler.SequentialLR(
-    optimizer,
-    schedulers=[
-        torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=warmup_epochs),
-        torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS - warmup_epochs),
-    ],
-    milestones=[warmup_epochs],
-)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 scaler = GradScaler()
 
 # --- W&B ---
@@ -178,16 +169,14 @@ for epoch in range(MAX_EPOCHS):
         # Forward pass — your model takes {"x": normalized_x} and returns {"preds": [B, N, 3]}
         with autocast("cuda"):
             pred = model({"x": x})["preds"]
-            sq_err = (pred - y_norm) ** 2
-            # Weight pressure channel 2x (channel 2 is p, most important metric)
-            channel_w = torch.tensor([1.0, 1.0, 2.0], device=device)
-            sq_err = sq_err * channel_w
+            # Smooth L1 (Huber) loss — more robust to outliers than MSE
+            err = torch.nn.functional.smooth_l1_loss(pred, y_norm, reduction="none", beta=1.0)
 
             # Loss: separate volume and surface, weight surface higher
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
-            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            vol_loss = (err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
