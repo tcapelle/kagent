@@ -96,8 +96,8 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    raw_model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
-    model = torch.compile(raw_model)
+    model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+    model = torch.compile(model)
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -271,7 +271,7 @@ if __name__ == "__main__":
             best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(raw_model.state_dict(), model_path)
+            torch.save(model.state_dict(), model_path)
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
@@ -292,7 +292,7 @@ if __name__ == "__main__":
         print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
         wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-        raw_model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
         plot_dir = Path("plots") / run.id
         n = 1 if cfg.debug else 4
         for split_name, split_ds in val_splits.items():

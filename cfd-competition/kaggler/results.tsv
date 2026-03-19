@@ -1,3 +1,4 @@
 commit	val_loss	mae_surf_p	status	description
 4cca861	3.1712	139.20	keep	baseline resmlp 512h 8blocks, inf fix in val_ood_re
 b673353	2.9740	164.22	keep	AMP + OneCycleLR lr=1e-3, 13 epochs
+7bd7247	1.8307	87.06	keep	torch.compile + AMP + CosineAnnealing, 6 blocks, 28 epochs

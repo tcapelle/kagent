@@ -52,7 +52,10 @@ else:
     hidden, n_blocks = 512, 8
 
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=hidden, n_blocks=n_blocks).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+state_dict = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
+# Strip _orig_mod. prefix from torch.compile'd state dicts
+state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
+model.load_state_dict(state_dict)
 
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
