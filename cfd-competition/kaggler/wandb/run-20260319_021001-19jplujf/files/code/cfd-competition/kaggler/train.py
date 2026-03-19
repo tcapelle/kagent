@@ -94,7 +94,7 @@ if __name__ == "__main__":
         weight_decay: float = 1e-4
         batch_size: int = 2
         accum_steps: int = 2
-        surf_weight: float = 20.0
+        surf_weight: float = 10.0
         epochs: int = 50
         grad_clip: float = 1.0
         hidden: int = 256
