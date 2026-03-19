@@ -4,6 +4,7 @@ Run:
   uv run train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
 
+import copy
 import math
 import os
 import time
@@ -17,7 +18,7 @@ from data import X_DIM, VAL_SPLIT_NAMES
 
 
 # ---------------------------------------------------------------------------
-# Model: MLP backbone + surface attention refinement
+# Model: ResBlock MLP with separate per-channel output heads + EMA
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -34,57 +35,57 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class SurfaceAttention(nn.Module):
-    """Self-attention refinement for surface nodes only."""
-    def __init__(self, dim, n_heads=4, n_layers=2):
+class ChannelHead(nn.Module):
+    """Per-channel output head with its own hidden layer."""
+    def __init__(self, dim):
         super().__init__()
-        self.layers = nn.ModuleList()
-        for _ in range(n_layers):
-            self.layers.append(nn.TransformerEncoderLayer(
-                d_model=dim, nhead=n_heads, dim_feedforward=dim * 2,
-                dropout=0.0, activation="gelu", batch_first=True,
-                norm_first=True,
-            ))
+        self.net = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim),
+            nn.GELU(),
+            nn.Linear(dim, 1),
+        )
 
-    def forward(self, h, is_surface):
-        # h: [B, N, D], is_surface: [B, N] bool
-        B, N, D = h.shape
-        refined = h.clone()
-
-        for b in range(B):
-            surf_idx = is_surface[b].nonzero(as_tuple=True)[0]
-            if surf_idx.numel() == 0:
-                continue
-            surf_h = h[b, surf_idx].unsqueeze(0)  # [1, S, D]
-            for layer in self.layers:
-                surf_h = layer(surf_h)
-            refined[b, surf_idx] = surf_h.squeeze(0)
-
-        return refined
+    def forward(self, x):
+        return self.net(x)
 
 
 class CFDModel(nn.Module):
-    def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=6,
-                 surf_attn_heads=4, surf_attn_layers=2, **kwargs):
+    def __init__(self, in_dim=24, out_dim=3, hidden=320, n_blocks=8, **kwargs):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.surf_attn = SurfaceAttention(hidden, n_heads=surf_attn_heads, n_layers=surf_attn_layers)
-        self.head = nn.Sequential(
-            nn.LayerNorm(hidden),
-            nn.Linear(hidden, out_dim),
-        )
+        self.final_norm = nn.LayerNorm(hidden)
+        # Separate heads for Ux, Uy, p
+        self.heads = nn.ModuleList([ChannelHead(hidden) for _ in range(out_dim)])
 
     def forward(self, data, **kwargs):
         x = data["x"]
-        # is_surface is dim 12 of x (before normalization it's 0/1, after it's normalized)
-        # We use a threshold on normalized value: surface nodes have high is_surface values
-        is_surface = x[..., 12] > 0  # After normalization, surface=1 normalizes to a positive value
-
         h = self.proj_in(x)
         h = self.blocks(h)
-        h = self.surf_attn(h, is_surface)
-        return {"preds": self.head(h)}
+        h = self.final_norm(h)
+        return {"preds": torch.cat([head(h) for head in self.heads], dim=-1)}
+
+
+# ---------------------------------------------------------------------------
+# EMA helper
+# ---------------------------------------------------------------------------
+
+class EMA:
+    def __init__(self, model, decay=0.999):
+        self.decay = decay
+        self.shadow = copy.deepcopy(model)
+        self.shadow.eval()
+        for p in self.shadow.parameters():
+            p.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model):
+        for s_param, m_param in zip(self.shadow.parameters(), model.parameters()):
+            s_param.lerp_(m_param.data, 1.0 - self.decay)
+
+    def state_dict(self):
+        return self.shadow.state_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -104,15 +105,17 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 1e-3
+        lr: float = 5e-4
         weight_decay: float = 1e-4
-        batch_size: int = 2
-        accum_steps: int = 2
+        batch_size: int = 4
+        accum_steps: int = 1
         surf_weight: float = 10.0
         epochs: int = 50
         grad_clip: float = 1.0
-        hidden: int = 256
-        n_blocks: int = 6
+        hidden: int = 320
+        n_blocks: int = 8
+        ema_decay: float = 0.999
+        val_every: int = 4
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -145,6 +148,8 @@ if __name__ == "__main__":
     }
 
     model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+    model = torch.compile(model)
+    ema = EMA(model, decay=cfg.ema_decay)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
@@ -228,6 +233,7 @@ if __name__ == "__main__":
                 scaler.update()
                 optimizer.zero_grad()
                 global_step += 1
+                ema.update(model)
 
             scheduler.step()
             epoch_vol += vol_loss.item()
@@ -237,8 +243,24 @@ if __name__ == "__main__":
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
-        # --- Validate (do not modify — ensures consistent metrics) ---
-        model.eval()
+        # --- Validate (use EMA model, skip some epochs for speed) ---
+        do_val = (epoch + 1) % cfg.val_every == 0 or epoch == MAX_EPOCHS - 1 or epoch == 0
+
+        if not do_val:
+            dt = time.time() - t0
+            wandb.log({
+                "train/vol_loss": epoch_vol,
+                "train/surf_loss": epoch_surf,
+                "lr": scheduler.get_last_lr()[0],
+                "epoch_time_s": dt,
+                "global_step": global_step,
+            })
+            print(f"Epoch {epoch+1:3d} ({dt:.0f}s)  train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  (skip val)")
+            continue
+
+        # Use EMA model for validation
+        eval_model = ema.shadow
+        eval_model.eval()
         torch.cuda.empty_cache()
         val_loss_sum = 0.0
         split_metrics: dict[str, dict] = {}
@@ -262,7 +284,7 @@ if __name__ == "__main__":
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                    pred = model({"x": x})["preds"]
+                    pred = eval_model({"x": x})["preds"]
                     sq_err = (pred - y_norm) ** 2
 
                     vol_mask = mask & ~is_surface
@@ -320,7 +342,8 @@ if __name__ == "__main__":
             best_metrics = {"epoch": epoch + 1, "val_loss": safe_val_loss}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(model.state_dict(), model_path)
+            # Save EMA weights as checkpoint
+            torch.save(ema.state_dict(), model_path)
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
@@ -341,11 +364,14 @@ if __name__ == "__main__":
         print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
         wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+        # Load EMA checkpoint for visualization
+        eval_model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+        eval_model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+        eval_model.eval()
         plot_dir = Path("plots") / run.id
         n = 1 if cfg.debug else 4
         for split_name, split_ds in val_splits.items():
-            images = visualize(model, split_ds, stats, device, n_samples=n,
+            images = visualize(eval_model, split_ds, stats, device, n_samples=n,
                                out_dir=plot_dir / split_name)
             if images:
                 wandb.log({
