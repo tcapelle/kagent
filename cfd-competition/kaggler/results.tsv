@@ -1,4 +1,5 @@
 commit	val_loss	mae_surf_p	status	description
-05fd5a1	3.1102	?	keep	baseline resmlp 512h 8b (all 4 splits)
-ce62cf5	2.0448	?	keep	+AMP +compile +lr=1e-3 (27 epochs in 30min)
-cc900f1	1.9731	?	keep	+pressure weight 2x +warmup (best so far)
+05fd5a1	3.1102	?	keep	baseline resmlp 512h 8b
+ce62cf5	2.0448	?	keep	+AMP +compile +lr=1e-3
+cc900f1	1.9731	?	discard	+pressure weight 2x +warmup (superseded by lr=2e-3)
+6b6f84d	1.9114	?	best	lr=2e-3 + pressure weight 2x + warmup

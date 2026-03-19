@@ -67,7 +67,7 @@ MAX_TIMEOUT = 30.0  # minutes
 @dataclass
 class Config:
     lr: float = 2e-3
-    weight_decay: float = 1e-3
+    weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 10.0  # surface loss multiplier
     epochs: int = 50

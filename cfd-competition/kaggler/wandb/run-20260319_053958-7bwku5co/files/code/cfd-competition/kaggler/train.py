@@ -40,11 +40,32 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
+class GlobalCondBlock(nn.Module):
+    """Inject global mean/std statistics into each node's representation."""
+    def __init__(self, dim):
+        super().__init__()
+        self.proj = nn.Sequential(
+            nn.LayerNorm(dim * 2),
+            nn.Linear(dim * 2, dim),
+            nn.GELU(),
+        )
+
+    def forward(self, x):
+        # x: [B, N, D]
+        mean = x.mean(dim=1, keepdim=True)  # [B, 1, D]
+        std = x.std(dim=1, keepdim=True).clamp(min=1e-6)  # [B, 1, D]
+        global_info = torch.cat([mean, std], dim=-1).expand_as(torch.cat([x, x], dim=-1))
+        return x + self.proj(global_info)
+
+
 class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8):
         super().__init__()
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        # First 6 blocks are plain ResBlocks, then global conditioning, then 2 more
+        self.blocks_pre = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks - 2)])
+        self.global_cond = GlobalCondBlock(hidden)
+        self.blocks_post = nn.Sequential(*[ResBlock(hidden) for _ in range(2)])
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, out_dim),
@@ -52,7 +73,9 @@ class CFDModel(nn.Module):
 
     def forward(self, data, **kwargs):
         x = self.proj_in(data["x"])
-        x = self.blocks(x)
+        x = self.blocks_pre(x)
+        x = self.global_cond(x)
+        x = self.blocks_post(x)
         return {"preds": self.head(x)}
 
 
@@ -67,7 +90,7 @@ MAX_TIMEOUT = 30.0  # minutes
 @dataclass
 class Config:
     lr: float = 2e-3
-    weight_decay: float = 1e-3
+    weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 10.0  # surface loss multiplier
     epochs: int = 50
