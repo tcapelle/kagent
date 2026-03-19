@@ -54,10 +54,10 @@ class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=8,
                  n_fourier=32, **kwargs):
         super().__init__()
-        # Random Fourier features for spatial coordinates (dims 0-1)
+        # Learnable Fourier features for spatial coordinates (dims 0-1)
         self.n_fourier = n_fourier
-        self.register_buffer("fourier_B",
-                             torch.randn(2, n_fourier) * 2 * math.pi)
+        self.fourier_B = nn.Parameter(
+            torch.randn(2, n_fourier) * 2 * math.pi)
         # Input: original features + Fourier features (sin + cos)
         self.proj_in = nn.Linear(in_dim + 2 * n_fourier, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
