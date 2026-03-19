@@ -3,4 +3,6 @@ commit	val_loss	mae_surf_p	status	description
 ce62cf5	2.0448	?	keep	+AMP +compile +lr=1e-3
 cc900f1	1.9731	?	discard	+pressure weight 2x +warmup (superseded by lr=2e-3)
 6b6f84d	1.9114	?	discard	lr=2e-3 + pressure weight 2x + warmup (superseded)
-39296e3	2.9203	~60	best	FiLM + Fourier + sep heads + EMA (24ep, timeout)
+39296e3	2.9203	~60	discard	FiLM + Fourier + sep heads + EMA (24ep, timeout)
+fc5a678	2.4291	~49.5	discard	512h warm restarts (x3)
+4504aa0	2.4161	~48.7	best	768h wide + multiscale Fourier + warm restarts (x2)
