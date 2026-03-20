@@ -32,7 +32,6 @@ class FiLMResBlock(nn.Module):
 class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=4, cond_dim=13):
         super().__init__()
-        # cond_dim=13: features 13-23 (11) + log(Re^2) + log(Re^0.5) (2)
         self.cond_start = 13
         self.cond_end = 24
         self.proj_in = nn.Linear(in_dim, hidden)
@@ -51,30 +50,34 @@ class CFDModel(nn.Module):
             nn.GELU(),
             nn.Linear(hidden // 2, 1),
         )
+        # Learnable Re-scaling for pressure: log_scale = alpha * log_re + beta
+        # Initialized to identity (alpha=0, beta=0 -> scale=1)
+        self.re_alpha = nn.Parameter(torch.zeros(1))
+        self.re_beta = nn.Parameter(torch.zeros(1))
 
     def forward(self, data, **kwargs):
         x_in = data["x"]  # [B, N, 24]
-        # Extract global conditioning (same for all nodes in a sample)
-        cond_raw = x_in[:, 0, self.cond_start:self.cond_end]  # [B, 11] - take from first node
-        # Add physics-motivated features: Re^2 and Re^0.5 for pressure scaling
-        log_re = cond_raw[:, 0:1]  # log(Re)
-        re_sq = (2 * log_re)  # log(Re^2) = 2*log(Re)
-        re_sqrt = (0.5 * log_re)  # log(Re^0.5) = 0.5*log(Re)
+        cond_raw = x_in[:, 0, self.cond_start:self.cond_end]  # [B, 11]
+        log_re = cond_raw[:, 0:1]  # log(Re), normalized
+        re_sq = (2 * log_re)
+        re_sqrt = (0.5 * log_re)
         cond_aug = torch.cat([cond_raw, re_sq, re_sqrt], dim=-1)  # [B, 13]
-        cond = self.cond_proj(cond_aug)  # [B, hidden//2]
+        cond = self.cond_proj(cond_aug)
 
-        # Add global context from mean of projected features
         x = self.proj_in(x_in)
-        global_ctx = x.mean(dim=1)  # [B, hidden]
-        global_feat = self.global_proj(global_ctx)  # [B, hidden//4]
-        cond = torch.cat([cond, global_feat], dim=-1)  # [B, hidden//2 + hidden//4]
-        cond = self.cond_merge(cond)  # [B, hidden//2]
-        cond = cond.unsqueeze(1)  # [B, 1, hidden//2] for broadcasting
+        global_ctx = x.mean(dim=1)
+        global_feat = self.global_proj(global_ctx)
+        cond = torch.cat([cond, global_feat], dim=-1)
+        cond = self.cond_merge(cond)
+        cond = cond.unsqueeze(1)
         for block in self.blocks:
             x = block(x, cond)
         x = self.norm(x)
         vel = self.vel_head(x)
-        p = self.p_head(x)
+        base_p = self.p_head(x)
+        # Re-dependent pressure scaling: scale = exp(alpha * log_re + beta)
+        log_scale = self.re_alpha * log_re + self.re_beta  # [B, 1]
+        p = base_p * torch.exp(log_scale).unsqueeze(1)  # [B, N, 1]
         return {"preds": torch.cat([vel, p], dim=-1)}
 
 

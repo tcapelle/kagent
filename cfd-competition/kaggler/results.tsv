@@ -14,4 +14,13 @@ b2ab030	1.4936	49.29	keep	FiLM + Re + EMA(0.999), 34 epochs
 6988ffc	1.8334	?	discard	6 blocks, T_max too high, didn't converge
 b52396a	2.8572	?	discard	Fourier features diverged to NaN
 08ca624	1.4231	?	keep	wd=5e-4, skip-val, T_max=45, 45 epochs
-076cc4e	1.3694	?	keep	warm restart lr=2e-4, best@epoch5 - NEW BEST
+076cc4e	1.3694	?	keep	warm restart lr=2e-4, best@epoch5
+076cc4e	1.3381	?	keep	warm restart lr=5e-5, best@epoch5
+a8947a4	1.2884	?	keep	h512 warm restart noAMP lr=5e-5, 15ep
+a8947a4	1.2774	?	keep	h512 warm restart noAMP lr=2e-5, 10ep
+ee68386	1.3902	?	keep	h576 lr=5e-4 from scratch, 25ep
+ee68386	1.2030	?	keep	h576 warm restart lr=1e-4, 30ep
+ee68386	1.1621	?	keep	h576 warm restart lr=5e-5, 30ep
+ee68386	1.1433	?	keep	h576 warm restart lr=2e-5, 30ep
+ee68386	1.1301	?	keep	h576 warm restart lr=1e-5, 30ep
+ee68386	1.1264	?	keep	h576 warm restart lr=5e-6, 30ep - NEW BEST (converged)
