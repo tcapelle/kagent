@@ -121,8 +121,9 @@ if __name__ == "__main__":
         batch_size: int = 4
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 30
+        epochs: int = 32
         grad_clip: float = 1.0
+        seed: int = 42
         hidden: int = 256
         n_blocks: int = 8
         ema_decay: float = 0.998
@@ -135,6 +136,7 @@ if __name__ == "__main__":
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
+    torch.manual_seed(cfg.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
