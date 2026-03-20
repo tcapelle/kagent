@@ -97,8 +97,8 @@ class Config:
     agent: str | None = None
     batch_size: int = 4
     # Model config - must match training
-    hidden: int = 768
-    n_blocks: int = 6
+    hidden: int = 768  # for 768h models; use 1024 for 1024h models
+    n_blocks: int = 6  # for 768h models; use 4 for 1024h models
     n_fourier: int = 66
     cond_dim: int = 192
 
