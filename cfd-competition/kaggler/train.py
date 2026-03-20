@@ -167,7 +167,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS,
-        steps_per_epoch=len(train_loader), pct_start=0.2,
+        steps_per_epoch=len(train_loader), pct_start=0.1,
     )
     scaler = torch.amp.GradScaler("cuda")
 
