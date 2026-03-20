@@ -99,7 +99,7 @@ class Config:
     # Model config - must match training
     hidden: int = 768
     n_blocks: int = 6
-    n_fourier: int = 132
+    n_fourier: int = 66
     cond_dim: int = 192
 
 

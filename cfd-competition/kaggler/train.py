@@ -47,11 +47,12 @@ class MultiscaleFourierFeatures(nn.Module):
 class FiLMResBlock(nn.Module):
     """ResBlock with FiLM conditioning from global features."""
 
-    def __init__(self, dim, cond_dim):
+    def __init__(self, dim, cond_dim, dropout=0.05):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.linear1 = nn.Linear(dim, dim)
         self.linear2 = nn.Linear(dim, dim)
+        self.drop = nn.Dropout(dropout)
         self.film = nn.Linear(cond_dim, 2 * dim)
         nn.init.zeros_(self.film.weight)
         nn.init.ones_(self.film.bias[:dim])
@@ -61,7 +62,7 @@ class FiLMResBlock(nn.Module):
         h = self.norm(x)
         gamma, beta = self.film(cond).unsqueeze(1).chunk(2, dim=-1)
         h = gamma * h + beta
-        h = self.linear2(torch.nn.functional.gelu(self.linear1(h)))
+        h = self.drop(self.linear2(torch.nn.functional.gelu(self.linear1(h))))
         return x + h
 
 
@@ -189,7 +190,7 @@ val_loaders = {
 
 HIDDEN = 768
 N_BLOCKS = 6
-N_FOURIER = 132  # more frequencies for higher resolution
+N_FOURIER = 66  # divisible by 3 for multi-scale
 COND_DIM = 192
 
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=HIDDEN, n_blocks=N_BLOCKS,
