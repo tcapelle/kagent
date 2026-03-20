@@ -232,9 +232,8 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
-                # Smooth L1 (Huber) loss with beta=0.1 for robustness
-                err = torch.nn.functional.smooth_l1_loss(
-                    pred, y_norm, reduction='none', beta=0.1)
+                # Pure L1 (MAE) loss — directly optimizes the competition metric
+                err = (pred - y_norm).abs()
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
