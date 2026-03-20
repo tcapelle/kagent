@@ -151,8 +151,9 @@ if __name__ == "__main__":
 
     model = torch.compile(raw_model)
 
-    # EMA for better generalization
-    ema_model = torch.optim.swa_utils.AveragedModel(raw_model, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(0.999))
+    # EMA for better generalization (0.998 for warm restarts, 0.999 for from-scratch)
+    ema_decay = 0.998 if cfg.resume else 0.999
+    ema_model = torch.optim.swa_utils.AveragedModel(raw_model, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(ema_decay))
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
