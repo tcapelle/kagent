@@ -101,9 +101,9 @@ MAX_TIMEOUT = 30.0  # minutes — do not increase
 
 @dataclass
 class Config:
-    lr: float = 2e-3
-    weight_decay: float = 1e-4
-    batch_size: int = 4
+    lr: float = 1e-3
+    weight_decay: float = 5e-4
+    batch_size: int = 2
     surf_weight: float = 10.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
@@ -158,7 +158,7 @@ val_loaders = {
 }
 
 # --- Build model ---
-model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=12, expansion=2, dropout=0.0).to(device)
+model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=8, dropout=0.0).to(device)
 ema = EMA(model, decay=0.999)
 
 n_params = sum(p.numel() for p in model.parameters())
@@ -224,12 +224,16 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.amp.autocast("cuda"):
             pred = model({"x": x})["preds"]
-            sq_err = (pred - y_norm) ** 2
+            diff = pred - y_norm
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
+            # MSE for volume
+            sq_err = diff ** 2
             vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            # Huber loss for surface (more robust to outliers)
+            huber = torch.where(diff.abs() < 1.0, 0.5 * diff ** 2, diff.abs() - 0.5)
+            surf_loss = (huber * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()

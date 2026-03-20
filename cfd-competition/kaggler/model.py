@@ -30,7 +30,7 @@ class FiLMResMLPBlock(nn.Module):
 
 
 class ResMLP(nn.Module):
-    def __init__(self, in_dim=24, hidden=256, n_blocks=12, out_dim=3, expansion=2,
+    def __init__(self, in_dim=24, hidden=256, n_blocks=8, out_dim=3, expansion=4,
                  dropout=0.0, local_dim=13, global_dim=11):
         super().__init__()
         self.local_dim = local_dim
