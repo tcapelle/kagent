@@ -175,6 +175,7 @@ if __name__ == "__main__":
         wandb_group: str | None = None
         wandb_name: str | None = None
         agent: str | None = None
+        resume: str | None = None  # checkpoint path to resume from
         debug: bool = False
 
     cfg = sp.parse(Config)
@@ -208,6 +209,13 @@ if __name__ == "__main__":
         in_dim=X_DIM, out_dim=3, hidden=cfg.hidden, n_blocks=cfg.n_blocks,
         n_fourier_freq=cfg.n_fourier_freq,
     ).to(device)
+
+    if cfg.resume:
+        state_dict = torch.load(cfg.resume, map_location=device, weights_only=True)
+        state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
+        model.load_state_dict(state_dict)
+        print(f"Resumed from {cfg.resume}")
+
     model = torch.compile(model)
 
     n_params = sum(p.numel() for p in model.parameters())
