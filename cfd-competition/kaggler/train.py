@@ -52,7 +52,7 @@ class ChannelHead(nn.Module):
 
 class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=8,
-                 n_fourier=48, **kwargs):
+                 n_fourier=32, **kwargs):
         super().__init__()
         # Learnable Fourier features for spatial coordinates (dims 0-1)
         self.n_fourier = n_fourier
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS,
-        steps_per_epoch=len(train_loader), pct_start=0.1,
+        steps_per_epoch=len(train_loader), pct_start=0.2,
     )
     scaler = torch.amp.GradScaler("cuda")
 
