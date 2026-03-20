@@ -52,7 +52,7 @@ class ChannelHead(nn.Module):
 
 class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=8,
-                 n_fourier=32, **kwargs):
+                 n_fourier=48, **kwargs):
         super().__init__()
         # Learnable Fourier features for spatial coordinates (dims 0-1)
         self.n_fourier = n_fourier
@@ -230,10 +230,9 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
-                # Combined MSE + L1 loss (MSE for precision, L1 for robustness)
-                mse = (pred - y_norm) ** 2
-                mae = (pred - y_norm).abs()
-                err = 0.5 * mse + 0.5 * mae
+                # Smooth L1 (Huber) loss with beta=1.0
+                err = torch.nn.functional.smooth_l1_loss(
+                    pred, y_norm, reduction='none', beta=1.0)
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
