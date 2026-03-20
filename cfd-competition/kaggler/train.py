@@ -277,14 +277,17 @@ for epoch in range(MAX_EPOCHS):
         # Forward pass — L1 loss (directly optimizes MAE metric)
         with autocast("cuda"):
             pred = model({"x": x})["preds"]
-            abs_err = (pred - y_norm).abs()
+            # Smooth L1 (Huber) loss — L1 for large errors, L2 for small
+            huber_err = torch.nn.functional.smooth_l1_loss(
+                pred, y_norm, reduction="none", beta=0.1
+            )
             channel_w = torch.tensor([1.0, 1.0, 5.0], device=device)
-            abs_err = abs_err * channel_w
+            huber_err = huber_err * channel_w
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
-            vol_loss = (abs_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (abs_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            vol_loss = (huber_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (huber_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
