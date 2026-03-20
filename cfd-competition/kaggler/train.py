@@ -145,13 +145,8 @@ if __name__ == "__main__":
     loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                          persistent_workers=True, prefetch_factor=2)
 
-    if cfg.debug:
-        train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                                  shuffle=True, **loader_kwargs)
-    else:
-        sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
-        train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                                  sampler=sampler, **loader_kwargs)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+                              shuffle=True, **loader_kwargs)
 
     val_loaders = {
         name: DataLoader(ds, batch_size=1, shuffle=False, **loader_kwargs)
