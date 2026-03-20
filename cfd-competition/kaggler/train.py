@@ -120,7 +120,7 @@ if __name__ == "__main__":
         weight_decay: float = 1e-4
         batch_size: int = 4
         accum_steps: int = 1
-        surf_weight: float = 10.0
+        surf_weight: float = 12.0
         epochs: int = 32
         grad_clip: float = 1.0
         seed: int = 42
@@ -145,8 +145,13 @@ if __name__ == "__main__":
     loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                          persistent_workers=True, prefetch_factor=2)
 
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              shuffle=True, **loader_kwargs)
+    if cfg.debug:
+        train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+                                  shuffle=True, **loader_kwargs)
+    else:
+        sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
+        train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+                                  sampler=sampler, **loader_kwargs)
 
     val_loaders = {
         name: DataLoader(ds, batch_size=1, shuffle=False, **loader_kwargs)
