@@ -164,7 +164,8 @@ if cfg.resume:
     state = torch.load(cfg.resume, map_location=device, weights_only=True)
     model.load_state_dict(state)
     print(f"Resumed from {cfg.resume}")
-ema = EMA(model, decay=0.999)
+ema = EMA(model, decay=0.999)  # EMA on uncompiled model
+model = torch.compile(model)  # compile for training speed
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
