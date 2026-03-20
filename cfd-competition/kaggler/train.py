@@ -271,6 +271,8 @@ if __name__ == "__main__":
             mask = mask.to(device, non_blocking=True)
 
             x = (x - stats["x_mean"]) / stats["x_std"]
+            # Input noise augmentation for generalization
+            x = x + 0.01 * torch.randn_like(x)
             finite = y.isfinite().all(dim=-1)
             y_safe = torch.where(finite.unsqueeze(-1), y, torch.zeros_like(y))
             y_norm = (y_safe - stats["y_mean"]) / stats["y_std"]
