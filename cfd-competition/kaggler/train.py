@@ -188,10 +188,10 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-HIDDEN = 768
-N_BLOCKS = 6
+HIDDEN = 1024
+N_BLOCKS = 4
 N_FOURIER = 66  # divisible by 3 for multi-scale
-COND_DIM = 192
+COND_DIM = 256
 
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=HIDDEN, n_blocks=N_BLOCKS,
                  n_fourier=N_FOURIER, cond_dim=COND_DIM).to(device)
