@@ -126,7 +126,7 @@ if __name__ == "__main__":
         seed: int = 42
         hidden: int = 256
         n_blocks: int = 8
-        ema_decay: float = 0.999
+        ema_decay: float = 0.998
         val_every: int = 3
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
