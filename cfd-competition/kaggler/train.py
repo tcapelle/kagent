@@ -47,7 +47,7 @@ class MultiscaleFourierFeatures(nn.Module):
 class FiLMResBlock(nn.Module):
     """ResBlock with FiLM conditioning from global features."""
 
-    def __init__(self, dim, cond_dim, dropout=0.1):
+    def __init__(self, dim, cond_dim, dropout=0.05):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.linear1 = nn.Linear(dim, dim)
