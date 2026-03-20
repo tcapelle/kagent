@@ -232,14 +232,12 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
-                # Smooth L1 (Huber) loss with beta=2.0 (more MSE-like for small errors)
-                err = torch.nn.functional.smooth_l1_loss(
-                    pred, y_norm, reduction='none', beta=2.0)
+                sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                vol_loss = (err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
                 loss = (vol_loss + cfg.surf_weight * surf_loss) / cfg.accum_steps
 
             scaler.scale(loss).backward()
