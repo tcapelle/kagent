@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 4e-4
+        lr: float = 3e-4
         weight_decay: float = 1e-4
         batch_size: int = 4
         accum_steps: int = 1
