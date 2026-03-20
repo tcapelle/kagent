@@ -126,7 +126,7 @@ if __name__ == "__main__":
         seed: int = 42
         hidden: int = 256
         n_blocks: int = 8
-        ema_decay: float = 0.998
+        ema_decay: float = 0.999
         val_every: int = 3
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
@@ -227,13 +227,14 @@ if __name__ == "__main__":
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
             # Mask out nodes with extreme normalized targets (outliers)
-            reasonable = (y_norm.abs() <= 3).all(dim=-1)
+            reasonable = (y_norm.abs() <= 6).all(dim=-1)
             mask = mask & reasonable
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
-                # Pure L1 (MAE) loss — directly optimizes the competition metric
-                err = (pred - y_norm).abs()
+                # Smooth L1 (Huber) loss with beta=1.0
+                err = torch.nn.functional.smooth_l1_loss(
+                    pred, y_norm, reduction='none', beta=1.0)
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
@@ -300,7 +301,7 @@ if __name__ == "__main__":
                     y[~finite] = 0.0
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
-                    reasonable = (y_norm.abs() <= 3).all(dim=-1)
+                    reasonable = (y_norm.abs() <= 6).all(dim=-1)
                     mask = mask & reasonable
 
                     pred = eval_model({"x": x})["preds"]
