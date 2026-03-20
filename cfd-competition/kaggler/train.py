@@ -146,7 +146,7 @@ if __name__ == "__main__":
     if cfg.resume:
         state_dict = torch.load(cfg.resume, map_location=device, weights_only=True)
         state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
-        raw_model.load_state_dict(state_dict)
+        raw_model.load_state_dict(state_dict, strict=False)
         print(f"Resumed from {cfg.resume}")
 
     model = torch.compile(raw_model)
