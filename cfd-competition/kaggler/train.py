@@ -47,7 +47,7 @@ class MultiscaleFourierFeatures(nn.Module):
 class FiLMResBlock(nn.Module):
     """ResBlock with FiLM conditioning from global features."""
 
-    def __init__(self, dim, cond_dim, dropout=0.05):
+    def __init__(self, dim, cond_dim, dropout=0.1):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.linear1 = nn.Linear(dim, dim)
@@ -188,10 +188,10 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-HIDDEN = 1024
-N_BLOCKS = 4
+HIDDEN = 768
+N_BLOCKS = 6
 N_FOURIER = 66  # divisible by 3 for multi-scale
-COND_DIM = 256
+COND_DIM = 192
 
 model = CFDModel(in_dim=X_DIM, out_dim=3, hidden=HIDDEN, n_blocks=N_BLOCKS,
                  n_fourier=N_FOURIER, cond_dim=COND_DIM).to(device)

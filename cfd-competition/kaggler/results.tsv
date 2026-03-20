@@ -8,4 +8,6 @@ fc5a678	2.4291	~49.5	discard	512h warm restarts (x3)
 4504aa0	2.4161	~48.7	discard	768h wide + multiscale Fourier + warm restarts (x2)
 43cead2	5.5720	~44.9	discard	L1 loss + p3x + sw50 (single Fourier, 4 warm restarts)
 6565d83	5.8949	~42.8	discard	dual Fourier (pos+geom) + L1 loss + 4 warm restarts
-b5bdf6c	5.7494	~41.6	best	+dropout 5% + 4 more warm restarts
+b5bdf6c	5.7494	~41.6	discard	+dropout 5% + 4 more warm restarts
+6e1805e	5.6570	~41.5	best	Huber loss fine-tune from best
+00e2a51	?	?	keep	mixed ensemble (3x768h + 1x1024h)
