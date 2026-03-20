@@ -121,7 +121,7 @@ if __name__ == "__main__":
         batch_size: int = 4
         accum_steps: int = 1
         surf_weight: float = 10.0
-        epochs: int = 26
+        epochs: int = 30
         grad_clip: float = 1.0
         hidden: int = 256
         n_blocks: int = 8
