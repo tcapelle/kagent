@@ -136,8 +136,6 @@ if __name__ == "__main__":
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
-    torch.manual_seed(cfg.seed)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 
@@ -232,12 +230,14 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+                # Smooth L1 (Huber) loss with beta=1.0
+                err = torch.nn.functional.smooth_l1_loss(
+                    pred, y_norm, reduction='none', beta=1.0)
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+                vol_loss = (err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+                surf_loss = (err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
                 loss = (vol_loss + cfg.surf_weight * surf_loss) / cfg.accum_steps
 
             scaler.scale(loss).backward()
