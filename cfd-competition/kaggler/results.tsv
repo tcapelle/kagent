@@ -7,3 +7,6 @@ commit	val_loss	mae_surf_p	status	description
 28ee951	1.3487	~46	keep	v14: 25 epochs val_every=8, best yet
 420fa8d	1.2715	38.13	keep	v21: Fourier pos+saf (4 dims, 6 freq), val_every=12
 2284ac8	1.2176	36.60	keep	v22: Fourier all geometric dims (0-11, 4 freq)
+f8d9ea9	1.2079	35.53	keep	v23: 27 epochs val_every=24, Fourier all geom 4freq
+ba29f5f	1.1715	36.37	keep	v25: Re-dependent pressure scaling + Fourier all geom
+a45a363	1.1455	32.27	keep	v27: BEST - 6 blocks 35ep, Fourier geom + p_scale + FiLM + EMA
