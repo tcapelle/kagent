@@ -159,7 +159,7 @@ val_loaders = {
 }
 
 # --- Build model ---
-model = ResMLP(in_dim=X_DIM, hidden=384, n_blocks=10, dropout=0.0).to(device)
+model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=8, dropout=0.0).to(device)
 if cfg.resume:
     state = torch.load(cfg.resume, map_location=device, weights_only=True)
     model.load_state_dict(state)
