@@ -11,3 +11,4 @@ fc5a678	2.4291	~49.5	discard	512h warm restarts (x3)
 b5bdf6c	5.7494	~41.6	discard	+dropout 5% + 4 more warm restarts
 6e1805e	5.6570	~41.5	best	Huber loss fine-tune from best
 00e2a51	?	?	keep	mixed ensemble (3x768h + 1x1024h)
+e36cc6c	5.5947	~41.9	keep	noise augmentation + 5-model ensemble
