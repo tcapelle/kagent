@@ -23,4 +23,6 @@ ee68386	1.2030	?	keep	h576 warm restart lr=1e-4, 30ep
 ee68386	1.1621	?	keep	h576 warm restart lr=5e-5, 30ep
 ee68386	1.1433	?	keep	h576 warm restart lr=2e-5, 30ep
 ee68386	1.1301	?	keep	h576 warm restart lr=1e-5, 30ep
-ee68386	1.1264	?	keep	h576 warm restart lr=5e-6, 30ep - NEW BEST (converged)
+ee68386	1.1264	?	keep	h576 warm restart lr=5e-6, 30ep (converged without Re-scale)
+55a2dcc	1.1131	?	keep	h576+Re-scale warm restart lr=5e-5, 20ep
+55a2dcc	1.1096	?	keep	h576+Re-scale warm restart lr=2e-5, 30ep - NEW BEST
