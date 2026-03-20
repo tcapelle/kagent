@@ -14,3 +14,5 @@ a45a363	1.1455	32.27	keep	v27: BEST - 6 blocks 35ep, Fourier geom + p_scale + Fi
 75ea5fa	1.1389	31.28	keep	v36: BEST avg mae - noise aug, best generalization (avg=41.1)
 bb83574	1.2577	29.68	keep	v46: BEST MAE! L1 surface loss, avg mae_surf_p=37.5
 25f1d1a	2.3756	30.49	keep	v47: L1 surf + sw=20, avg mae_surf_p=37.4
+1221225	1.6317	26.32	keep	v51: BEST! warm restart from v48, lr=1e-4, avg mae_surf_p=34.82
+1221225	1.5755	24.09	keep	v54: BEST! warm restart r4 lr=1e-5, avg mae_surf_p=32.99
