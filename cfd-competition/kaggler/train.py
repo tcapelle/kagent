@@ -283,7 +283,7 @@ for epoch in range(MAX_EPOCHS):
             pred = model({"x": x})["preds"]
             # Combined loss: Huber (smooth L1) for volume, pure L1 for surface
             diff = pred - y_norm
-            channel_w = torch.tensor([1.0, 1.0, 10.0], device=device)
+            channel_w = torch.tensor([1.0, 1.0, 5.0], device=device)
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
