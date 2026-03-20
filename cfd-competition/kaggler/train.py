@@ -101,9 +101,9 @@ MAX_TIMEOUT = 30.0  # minutes — do not increase
 
 @dataclass
 class Config:
-    lr: float = 1e-3
+    lr: float = 2e-3
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 4
     surf_weight: float = 10.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
@@ -158,7 +158,7 @@ val_loaders = {
 }
 
 # --- Build model ---
-model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=8, dropout=0.0).to(device)
+model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=12, expansion=2, dropout=0.0).to(device)
 ema = EMA(model, decay=0.999)
 
 n_params = sum(p.numel() for p in model.parameters())
