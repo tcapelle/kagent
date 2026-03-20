@@ -10,3 +10,5 @@ commit	val_loss	mae_surf_p	status	description
 f8d9ea9	1.2079	35.53	keep	v23: 27 epochs val_every=24, Fourier all geom 4freq
 ba29f5f	1.1715	36.37	keep	v25: Re-dependent pressure scaling + Fourier all geom
 a45a363	1.1455	32.27	keep	v27: BEST - 6 blocks 35ep, Fourier geom + p_scale + FiLM + EMA
+22b50a9	1.1291	29.62	keep	v34: BEST val/loss - bs=2 accum=2, 40ep
+75ea5fa	1.1389	31.28	keep	v36: BEST avg mae - noise aug, best generalization (avg=41.1)
