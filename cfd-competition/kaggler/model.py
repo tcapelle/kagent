@@ -8,7 +8,7 @@ import torch.nn as nn
 
 class FiLMResMLPBlock(nn.Module):
     """ResMLPBlock with FiLM conditioning from global features."""
-    def __init__(self, dim, cond_dim, expansion=2, dropout=0.0):
+    def __init__(self, dim, cond_dim, expansion=4, dropout=0.0):
         super().__init__()
         inner = dim * expansion
         self.norm = nn.LayerNorm(dim)
@@ -36,19 +36,25 @@ class ResMLP(nn.Module):
         self.local_dim = local_dim
         self.global_dim = global_dim
         self.proj_in = nn.Linear(in_dim, hidden)
-        cond_hidden = 64
+        # Larger condition encoder for better global feature processing
+        cond_hidden = 128
         self.cond_encoder = nn.Sequential(
             nn.Linear(global_dim, cond_hidden), nn.GELU(),
+            nn.Linear(cond_hidden, cond_hidden), nn.GELU(),
             nn.Linear(cond_hidden, cond_hidden), nn.GELU(),
         )
         self.blocks = nn.ModuleList([
             FiLMResMLPBlock(hidden, cond_hidden, expansion, dropout) for _ in range(n_blocks)
         ])
         self.norm_out = nn.LayerNorm(hidden)
-        # Separate heads for each output channel
+        # Separate heads — deeper pressure head since it's the primary metric
         self.head_ux = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
         self.head_uy = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
-        self.head_p = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
+        self.head_p = nn.Sequential(
+            nn.Linear(hidden, hidden), nn.GELU(),
+            nn.Linear(hidden, hidden // 2), nn.GELU(),
+            nn.Linear(hidden // 2, 1),
+        )
 
     def forward(self, data, **kwargs):
         x_full = data["x"]
