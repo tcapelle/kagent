@@ -110,6 +110,7 @@ class Config:
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
+    resume: str | None = None  # path to checkpoint to resume from
     debug: bool = False
 
 
@@ -159,12 +160,16 @@ val_loaders = {
 
 # --- Build model ---
 model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=8, dropout=0.0).to(device)
+if cfg.resume:
+    state = torch.load(cfg.resume, map_location=device, weights_only=True)
+    model.load_state_dict(state)
+    print(f"Resumed from {cfg.resume}")
 ema = EMA(model, decay=0.999)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 actual_epochs = min(MAX_EPOCHS, int(MAX_TIMEOUT * 60 / 135))  # ~14 epochs at 135s/epoch
-scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=actual_epochs // 2, T_mult=1)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=actual_epochs)
 scaler = torch.amp.GradScaler("cuda")
 
 
