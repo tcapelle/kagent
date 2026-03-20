@@ -278,7 +278,7 @@ for epoch in range(MAX_EPOCHS):
         with autocast("cuda"):
             pred = model({"x": x})["preds"]
             abs_err = (pred - y_norm).abs()
-            channel_w = torch.tensor([1.0, 1.0, 3.0], device=device)
+            channel_w = torch.tensor([1.0, 1.0, 5.0], device=device)
             abs_err = abs_err * channel_w
 
             vol_mask = mask & ~is_surface
