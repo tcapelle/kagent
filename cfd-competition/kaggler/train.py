@@ -269,6 +269,10 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
+        # Input noise augmentation (helps generalization)
+        if model.training:
+            x = x + 0.01 * torch.randn_like(x)
+
         # Mask out nodes with inf/nan targets and sanitize
         finite_mask = y.isfinite().all(dim=-1) & y_norm.isfinite().all(dim=-1)
         mask = mask & finite_mask
