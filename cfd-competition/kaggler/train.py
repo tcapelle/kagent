@@ -110,6 +110,7 @@ if __name__ == "__main__":
         val_every: int = 5
         epochs: int = 45
         resume: str | None = None  # path to checkpoint for warm restart
+        accum_steps: int = 1  # gradient accumulation steps
         splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -203,7 +204,9 @@ if __name__ == "__main__":
         epoch_vol = epoch_surf = 0.0
         n_batches = 0
 
-        for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+        accum = cfg.accum_steps
+        optimizer.zero_grad()
+        for batch_idx, (x, y, is_surface, mask) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False)):
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             is_surface = is_surface.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
@@ -219,28 +222,29 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+                abs_err = (pred - y_norm).abs()
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-                loss = vol_loss + cfg.surf_weight * surf_loss
+                vol_loss = (abs_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+                surf_loss = (abs_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+                loss = (vol_loss + cfg.surf_weight * surf_loss) / accum
 
             if not loss.isfinite():
-                optimizer.zero_grad()
                 continue
 
-            optimizer.zero_grad()
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
-            ema_model.update_parameters(raw_model)
+
+            if (batch_idx + 1) % accum == 0 or (batch_idx + 1) == len(train_loader):
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+                ema_model.update_parameters(raw_model)
 
             global_step += 1
-            wandb.log({"train/loss": loss.item(), "global_step": global_step})
+            wandb.log({"train/loss": loss.item() * accum, "global_step": global_step})
 
             epoch_vol += vol_loss.item()
             epoch_surf += surf_loss.item()
