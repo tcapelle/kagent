@@ -66,36 +66,6 @@ class FiLMResBlock(nn.Module):
         return x + h
 
 
-class PerceiverCrossAttention(nn.Module):
-    """Lightweight cross-attention: latent tokens attend to mesh nodes."""
-
-    def __init__(self, dim, n_latents=16, n_heads=4):
-        super().__init__()
-        self.n_latents = n_latents
-        self.latents = nn.Parameter(torch.randn(n_latents, dim) * 0.02)
-        self.cross_attn = nn.MultiheadAttention(dim, n_heads, batch_first=True)
-        self.norm_q = nn.LayerNorm(dim)
-        self.norm_kv = nn.LayerNorm(dim)
-        # Broadcast back: nodes attend to latents
-        self.broadcast = nn.MultiheadAttention(dim, n_heads, batch_first=True)
-        self.norm_bq = nn.LayerNorm(dim)
-        self.norm_bkv = nn.LayerNorm(dim)
-
-    def forward(self, h):
-        B = h.shape[0]
-        latents = self.latents.unsqueeze(0).expand(B, -1, -1)
-        # Latents attend to nodes
-        agg, _ = self.cross_attn(
-            self.norm_q(latents), self.norm_kv(h), h
-        )
-        latents = latents + agg
-        # Nodes attend to latents
-        ctx, _ = self.broadcast(
-            self.norm_bq(h), self.norm_bkv(latents), latents
-        )
-        return h + ctx
-
-
 class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8,
                  n_fourier=64, cond_dim=128):
@@ -116,12 +86,7 @@ class CFDModel(nn.Module):
             nn.Linear(cond_dim, cond_dim),
         )
 
-        # 3 local blocks → perceiver bottleneck → 3 local blocks
-        n_pre = n_blocks // 2
-        n_post = n_blocks - n_pre
-        self.pre_blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_pre)])
-        self.perceiver = PerceiverCrossAttention(hidden, n_latents=16, n_heads=4)
-        self.post_blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_post)])
+        self.blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_blocks)])
 
         self.head_vel = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 2))
         self.head_p = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 1))
@@ -140,15 +105,7 @@ class CFDModel(nn.Module):
 
         cond = self.cond_enc(global_feat)
 
-        # Local processing
-        for block in self.pre_blocks:
-            h = block(h, cond)
-
-        # Global context via perceiver bottleneck
-        h = self.perceiver(h)
-
-        # Context-aware local processing
-        for block in self.post_blocks:
+        for block in self.blocks:
             h = block(h, cond)
 
         vel = self.head_vel(h)
