@@ -293,8 +293,9 @@ if __name__ == "__main__":
                 vol_mask = mask & ~is_surface & finite
                 surf_mask = mask & is_surface & finite
                 vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                # Use L1 loss for surface — directly optimizes MAE metric
-                surf_loss = (abs_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+                # L1 for surface with pressure channel emphasis (channel 2 = pressure)
+                channel_w = torch.tensor([1.0, 1.0, 2.0], device=abs_err.device)
+                surf_loss = (abs_err * channel_w * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
                 loss = (vol_loss + cfg.surf_weight * surf_loss) / cfg.accum_steps
 
             scaler.scale(loss).backward()
