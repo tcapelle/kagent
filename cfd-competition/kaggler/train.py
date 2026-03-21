@@ -212,7 +212,7 @@ scheduler = torch.optim.lr_scheduler.SequentialLR(
     optimizer,
     schedulers=[
         torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=warmup_epochs),
-        torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=7, T_mult=2, eta_min=1e-6),
+        torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS - warmup_epochs),
     ],
     milestones=[warmup_epochs],
 )
