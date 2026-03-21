@@ -1,0 +1,17 @@
+commit	val_loss	mae_surf_p	status	description
+90d307b	2.2211	~88	keep	baseline resmlp 256h 8blk, 9 epochs
+1265c3a	1.8693	~76	keep	AMP, lr=1e-3, 17 epochs
+0440dd5	1.7877	~68	keep	FiLM conditioning, 14 epochs
+f5bb29d	1.7436	~65	keep	fix cosine LR to T_max=14
+128b346	1.4769	~55	keep	round 2 resume lr=5e-4
+774c85a	1.3711	~49	keep	round 3 resume lr=2e-4
+983e38b	1.3401	~44.7	keep	round 4 resume lr=1e-4
+6d65f21	1.3288	~44	keep	round 5 resume lr=5e-5
+96f9ae6	1.3090	~43	keep	round 7 warm restart lr=3e-4
+05d783e	1.2908	~43	keep	round 8 lr=1e-4
+d8428d0	1.2840	~43	keep	round 9 warm restart lr=3e-4
+6d14757	1.2672	~42.9	keep	round 10 lr=1e-4 + torch.compile
+cd83bb1	1.2681	~42.5	keep	round 12 torch.compile 19 epochs
+249a657	1.2247	~42.1	best-v1	round 20 lr=1e-4 (v1 model best)
+60056bb	1.2430	~43.4	keep	V2 model round 13 lr=3e-4
+96d53dd	1.2444	~43	keep	V2 model round 16 converged

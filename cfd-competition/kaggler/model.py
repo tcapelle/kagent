@@ -36,25 +36,19 @@ class ResMLP(nn.Module):
         self.local_dim = local_dim
         self.global_dim = global_dim
         self.proj_in = nn.Linear(in_dim, hidden)
-        # Larger condition encoder for better global feature processing
-        cond_hidden = 128
+        cond_hidden = 64
         self.cond_encoder = nn.Sequential(
             nn.Linear(global_dim, cond_hidden), nn.GELU(),
-            nn.Linear(cond_hidden, cond_hidden), nn.GELU(),
             nn.Linear(cond_hidden, cond_hidden), nn.GELU(),
         )
         self.blocks = nn.ModuleList([
             FiLMResMLPBlock(hidden, cond_hidden, expansion, dropout) for _ in range(n_blocks)
         ])
         self.norm_out = nn.LayerNorm(hidden)
-        # Separate heads — deeper pressure head since it's the primary metric
+        # Separate heads for each output channel
         self.head_ux = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
         self.head_uy = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
-        self.head_p = nn.Sequential(
-            nn.Linear(hidden, hidden), nn.GELU(),
-            nn.Linear(hidden, hidden // 2), nn.GELU(),
-            nn.Linear(hidden // 2, 1),
-        )
+        self.head_p = nn.Sequential(nn.Linear(hidden, hidden // 2), nn.GELU(), nn.Linear(hidden // 2, 1))
 
     def forward(self, data, **kwargs):
         x_full = data["x"]
