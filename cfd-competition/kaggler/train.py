@@ -54,18 +54,10 @@ class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=8,
                  n_fourier=32, **kwargs):
         super().__init__()
-        # Multi-scale Fourier features for spatial coordinates (dims 0-1)
-        # Use log-spaced frequencies from 1 to 64 for good spatial coverage
+        # Learnable Fourier features for spatial coordinates (dims 0-1)
         self.n_fourier = n_fourier
-        freqs = torch.logspace(0, math.log10(64), n_fourier // 2)  # [n_fourier/2]
-        # Random directions for each frequency
-        angles = torch.rand(n_fourier // 2) * 2 * math.pi
-        B = torch.stack([freqs * angles.cos(), freqs * angles.sin()], dim=0)  # [2, n_fourier/2]
-        # Also add axis-aligned frequencies
-        B_x = torch.stack([freqs, torch.zeros_like(freqs)], dim=0)
-        B_y = torch.stack([torch.zeros_like(freqs), freqs], dim=0)
-        fourier_B = torch.cat([B, B_x, B_y], dim=1)[:, :n_fourier]  # [2, n_fourier]
-        self.fourier_B = nn.Parameter(fourier_B)
+        self.fourier_B = nn.Parameter(
+            torch.randn(2, n_fourier) * 2 * math.pi)
         # Input: original features + Fourier features (sin + cos)
         self.proj_in = nn.Linear(in_dim + 2 * n_fourier, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
