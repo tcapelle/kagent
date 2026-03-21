@@ -120,7 +120,7 @@ if __name__ == "__main__":
         weight_decay: float = 1e-4
         batch_size: int = 4
         accum_steps: int = 1
-        surf_weight: float = 10.0
+        surf_weight: float = 15.0
         epochs: int = 32
         grad_clip: float = 1.0
         seed: int = 42
