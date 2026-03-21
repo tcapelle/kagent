@@ -272,6 +272,7 @@ for epoch in range(MAX_EPOCHS):
         # Input noise augmentation (helps generalization)
         if model.training:
             x = x + 0.01 * torch.randn_like(x)
+            y_norm = y_norm + 0.005 * torch.randn_like(y_norm)  # label smoothing
 
         # Mask out nodes with inf/nan targets and sanitize
         finite_mask = y.isfinite().all(dim=-1) & y_norm.isfinite().all(dim=-1)
