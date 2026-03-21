@@ -18,3 +18,4 @@ bb83574	1.2577	29.68	keep	v46: BEST MAE! L1 surface loss, avg mae_surf_p=37.5
 1221225	1.5755	24.09	keep	v54: BEST! warm restart r4 lr=1e-5, avg mae_surf_p=32.99
 b093382	2.0337	23.93	keep	v56: warm restart r6 sw=20 lr=5e-6, avg mae_surf_p=32.83 FINAL BEST
 6786f51	1.5533	22.88	keep	v60+: PW-L1 warm restarts r9-r27, val avg=31.43
+e20826a	1.5533	22.28	keep	v60+: PW-L1 warm restarts r9-r30, val avg=31.43, 10-model ensemble
