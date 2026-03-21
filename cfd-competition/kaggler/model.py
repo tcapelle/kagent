@@ -29,13 +29,39 @@ class FiLMResMLPBlock(nn.Module):
         return x + self.drop(self.fc2(self.act(self.fc1(h))))
 
 
+class FourierEncoding(nn.Module):
+    """Sinusoidal positional encoding for spatial features."""
+    def __init__(self, n_freqs=4, input_dims=2):
+        super().__init__()
+        self.n_freqs = n_freqs
+        self.input_dims = input_dims
+        freqs = 2.0 ** torch.arange(n_freqs)
+        self.register_buffer("freqs", freqs)
+
+    @property
+    def out_dim(self):
+        return self.input_dims * (1 + 2 * self.n_freqs)
+
+    def forward(self, x):
+        # x: [..., input_dims]
+        orig = x
+        encoded = [orig]
+        for f in self.freqs:
+            encoded.append(torch.sin(f * torch.pi * x))
+            encoded.append(torch.cos(f * torch.pi * x))
+        return torch.cat(encoded, dim=-1)
+
+
 class ResMLP(nn.Module):
     def __init__(self, in_dim=24, hidden=256, n_blocks=8, out_dim=3, expansion=4,
-                 dropout=0.0, local_dim=13, global_dim=11):
+                 dropout=0.0, local_dim=13, global_dim=11, n_fourier_freqs=4):
         super().__init__()
         self.local_dim = local_dim
         self.global_dim = global_dim
-        self.proj_in = nn.Linear(in_dim, hidden)
+        # Fourier encoding for position (x, z) = dims 0-1
+        self.pos_enc = FourierEncoding(n_freqs=n_fourier_freqs, input_dims=2)
+        fourier_extra = self.pos_enc.out_dim - 2  # extra dims from encoding
+        self.proj_in = nn.Linear(in_dim + fourier_extra, hidden)
         cond_hidden = 64
         self.cond_encoder = nn.Sequential(
             nn.Linear(global_dim, cond_hidden), nn.GELU(),
@@ -53,7 +79,10 @@ class ResMLP(nn.Module):
     def forward(self, data, **kwargs):
         x_full = data["x"]
         cond = self.cond_encoder(x_full[:, 0, self.local_dim:])
-        x = self.proj_in(x_full)
+        # Apply Fourier encoding to position features (dims 0-1)
+        pos_encoded = self.pos_enc(x_full[..., :2])
+        x_augmented = torch.cat([pos_encoded, x_full[..., 2:]], dim=-1)
+        x = self.proj_in(x_augmented)
         for block in self.blocks:
             x = block(x, cond)
         x = self.norm_out(x)
