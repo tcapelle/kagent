@@ -66,60 +66,91 @@ class FiLMResBlock(nn.Module):
         return x + h
 
 
+class PerceiverCrossAttention(nn.Module):
+    """Lightweight cross-attention: latent tokens attend to mesh nodes."""
+
+    def __init__(self, dim, n_latents=16, n_heads=4):
+        super().__init__()
+        self.n_latents = n_latents
+        self.latents = nn.Parameter(torch.randn(n_latents, dim) * 0.02)
+        self.cross_attn = nn.MultiheadAttention(dim, n_heads, batch_first=True)
+        self.norm_q = nn.LayerNorm(dim)
+        self.norm_kv = nn.LayerNorm(dim)
+        # Broadcast back: nodes attend to latents
+        self.broadcast = nn.MultiheadAttention(dim, n_heads, batch_first=True)
+        self.norm_bq = nn.LayerNorm(dim)
+        self.norm_bkv = nn.LayerNorm(dim)
+
+    def forward(self, h):
+        B = h.shape[0]
+        latents = self.latents.unsqueeze(0).expand(B, -1, -1)
+        # Latents attend to nodes
+        agg, _ = self.cross_attn(
+            self.norm_q(latents), self.norm_kv(h), h
+        )
+        latents = latents + agg
+        # Nodes attend to latents
+        ctx, _ = self.broadcast(
+            self.norm_bq(h), self.norm_bkv(latents), latents
+        )
+        return h + ctx
+
+
 class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=512, n_blocks=8,
                  n_fourier=64, cond_dim=128):
         super().__init__()
-        # Input splits: local (dims 0-12) and global (dims 13-23)
         self.local_dim = 13
-        self.global_dim = in_dim - 13  # 11
+        self.global_dim = in_dim - 13
 
-        # Multi-scale Fourier on position (2d) and on saf+dsdf (10d)
         self.fourier_pos = MultiscaleFourierFeatures(2, n_fourier, scales=(1.0, 5.0, 25.0))
         self.fourier_geom = MultiscaleFourierFeatures(10, n_fourier, scales=(1.0, 5.0, 25.0))
 
-        # Input projection: local features + fourier features (pos + geom)
         n_fourier_actual = (n_fourier // 3) * 3
         proj_in_dim = self.local_dim + 2 * n_fourier_actual * 2
         self.proj_in = nn.Linear(proj_in_dim, hidden)
 
-        # Global condition encoder
         self.cond_enc = nn.Sequential(
             nn.Linear(self.global_dim, cond_dim),
             nn.GELU(),
             nn.Linear(cond_dim, cond_dim),
         )
 
-        # FiLM-conditioned ResBlocks
-        self.blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_blocks)])
+        # 3 local blocks → perceiver bottleneck → 3 local blocks
+        n_pre = n_blocks // 2
+        n_post = n_blocks - n_pre
+        self.pre_blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_pre)])
+        self.perceiver = PerceiverCrossAttention(hidden, n_latents=16, n_heads=4)
+        self.post_blocks = nn.ModuleList([FiLMResBlock(hidden, cond_dim) for _ in range(n_post)])
 
-        # Separate heads for velocity and pressure
         self.head_vel = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 2))
         self.head_p = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 1))
 
     def forward(self, data, **kwargs):
-        x = data["x"]  # [B, N, 24]
+        x = data["x"]
 
-        # Split local (per-node) and global (per-sample) features
         local = x[:, :, :self.local_dim]
-        global_feat = x[:, 0, self.local_dim:]  # same for all nodes
+        global_feat = x[:, 0, self.local_dim:]
 
-        # Fourier features on position and geometry
         ff_pos = self.fourier_pos(x[:, :, :2])
         ff_geom = self.fourier_geom(x[:, :, 2:12])
 
-        # Combine and project
         h = torch.cat([local, ff_pos, ff_geom], dim=-1)
         h = self.proj_in(h)
 
-        # Condition encoding
         cond = self.cond_enc(global_feat)
 
-        # FiLM blocks
-        for block in self.blocks:
+        # Local processing
+        for block in self.pre_blocks:
             h = block(h, cond)
 
-        # Separate heads
+        # Global context via perceiver bottleneck
+        h = self.perceiver(h)
+
+        # Context-aware local processing
+        for block in self.post_blocks:
+            h = block(h, cond)
+
         vel = self.head_vel(h)
         p = self.head_p(h)
         return {"preds": torch.cat([vel, p], dim=-1)}
