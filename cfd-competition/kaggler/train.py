@@ -120,7 +120,7 @@ if __name__ == "__main__":
         weight_decay: float = 1e-4
         batch_size: int = 4
         accum_steps: int = 1
-        surf_weight: float = 15.0
+        surf_weight: float = 10.0
         epochs: int = 32
         grad_clip: float = 1.0
         seed: int = 42
@@ -230,15 +230,14 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model({"x": x})["preds"]
-                # MSE for volume, Huber for surface (robust where it matters)
-                sq_err = (pred - y_norm) ** 2
-                huber_err = torch.nn.functional.smooth_l1_loss(
+                # Smooth L1 (Huber) loss with beta=1.0
+                err = torch.nn.functional.smooth_l1_loss(
                     pred, y_norm, reduction='none', beta=1.0)
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (huber_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+                vol_loss = (err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+                surf_loss = (err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
                 loss = (vol_loss + cfg.surf_weight * surf_loss) / cfg.accum_steps
 
             scaler.scale(loss).backward()
