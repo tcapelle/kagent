@@ -75,8 +75,8 @@ class CFDModel(nn.Module):
         self.global_dim = in_dim - 13  # 11
 
         # Multi-scale Fourier on position (2d) and on saf+dsdf (10d)
-        self.fourier_pos = MultiscaleFourierFeatures(2, n_fourier, scales=(1.0, 5.0, 25.0))
-        self.fourier_geom = MultiscaleFourierFeatures(10, n_fourier, scales=(1.0, 5.0, 25.0))
+        self.fourier_pos = MultiscaleFourierFeatures(2, n_fourier, scales=(0.5, 3.0, 15.0))
+        self.fourier_geom = MultiscaleFourierFeatures(10, n_fourier, scales=(0.5, 3.0, 15.0))
 
         # Input projection: local features + fourier features (pos + geom)
         n_fourier_actual = (n_fourier // 3) * 3
