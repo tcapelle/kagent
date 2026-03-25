@@ -1,0 +1,13 @@
+git add -A && git commit --allow-empty -m 'v248: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v248' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v249: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v249' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v250: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v250' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v251: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v251' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v252: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v252' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v253: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v253' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v254: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v254' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v255: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v255' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v256: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v256' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v257: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v257' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v258: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v258' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v259: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v259' > run.log 2>&1
+git add -A && git commit --allow-empty -m 'v260: replay' && WANDB_MODE=offline PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True uv run python train.py --agent fern --wandb_name 'fern/replay-v260' > run.log 2>&1
