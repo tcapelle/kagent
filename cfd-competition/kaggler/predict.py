@@ -70,7 +70,7 @@ configs_and_checkpoints = [
     # h192x16 - 1 model (new 6th architecture)
     (192, 16, 'models/model-aevg54og/checkpoint.pt'),  # sw20
     # h640x3 - 1 model (new 7th architecture)
-    (640, 3, 'models/model-p16uv4jl/checkpoint.pt'),  # sw20
+    (640, 3, 'models/model-jiokt8oq/checkpoint.pt'),  # sw20 r7
 ]
 
 # Load all models
