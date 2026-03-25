@@ -39,7 +39,7 @@ splits_dir = Path(cfg.splits_dir)
 
 from train import CFDModel
 
-# 23-model ensemble: 6 architectures x various surface weights
+# 25-model ensemble: 6 architectures x various surface weights
 configs_and_checkpoints = [
     # h576x4 (L1-finetuned, sw20) - 5 models
     (576, 4, 'models/model-2m8nw7ay/checkpoint.pt'),
@@ -66,10 +66,12 @@ configs_and_checkpoints = [
     (448, 6, 'models/model-jmmn1xmo/checkpoint.pt'),  # sw10
     (448, 6, 'models/model-0farx8wu/checkpoint.pt'),  # sw25
     (448, 6, 'models/model-yhrdxpm6/checkpoint.pt'),  # sw5
-    # h192x16 - 1 model (new architecture)
+    # h192x16 - 2 models (new architecture)
     (192, 16, 'models/model-aevg54og/checkpoint.pt'),  # sw20
-    # h640x3 - 1 model (new architecture)
-    (640, 3, 'models/model-0xbpwmfp/checkpoint.pt'),  # sw20
+    (192, 16, 'models/model-itehj77h/checkpoint.pt'),  # sw10
+    # h640x3 - 3 models (new architecture)
+    (640, 3, 'models/model-p16uv4jl/checkpoint.pt'),  # sw20 r6
+    (640, 3, 'models/model-b1n9slsl/checkpoint.pt'),  # sw10
 ]
 
 # Load all models
