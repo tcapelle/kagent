@@ -129,11 +129,15 @@ with torch.no_grad():
             pred = pred_norm * y_std + y_mean
             all_preds.append(pred)
 
-        # Trimmed mean: sort, remove top/bottom TRIM, average rest
+        # Per-channel trimmed mean: trim independently for each output channel
         stacked = torch.stack(all_preds, dim=0)  # [M, B, N, 3]
-        sorted_preds = stacked.sort(dim=0).values
-        trimmed = sorted_preds[TRIM:-TRIM]  # remove top/bottom TRIM
-        ensemble_pred = trimmed.mean(dim=0)
+        channels = []
+        for c in range(3):
+            ch = stacked[..., c]  # [M, B, N]
+            sorted_ch = ch.sort(dim=0).values
+            trimmed_ch = sorted_ch[TRIM:-TRIM]
+            channels.append(trimmed_ch.mean(dim=0))
+        ensemble_pred = torch.stack(channels, dim=-1)  # [B, N, 3]
 
         for j, x in enumerate(xs):
             predictions.append(ensemble_pred[j, :x.shape[0]].cpu())
