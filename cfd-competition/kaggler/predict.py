@@ -39,7 +39,7 @@ splits_dir = Path(cfg.splits_dir)
 
 from train import CFDModel
 
-# 25-model ensemble: 6 architectures x various surface weights
+# 31-model ensemble: 6 architectures x various surface weights
 configs_and_checkpoints = [
     # h576x4 (L1-finetuned, sw20) - 5 models
     (576, 4, 'models/model-2m8nw7ay/checkpoint.pt'),
@@ -66,12 +66,18 @@ configs_and_checkpoints = [
     (448, 6, 'models/model-jmmn1xmo/checkpoint.pt'),  # sw10
     (448, 6, 'models/model-0farx8wu/checkpoint.pt'),  # sw25
     (448, 6, 'models/model-yhrdxpm6/checkpoint.pt'),  # sw5
-    # h192x16 - 2 models (new architecture)
+    # h192x16 - 5 models (various sw)
     (192, 16, 'models/model-aevg54og/checkpoint.pt'),  # sw20
     (192, 16, 'models/model-itehj77h/checkpoint.pt'),  # sw10
-    # h640x3 - 3 models (new architecture)
-    (640, 3, 'models/model-p16uv4jl/checkpoint.pt'),  # sw20 r6
+    (192, 16, 'models/model-szaqzjj2/checkpoint.pt'),  # sw5
+    (192, 16, 'models/model-8qn718k1/checkpoint.pt'),  # sw15
+    (192, 16, 'models/model-nzwkykno/checkpoint.pt'),  # sw25
+    # h640x3 - 5 models (various sw)
+    (640, 3, 'models/model-p16uv4jl/checkpoint.pt'),  # sw20
     (640, 3, 'models/model-b1n9slsl/checkpoint.pt'),  # sw10
+    (640, 3, 'models/model-qeynup6w/checkpoint.pt'),  # sw5
+    (640, 3, 'models/model-1bz9b0x6/checkpoint.pt'),  # sw15
+    (640, 3, 'models/model-unkgk0bq/checkpoint.pt'),  # sw25
 ]
 
 # Load all models
