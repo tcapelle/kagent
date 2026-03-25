@@ -106,7 +106,7 @@ test_files = sorted((splits_dir / "test").glob("*.pt"))
 print(f"Test samples: {len(test_files)}")
 
 # Run inference with trimmed mean (trim=3)
-TRIM = 4
+TRIM = 3
 predictions = []
 with torch.no_grad():
     for i in tqdm(range(0, len(test_files), cfg.batch_size), desc="Predicting"):
