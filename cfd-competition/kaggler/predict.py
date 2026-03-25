@@ -39,7 +39,7 @@ splits_dir = Path(cfg.splits_dir)
 
 from train import CFDModel
 
-# 31-model ensemble: 6 architectures x various surface weights
+# 22-model ensemble (best scoring config from 45de9c7) + 1 h640x3 = 23 models
 configs_and_checkpoints = [
     # h576x4 (L1-finetuned, sw20) - 5 models
     (576, 4, 'models/model-2m8nw7ay/checkpoint.pt'),
@@ -47,13 +47,14 @@ configs_and_checkpoints = [
     (576, 4, 'models/model-a1t4433a/checkpoint.pt'),
     (576, 4, 'models/model-k3w2fzq7/checkpoint.pt'),
     (576, 4, 'models/model-5u41rg2i/checkpoint.pt'),
-    # h384x8 - 6 models (various sw)
+    # h384x8 - 7 models (various sw + seed42)
     (384, 8, 'models/model-zlurpzuy/checkpoint.pt'),  # sw20
     (384, 8, 'models/model-6dymv1xq/checkpoint.pt'),  # sw20
     (384, 8, 'models/model-ic7ik3y7/checkpoint.pt'),  # sw10
     (384, 8, 'models/model-85bifouh/checkpoint.pt'),  # sw15
     (384, 8, 'models/model-99444jke/checkpoint.pt'),  # sw25
     (384, 8, 'models/model-07mei2kq/checkpoint.pt'),  # sw5
+    (384, 8, 'models/model-uz3sc8f9/checkpoint.pt'),  # seed42 sw20
     # h256x12 - 5 models (various sw)
     (256, 12, 'models/model-fnjk0rb9/checkpoint.pt'),  # sw20
     (256, 12, 'models/model-1srfjih9/checkpoint.pt'),  # sw15
@@ -66,18 +67,8 @@ configs_and_checkpoints = [
     (448, 6, 'models/model-jmmn1xmo/checkpoint.pt'),  # sw10
     (448, 6, 'models/model-0farx8wu/checkpoint.pt'),  # sw25
     (448, 6, 'models/model-yhrdxpm6/checkpoint.pt'),  # sw5
-    # h192x16 - 5 models (various sw)
-    (192, 16, 'models/model-aevg54og/checkpoint.pt'),  # sw20
-    (192, 16, 'models/model-itehj77h/checkpoint.pt'),  # sw10
-    (192, 16, 'models/model-szaqzjj2/checkpoint.pt'),  # sw5
-    (192, 16, 'models/model-8qn718k1/checkpoint.pt'),  # sw15
-    (192, 16, 'models/model-nzwkykno/checkpoint.pt'),  # sw25
-    # h640x3 - 5 models (various sw)
+    # h640x3 - 1 model (new 6th architecture, well-trained r6)
     (640, 3, 'models/model-p16uv4jl/checkpoint.pt'),  # sw20
-    (640, 3, 'models/model-b1n9slsl/checkpoint.pt'),  # sw10
-    (640, 3, 'models/model-qeynup6w/checkpoint.pt'),  # sw5
-    (640, 3, 'models/model-1bz9b0x6/checkpoint.pt'),  # sw15
-    (640, 3, 'models/model-unkgk0bq/checkpoint.pt'),  # sw25
 ]
 
 # Load all models
@@ -129,15 +120,11 @@ with torch.no_grad():
             pred = pred_norm * y_std + y_mean
             all_preds.append(pred)
 
-        # Per-channel trimmed mean: trim independently for each output channel
+        # Trimmed mean: sort, remove top/bottom TRIM, average rest
         stacked = torch.stack(all_preds, dim=0)  # [M, B, N, 3]
-        channels = []
-        for c in range(3):
-            ch = stacked[..., c]  # [M, B, N]
-            sorted_ch = ch.sort(dim=0).values
-            trimmed_ch = sorted_ch[TRIM:-TRIM]
-            channels.append(trimmed_ch.mean(dim=0))
-        ensemble_pred = torch.stack(channels, dim=-1)  # [B, N, 3]
+        sorted_preds = stacked.sort(dim=0).values
+        trimmed = sorted_preds[TRIM:-TRIM]  # remove top/bottom TRIM
+        ensemble_pred = trimmed.mean(dim=0)
 
         for j, x in enumerate(xs):
             predictions.append(ensemble_pred[j, :x.shape[0]].cpu())
