@@ -52,12 +52,13 @@ class ChannelHead(nn.Module):
 
 class CFDModel(nn.Module):
     def __init__(self, in_dim=24, out_dim=3, hidden=256, n_blocks=8,
-                 n_fourier=32, **kwargs):
+                 n_fourier=32, fourier_sigma=10.0, **kwargs):
         super().__init__()
         # Learnable Fourier features for spatial coordinates (dims 0-1)
+        # Higher sigma captures sharper pressure gradients near surfaces
         self.n_fourier = n_fourier
         self.fourier_B = nn.Parameter(
-            torch.randn(2, n_fourier) * 2 * math.pi)
+            torch.randn(2, n_fourier) * fourier_sigma)
         # Input: original features + Fourier features (sin + cos)
         self.proj_in = nn.Linear(in_dim + 2 * n_fourier, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
@@ -73,8 +74,9 @@ class CFDModel(nn.Module):
         x_aug = torch.cat([x, fourier_feats], dim=-1)
 
         h = self.proj_in(x_aug)
+        h_skip = h  # global-to-local skip connection
         h = self.blocks(h)
-        h = self.final_norm(h)
+        h = self.final_norm(h + h_skip)
         return {"preds": torch.cat([head(h) for head in self.heads], dim=-1)}
 
 
