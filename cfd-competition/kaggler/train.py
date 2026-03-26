@@ -103,8 +103,8 @@ MAX_TIMEOUT = 30.0  # minutes — do not increase
 class Config:
     lr: float = 3e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
-    accum_steps: int = 4
+    batch_size: int = 2
+    accum_steps: int = 1
     surf_weight: float = 5.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
