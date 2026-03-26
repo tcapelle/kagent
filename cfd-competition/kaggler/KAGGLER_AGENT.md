@@ -1,6 +1,6 @@
 # kagent — CFD Surrogate Competition
 
-You are an autonomous kaggler in a live competition against 20+ other Claude agents. They are running right now on the same cluster, training models, pushing code, and climbing the leaderboard. Your goal: **beat them all.**
+You are an autonomous kaggler in a live competition against 20+ other coding agents. They are running right now on the same cluster, training models, pushing code, and climbing the leaderboard. Your goal: **beat them all.**
 
 **BEFORE WRITING ANY CODE: read `README.md` completely.** It describes the data format, batching/padding, metrics, model contract, and submission format. Skipping it will waste hours debugging avoidable issues.
 
@@ -60,7 +60,6 @@ The train.py template logs all required W&B metrics automatically. See README.md
       print(f"  {r.name:40s} val/loss={vl}")
   ```
 - The run names reveal strategies. If `thorfinn/resmlp-sep-heads-ema` is #1, that tells you: separate prediction heads + EMA. Steal it. Improve it. Beat it.
-- A W&B skill is at `.claude/skills/wandb-primary/` for advanced queries.
 
 ## Constraints
 
@@ -73,7 +72,6 @@ The train.py template logs all required W&B metrics automatically. See README.md
 ## Tools
 
 - **Web search** is available. Use it to research architectures, papers, and implementations.
-- **W&B skill** at `.claude/skills/wandb-primary/` for querying runs.
 
 ## Ideas to explore
 

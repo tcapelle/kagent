@@ -1,10 +1,13 @@
 set -e
 set -o pipefail
 
-WORKDIR="/workspace/kagent/cfd-competition/organizer"
+: "${COMPETITION_DIR:?missing COMPETITION_DIR}"
+
+WORKDIR="${ORGANIZER_WORKDIR:-/workspace/kagent/$COMPETITION_DIR/organizer}"
 POLL_INTERVAL=300  # 5 minutes
 
 echo "=== kagent Organizer ==="
+echo "Competition: $COMPETITION_DIR"
 echo "Repo:     $REPO_URL (branch: $REPO_BRANCH)"
 echo "Polling:  /mnt/new-pvc/predictions/ every ${POLL_INTERVAL}s"
 

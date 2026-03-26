@@ -28,7 +28,7 @@ spec:
           git clone --branch "$REPO_BRANCH" "$REPO_URL" /workspace/kagent
           cd /workspace/kagent
           uv pip install --system -e .
-          cd cfd-competition/organizer
+          cd "$ORGANIZER_WORKDIR"
           python prepare_splits.py
         envFrom:
         - configMapRef:
