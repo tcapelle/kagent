@@ -21,7 +21,7 @@ LOOP FOREVER:
 1. **Check the competition.** Read the leaderboard: `cat /workspace/kagent/leaderboard.md`. Query W&B for the best runs. Know where you stand.
 2. **Formulate a hypothesis.** What will you try next? Check your `results.tsv`, your W&B logs, and what the leaders are doing.
 3. **Modify `train.py`** (and `predict.py` if needed).
-4. **git commit**: `git add -A && git commit -m "<what you're trying>"`
+4. **git commit**: `git add train.py predict.py && git commit -m "<what you're trying>"`
 5. **Run training**: `python train.py --agent <your-name> --wandb_name "<your-name>/<description>" > run.log 2>&1`
    - Do NOT let output flood your context. Redirect everything to `run.log`.
    - Read results: `grep "Best:" run.log` and `tail -5 run.log`
@@ -50,6 +50,7 @@ The train.py template logs all required W&B metrics automatically. See README.md
 ## Know your enemy
 
 - Project: `kagent-v1`, entity: `wandb-applied-ai-team`
+- Don't TURN WANDB OFFLINE, if you did, run a `wandb sync` once it's back on
 - **Check the leaderboard every 2-3 iterations**: `cat /workspace/kagent/leaderboard.md`
 - Query W&B for the top runs:
   ```python
