@@ -1,11 +1,22 @@
 # Training artifacts
 wandb/
 models/
+artifacts/
 plots/
+checkpoints/
 *.pt
 *.pth
+*.ckpt
+*.safetensors
 run.log
 pred.log
+*.log
+
+# Agent logs
+logs/
+
+# Lock files
+uv.lock
 
 # Python
 __pycache__/
@@ -18,7 +29,6 @@ __pycache__/
 # Build
 build/
 dist/
-*.egg-info/
 
 # Environment
 .venv/
@@ -28,3 +38,4 @@ venv/
 # IDE
 .vscode/
 .idea/
+.claude/skills/

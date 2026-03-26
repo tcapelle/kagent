@@ -1,2 +1,0 @@
-cfd-competition
-logs
