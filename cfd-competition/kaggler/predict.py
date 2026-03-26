@@ -41,7 +41,7 @@ splits_dir = Path(cfg.splits_dir)
 # Load model
 # ---------------------------------------------------------------------------
 from model import ResMLP
-model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=8, dropout=0.0).to(device)
+model = ResMLP(in_dim=X_DIM, hidden=384, n_blocks=10, dropout=0.0).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()

@@ -101,10 +101,11 @@ MAX_TIMEOUT = 30.0  # minutes — do not increase
 
 @dataclass
 class Config:
-    lr: float = 1e-3
-    weight_decay: float = 5e-4
-    batch_size: int = 2
-    surf_weight: float = 10.0
+    lr: float = 3e-4
+    weight_decay: float = 1e-4
+    batch_size: int = 4
+    accum_steps: int = 4
+    surf_weight: float = 5.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
     wandb_group: str | None = None
@@ -159,7 +160,7 @@ val_loaders = {
 }
 
 # --- Build model ---
-model = ResMLP(in_dim=X_DIM, hidden=256, n_blocks=8, dropout=0.0).to(device)
+model = ResMLP(in_dim=X_DIM, hidden=384, n_blocks=10, dropout=0.0).to(device)
 if cfg.resume:
     state = torch.load(cfg.resume, map_location=device, weights_only=True)
     model.load_state_dict(state)
@@ -184,7 +185,7 @@ run = wandb.init(
     group=cfg.wandb_group,
     name=cfg.wandb_name,
     tags=[cfg.agent] if cfg.agent else [],
-    config={**asdict(cfg), "n_params": n_params,
+    config={**asdict(cfg), "n_params": n_params, "effective_batch_size": cfg.batch_size * cfg.accum_steps,
             "train_samples": len(train_ds),
             "val_samples": {k: len(v) for k, v in val_splits.items()}},
     mode=os.environ.get("WANDB_MODE", "online"),
@@ -221,7 +222,8 @@ for epoch in range(MAX_EPOCHS):
     epoch_vol = epoch_surf = 0.0
     n_batches = 0
 
-    for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+    optimizer.zero_grad()
+    for step_idx, (x, y, is_surface, mask) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False)):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
@@ -237,17 +239,19 @@ for epoch in range(MAX_EPOCHS):
             surf_mask = mask & is_surface
             vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
             surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-            loss = vol_loss + cfg.surf_weight * surf_loss
+            loss = (vol_loss + cfg.surf_weight * surf_loss) / cfg.accum_steps
 
-        optimizer.zero_grad()
         scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        scaler.step(optimizer)
-        scaler.update()
-        ema.update(model)
-        global_step += 1
-        wandb.log({"train/loss": loss.item(), "global_step": global_step})
+
+        if (step_idx + 1) % cfg.accum_steps == 0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
+            ema.update(model)
+            global_step += 1
+            wandb.log({"train/loss": loss.item() * cfg.accum_steps, "global_step": global_step})
 
         epoch_vol += vol_loss.item()
         epoch_surf += surf_loss.item()

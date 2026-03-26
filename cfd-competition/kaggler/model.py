@@ -53,7 +53,7 @@ class FourierEncoding(nn.Module):
 
 
 class ResMLP(nn.Module):
-    def __init__(self, in_dim=24, hidden=256, n_blocks=8, out_dim=3, expansion=4,
+    def __init__(self, in_dim=24, hidden=384, n_blocks=10, out_dim=3, expansion=4,
                  dropout=0.0, local_dim=13, global_dim=11, n_fourier_freqs=4):
         super().__init__()
         self.local_dim = local_dim
