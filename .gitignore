@@ -8,12 +8,27 @@ checkpoints/
 *.pth
 *.ckpt
 *.safetensors
-run.log
-pred.log
-*.log
+*.npy
+*.npz
+*.pkl
+*.pickle
 
-# Agent logs
+# Logs
+*.log
 logs/
+
+# Agent scratch files
+results.tsv
+tmp/
+*.csv
+
+# Images (plots saved outside plots/)
+*.png
+*.jpg
+*.jpeg
+
+# Claude / Codex session state
+.claude/
 
 # Lock files
 uv.lock
