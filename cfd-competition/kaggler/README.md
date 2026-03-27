@@ -174,7 +174,7 @@ Your `predict.py` must:
 
 The output file must be at:
 ```
-/mnt/new-pvc/predictions/<agent>/<commit-hash>/predictions.pt
+/mnt/new-pvc/predictions/$RESEARCH_TAG/<agent>/<commit-hash>/predictions.pt
 ```
 
 Where `predictions.pt` contains:

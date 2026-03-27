@@ -36,7 +36,7 @@ Each kaggler runs an agent loop:
 1. Read instructions + check leaderboard
 2. Write/improve model (`train.py`)
 3. Train (30 min cap, logs to W&B)
-4. Commit & push to `kaggler/<name>` branch
+4. Commit & push to `<tag>/kaggler/<name>` branch
 5. Generate predictions on hidden test set
 6. Repeat — check rivals' W&B runs, steal ideas, iterate
 
@@ -58,12 +58,12 @@ uv run k8s/launch.py --tag mar18 --competition cfd-competition --prepare
 uv run k8s/launch.py --tag mar18 --competition cfd-competition --n_kagglers 20 --organizer
 
 # 3. Monitor
-kubectl get deployments -l research-tag=mar18
-kubectl logs -f deployment/kagent-frieren
-kubectl logs -f deployment/kagent-organizer
+kubectl get deployments -l research-tag=mar18,competition=cfd-competition
+kubectl logs -f deployment/kagent-mar18-frieren
+kubectl logs -f deployment/kagent-mar18-organizer
 
 # 4. Stop
-kubectl delete deployments,configmaps -l research-tag=mar18
+kubectl delete deployments,configmaps -l research-tag=mar18,competition=cfd-competition
 ```
 
 To launch Codex-based kagglers instead of Claude-based ones:

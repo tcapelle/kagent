@@ -26,7 +26,7 @@ Stalls are signal. A plateau means the local neighborhood is exhausted — shift
 
 ## The experiment loop
 
-You work on branch `kaggler/<your-name>`. It's already checked out.
+You work on branch `$RESEARCH_TAG/kaggler/<your-name>`. It's already checked out.
 
 LOOP FOREVER:
 

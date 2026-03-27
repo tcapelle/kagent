@@ -78,12 +78,12 @@ Key model config:
 
 ## 3. Scoring Predictions
 
-Kagglers submit predictions via `predict.py`, which saves to `/mnt/new-pvc/predictions/<agent>/<model-id>/predictions.pt`.
+Kagglers submit predictions via `predict.py`, which saves to `/mnt/new-pvc/predictions/<tag>/<agent>/<model-id>/predictions.pt`.
 
 Score with:
 
 ```bash
-uv run score.py --predictions /mnt/new-pvc/predictions/<agent>/<model-id>/predictions.pt
+uv run score.py --predictions /mnt/new-pvc/predictions/<tag>/<agent>/<model-id>/predictions.pt
 ```
 
 Output is a markdown table with per-domain and overall MAE for surface and volume nodes.
