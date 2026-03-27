@@ -123,7 +123,7 @@ def main():
     # --- Prepare splits job ---
     if args.prepare:
         configmap = render_configmap(
-            name="kagent-config-prepare",
+            name=f"kagent-{args.tag}-config-prepare",
             labels={"app": "kagent", "role": "prepare", "research-tag": args.tag},
             data={
                 "REPO_URL": args.repo_url,
@@ -152,7 +152,7 @@ def main():
     template = KAGGLER_TEMPLATE.read_text()
     for name in kaggler_list:
         configmap = render_configmap(
-            name=f"kagent-config-kaggler-{name}",
+            name=f"kagent-{args.tag}-config-{name}",
             labels={"app": "kagent", "role": "kaggler", "research-tag": args.tag},
             data={
                 "REPO_URL": args.repo_url,
@@ -183,7 +183,7 @@ def main():
     # --- Deploy organizer ---
     if args.organizer:
         configmap = render_configmap(
-            name="kagent-config-organizer",
+            name=f"kagent-{args.tag}-config-organizer",
             labels={"app": "kagent", "role": "organizer", "research-tag": args.tag},
             data={
                 "REPO_URL": args.repo_url,
@@ -210,15 +210,15 @@ def main():
         print(f"\nLaunched {len(kaggler_list)} kagglers: {', '.join(kaggler_list)}")
         print(f"Competition: {competition_dir}")
         print(f"Agent runtime: {agent_runtime} ({agent_model})")
-        print(f"Each on branch: kaggler/<name>")
-        print(f"Predictions: /mnt/new-pvc/predictions/<name>/<commit>/")
+        print(f"Each on branch: {args.tag}/kaggler/<name>")
+        print(f"Predictions: /mnt/new-pvc/predictions/{args.tag}/<name>/<commit>/")
         if args.organizer:
             print(f"Organizer: scoring every 5 min")
         print(f"\nMonitor:")
         print(f"  kubectl get deployments -l research-tag={args.tag}")
-        print(f"  kubectl logs -f deployment/kagent-{kaggler_list[0]}")
+        print(f"  kubectl logs -f deployment/kagent-{args.tag}-{kaggler_list[0]}")
         if args.organizer:
-            print(f"  kubectl logs -f deployment/kagent-organizer")
+            print(f"  kubectl logs -f deployment/kagent-{args.tag}-organizer")
         print(f"\nStop:")
         print(f"  kubectl delete deployments,configmaps -l research-tag={args.tag}")
 

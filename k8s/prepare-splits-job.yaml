@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: kagent-prepare-splits
+  name: kagent-{{RESEARCH_TAG}}-prepare-splits
   labels:
     app: kagent
     role: prepare
@@ -32,7 +32,7 @@ spec:
           python prepare_splits.py
         envFrom:
         - configMapRef:
-            name: kagent-config-prepare
+            name: kagent-{{RESEARCH_TAG}}-config-prepare
         env:
         - name: GITHUB_TOKEN
           valueFrom:

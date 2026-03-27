@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kagent-{{KAGGLER_NAME}}
+  name: kagent-{{RESEARCH_TAG}}-{{KAGGLER_NAME}}
   labels:
     app: kagent
     role: kaggler
@@ -14,6 +14,7 @@ spec:
     matchLabels:
       app: kagent
       kaggler: {{KAGGLER_NAME}}
+      research-tag: {{RESEARCH_TAG}}
   template:
     metadata:
       labels:
@@ -36,7 +37,7 @@ spec:
           bash k8s/entrypoint-kaggler.sh
         envFrom:
         - configMapRef:
-            name: kagent-config-kaggler-{{KAGGLER_NAME}}
+            name: kagent-{{RESEARCH_TAG}}-config-{{KAGGLER_NAME}}
         env:
         - name: WANDB_API_KEY
           valueFrom:

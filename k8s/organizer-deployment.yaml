@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kagent-organizer
+  name: kagent-{{RESEARCH_TAG}}-organizer
   labels:
     app: kagent
     role: organizer
@@ -12,6 +12,7 @@ spec:
     matchLabels:
       app: kagent
       role: organizer
+      research-tag: {{RESEARCH_TAG}}
   template:
     metadata:
       labels:
@@ -32,7 +33,7 @@ spec:
           bash k8s/entrypoint-organizer.sh
         envFrom:
         - configMapRef:
-            name: kagent-config-organizer
+            name: kagent-{{RESEARCH_TAG}}-config-organizer
         env:
         - name: WANDB_API_KEY
           valueFrom:
