@@ -69,6 +69,10 @@ def score_split(preds: list[torch.Tensor], gt: list[dict]) -> dict[str, float]:
         is_surface = gt[i]["is_surface"]
         assert pred_y.shape == true_y.shape, f"Sample {i}: {pred_y.shape} vs {true_y.shape}"
 
+        # Skip samples with non-finite ground truth (data artifact)
+        if not torch.isfinite(true_y).all():
+            continue
+
         err = (pred_y.double() - true_y.double()).abs()
         mae_surf += (err * is_surface.unsqueeze(-1)).sum(0)
         n_surf += is_surface.sum().item()
