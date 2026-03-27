@@ -44,7 +44,7 @@ uv run k8s/launch.py --tag <tag> --prepare
 uv run prepare_splits.py
 ```
 
-Output: `/mnt/new-pvc/datasets/tandemfoil/splits/` with per-sample .pt files, stats.json, and meta.json.
+Output: `/mnt/new-pvc/datasets/tandemfoil/splits_v2/` with per-sample .pt files, stats.json, and meta.json.
 
 The job takes ~5 minutes on 8 CPU cores.
 
@@ -69,7 +69,7 @@ cd cfd-competition/organizer
 python train.py --agent baseline --wandb_name "baseline/transolver" --epochs 10
 ```
 
-W&B project: `wandb-applied-ai-team/kagent-v1`
+W&B project: `wandb-applied-ai-team/kagent-v2`
 
 Key model config:
 - `n_hidden=128`, `n_layers=5`, `n_head=4`, `slice_num=64`

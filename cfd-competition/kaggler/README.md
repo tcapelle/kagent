@@ -8,7 +8,7 @@ The baseline is a [Transolver](https://arxiv.org/abs/2402.02366) with physics-aw
 
 ## Data
 
-Pre-processed data lives on the PVC at `/mnt/new-pvc/datasets/tandemfoil/splits/`:
+Pre-processed data lives on the PVC at `/mnt/new-pvc/datasets/tandemfoil/splits_v2/`:
 
 ```
 splits/
@@ -197,14 +197,14 @@ uv run predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <your-nam
 
 A W&B skill is available at `.claude/skills/wandb-primary/` with helpers for querying runs, comparing configs, and analyzing metrics. Use it to review your previous results between iterations.
 
-All training runs **must** log to W&B project `kagent-v1` with these metrics:
+All training runs **must** log to W&B project `kagent-v2` with these metrics:
 
 ```python
 import wandb
 
 run = wandb.init(
     entity="wandb-applied-ai-team",
-    project="kagent-v1",
+    project="kagent-v2",
     name="<your-name>/<description>",
     tags=["<your-name>"],
 )

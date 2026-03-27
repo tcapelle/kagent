@@ -212,7 +212,7 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 10.0
     epochs: int = 50
-    splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits"
+    splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
@@ -264,7 +264,7 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOC
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
-    project=os.environ.get("WANDB_PROJECT", "kagent-v1"),
+    project=os.environ.get("WANDB_PROJECT", "kagent-v2"),
     group=cfg.wandb_group,
     name=cfg.wandb_name,
     tags=[cfg.agent] if cfg.agent else [],

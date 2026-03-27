@@ -1,17 +1,23 @@
-"""One-time: split raw TandemFoilSet pickles into per-sample .pt files on PVC.
+"""Materialize pre-processed .pt files from a checked-in split manifest.
 
-Run on organizer pod before launching kagglers:
-  uv run prepare_splits.py
+Reads split_manifest.json (checked into git) and writes per-sample .pt files
+to the PVC. No split logic here — the manifest is the single source of truth.
+
+Run on organizer pod:
+  python prepare_splits.py
 
 Output on PVC:
-  /mnt/new-pvc/datasets/tandemfoil/splits/
-  ├── train/000000.pt ...           {x, y, is_surface}
-  ├── val_in_dist/000000.pt ...     {x, y, is_surface}
-  ├── val_tandem_transfer/...       {x, y, is_surface}
-  ├── val_ood_cond/...              {x, y, is_surface}
-  ├── val_ood_re/...                {x, y, is_surface}
-  ├── test/000000.pt ...            {x, is_surface}  (no y)
-  ├── .test_gt/000000.pt ...        {y, is_surface, domain}  (hidden)
+  /mnt/new-pvc/datasets/tandemfoil/splits_v2/
+  ├── train/000000.pt ...                  {x, y, is_surface}
+  ├── val_single_in_dist/...               {x, y, is_surface}
+  ├── val_geom_camber_rc/...               {x, y, is_surface}
+  ├── val_geom_camber_cruise/...           {x, y, is_surface}
+  ├── val_re_rand/...                      {x, y, is_surface}
+  ├── test_single_in_dist/...              {x, is_surface}  (no y)
+  ├── test_geom_camber_rc/...              {x, is_surface}
+  ├── test_geom_camber_cruise/...          {x, is_surface}
+  ├── test_re_rand/...                     {x, is_surface}
+  ├── .test_*_gt/                          {y, is_surface}  (hidden ground truth)
   ├── stats.json
   └── meta.json
 """
@@ -30,30 +36,18 @@ from rich.panel import Panel
 console = Console()
 
 # --- Constants ---
-SEED = 42
-SAMPLE_FRACTION = 0.85
-DATA_ROOT = Path("/mnt/new-pvc/datasets/tandemfoil")
-SURFACE_IDS = (5, 6, 7)  # foil 1 upper, foil 1 lower, foil 2
+SURFACE_IDS = (5, 6, 7)
 X_DIM = 24
-
-PICKLE_FILES = [
-    "raceCar_single_randomFields.pickle",         # 0: single foil
-    "raceCar_randomFields_mgn_Part1.pickle",       # 1: tandem, front=NACA2412
-    "raceCar_randomFields_mgn_Part2.pickle",       # 2: tandem, front=NACA6416 → val
-    "raceCar_randomFields_mgn_Part3.pickle",       # 3: tandem, front=NACA9412
-    "cruise_randomFields_mgn_Part1.pickle",        # 4: cruise, Re=1.475M
-    "cruise_randomFields_mgn_Part2.pickle",        # 5: cruise, Re=4.445M → val
-    "cruise_randomFields_mgn_Part3.pickle",        # 6: cruise, Re=802K
-]
-
-VAL_SPLITS = ["val_in_dist", "val_tandem_transfer", "val_ood_cond", "val_ood_re"]
+DATA_ROOT = Path("/mnt/new-pvc/datasets/tandemfoil")
+MANIFEST_PATH = Path(__file__).parent / "split_manifest.json"
 
 
 @dataclass
 class Args:
-    """Prepare TandemFoilSet competition splits."""
-    data_root: str = str(DATA_ROOT)  # directory containing raw pickle files
-    out_dir: str = str(DATA_ROOT / "splits")  # output directory for splits
+    """Materialize TandemFoilSet splits from manifest."""
+    data_root: str = str(DATA_ROOT)
+    out_dir: str = str(DATA_ROOT / "splits_v2")
+    manifest: str = str(MANIFEST_PATH)
 
 
 # --- Raw data helpers ---
@@ -107,124 +101,6 @@ def preprocess(sample) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     return x, sample.y.float(), is_surface
 
 
-# --- Subsampling ---
-
-def subsample(idxs: list[int], fraction: float, rng=None) -> tuple[list[int], list[int]]:
-    """(kept, excluded) with even spacing. Pass rng to shuffle first."""
-    n = max(1, round(len(idxs) * fraction))
-    if n >= len(idxs):
-        return idxs, []
-    if rng is not None:
-        arr = np.array(idxs)
-        rng.shuffle(arr)
-        return arr[:n].tolist(), arr[n:].tolist()
-    step = len(idxs) / n
-    kept = [idxs[round(i * step)] for i in range(n)]
-    excluded = [i for i in idxs if i not in set(kept)]
-    return kept, excluded
-
-
-# --- Split assignment ---
-
-def scan_metadata(pickle_paths: list[Path]):
-    """Lightweight metadata scan. Returns (by_file, file_sizes)."""
-    by_file: dict[int, list[dict]] = {}
-    file_sizes: list[int] = []
-    offset = 0
-
-    for fi, path in enumerate(pickle_paths):
-        console.print(f"  [{fi}] {path.name}", end="")
-        raw = load_pickle(path)
-        n = len(raw)
-        file_sizes.append(n)
-        by_file[fi] = []
-        for li, sample in enumerate(raw):
-            aoa = sample.AoA
-            by_file[fi].append({
-                "global_idx": offset + li,
-                "aoa0": float(aoa[0]) if isinstance(aoa, list) else float(aoa),
-                "gap": float(sample.gap) if getattr(sample, "gap", None) is not None else None,
-                "stagger": float(sample.stagger) if getattr(sample, "stagger", None) is not None else None,
-            })
-        console.print(f" → {n} samples")
-        offset += n
-        del raw
-
-    return by_file, file_sizes
-
-
-def assign_splits(by_file: dict[int, list[dict]]):
-    """Assign every sample to exactly one split.
-
-    Returns (splits, domain_groups, test_domains).
-    """
-    rng = np.random.default_rng(SEED)
-
-    splits: dict[str, list[int]] = {k: [] for k in ["train"] + VAL_SPLITS + ["test"]}
-    groups: dict[str, list[int]] = {"racecar_single": [], "racecar_tandem": [], "cruise": []}
-    test_domains: dict[int, str] = {}
-
-    def add_test(idxs, domain):
-        splits["test"].extend(idxs)
-        for i in idxs:
-            test_domains[i] = domain
-
-    # File 0: raceCar single → 90/10 train/val_in_dist
-    single = [r["global_idx"] for r in by_file[0]]
-    kept, excl = subsample(single, SAMPLE_FRACTION, rng=rng)
-    add_test(excl, "single")
-    n_val = max(1, round(len(kept) * 0.10))
-    splits["val_in_dist"].extend(kept[:n_val])
-    splits["train"].extend(kept[n_val:])
-    groups["racecar_single"].extend(kept[n_val:])
-
-    # Files 1,3: raceCar tandem → train
-    for fi in (1, 3):
-        idxs = [r["global_idx"] for r in by_file[fi]]
-        kept, excl = subsample(idxs, SAMPLE_FRACTION)
-        splits["train"].extend(kept)
-        groups["racecar_tandem"].extend(kept)
-        add_test(excl, "tandem_known")
-
-    # File 2: raceCar tandem Part2 → val_tandem_transfer
-    idxs = [r["global_idx"] for r in by_file[2]]
-    kept, excl = subsample(idxs, SAMPLE_FRACTION)
-    splits["val_tandem_transfer"].extend(kept)
-    add_test(excl, "tandem_transfer")
-
-    # Files 4,6: cruise Part1+3 → frontier 20% to val_ood_cond, rest to train
-    cruise_recs = by_file[4] + by_file[6]
-    cruise_all = list(range(len(cruise_recs)))
-    keep_idxs, excl_idxs = subsample(cruise_all, SAMPLE_FRACTION)
-    kept_recs = [cruise_recs[i] for i in keep_idxs]
-    for i in excl_idxs:
-        add_test([cruise_recs[i]["global_idx"]], "cruise_known")
-
-    feats = np.array([[r["aoa0"], r["gap"], r["stagger"]] for r in kept_recs], dtype=np.float64)
-    feat_min, feat_max = feats.min(0), feats.max(0)
-    feat_range = np.where(feat_max - feat_min > 0, feat_max - feat_min, 1.0)
-    normed = (feats - feat_min) / feat_range
-    dists = np.linalg.norm(normed - normed.mean(0), axis=1)
-    n_frontier = max(1, round(len(dists) * 0.20))
-    frontier = set(np.argsort(-dists)[:n_frontier].tolist())
-
-    for i, rec in enumerate(kept_recs):
-        gidx = rec["global_idx"]
-        if i in frontier:
-            splits["val_ood_cond"].append(gidx)
-        else:
-            splits["train"].append(gidx)
-            groups["cruise"].append(gidx)
-
-    # File 5: cruise Part2 → val_ood_re
-    idxs = [r["global_idx"] for r in by_file[5]]
-    kept, excl = subsample(idxs, SAMPLE_FRACTION)
-    splits["val_ood_re"].extend(kept)
-    add_test(excl, "cruise_ood_re")
-
-    return splits, groups, test_domains
-
-
 # --- Save helpers ---
 
 def global_to_file_local(global_idx: int, file_sizes: list[int]) -> tuple[int, int]:
@@ -243,7 +119,6 @@ def save_samples(
     pickle_paths: list[Path],
     file_sizes: list[int],
     include_y: bool = True,
-    test_domains: dict[int, str] | None = None,
 ):
     """Preprocess raw samples and save as individual .pt files."""
     split_dir = out_dir / split_name
@@ -251,27 +126,25 @@ def save_samples(
 
     gt_dir = None
     if not include_y:
-        gt_dir = out_dir / ".test_gt"
+        gt_dir = out_dir / f".{split_name}_gt"
         gt_dir.mkdir(parents=True, exist_ok=True)
 
-    # Group by file for sequential I/O
-    by_file: dict[int, list[tuple[int, int, int]]] = {}  # fi → [(seq_idx, local_idx, global_idx)]
+    by_file: dict[int, list[tuple[int, int]]] = {}
     for seq_idx, gidx in enumerate(global_indices):
         fi, li = global_to_file_local(gidx, file_sizes)
-        by_file.setdefault(fi, []).append((seq_idx, li, gidx))
+        by_file.setdefault(fi, []).append((seq_idx, li))
 
     for fi in sorted(by_file):
         console.print(f"    {pickle_paths[fi].name} ({len(by_file[fi])} samples)")
         raw = load_pickle(pickle_paths[fi])
-        for seq_idx, li, gidx in by_file[fi]:
+        for seq_idx, li in by_file[fi]:
             x, y, is_surface = preprocess(raw[li])
             fname = f"{seq_idx:06d}.pt"
             if include_y:
                 torch.save({"x": x, "y": y, "is_surface": is_surface}, split_dir / fname)
             else:
                 torch.save({"x": x, "is_surface": is_surface}, split_dir / fname)
-                domain = test_domains[gidx] if test_domains else "unknown"
-                torch.save({"y": y, "is_surface": is_surface, "domain": domain}, gt_dir / fname)
+                torch.save({"y": y, "is_surface": is_surface}, gt_dir / fname)
         del raw
 
     console.print(f"  {split_name}: {len(global_indices)} samples")
@@ -328,25 +201,31 @@ def compute_stats(train_dir: Path) -> dict:
 args = sp.parse(Args)
 data_root = Path(args.data_root)
 out_dir = Path(args.out_dir)
-pickle_paths = [data_root / f for f in PICKLE_FILES]
 
-console.rule("Phase 1: Metadata scan + split assignment")
-by_file, file_sizes = scan_metadata(pickle_paths)
-splits, domain_groups, test_domains = assign_splits(by_file)
+console.rule("Loading manifest")
+with open(args.manifest) as f:
+    manifest = json.load(f)
 
-console.print()
-for k, v in splits.items():
-    console.print(f"  {k:30s} {len(v):5d}")
+pickle_paths = [data_root / f for f in manifest["pickle_files"]]
+file_sizes = manifest["file_sizes"]
+splits = manifest["splits"]
+val_splits = manifest["val_splits"]
+test_splits = manifest["test_splits"]
 
-console.rule("Phase 2: Preprocess and save")
-for split_name in ["train"] + VAL_SPLITS:
+console.print(f"  Manifest version: {manifest['version']}, seed: {manifest['seed']}")
+for k, v in manifest["split_counts"].items():
+    console.print(f"  {k:30s} {v:5d}")
+
+console.rule("Phase 1: Materialize train + val splits")
+for split_name in ["train"] + val_splits:
     save_samples(out_dir, split_name, splits[split_name], pickle_paths, file_sizes)
 
-# Shuffle test order so file indices don't reveal source
-test_indices = splits["test"].copy()
-np.random.default_rng(123).shuffle(test_indices)
-save_samples(out_dir, "test", test_indices, pickle_paths, file_sizes,
-             include_y=False, test_domains=test_domains)
+console.rule("Phase 2: Materialize test splits (no y)")
+for test_name in test_splits:
+    # Shuffle test order so sequential index doesn't reveal source file
+    test_indices = splits[test_name].copy()
+    np.random.default_rng(123).shuffle(test_indices)
+    save_samples(out_dir, test_name, test_indices, pickle_paths, file_sizes, include_y=False)
 
 console.rule("Phase 3: Normalization stats")
 stats = compute_stats(out_dir / "train")
@@ -354,25 +233,25 @@ with open(out_dir / "stats.json", "w") as f:
     json.dump(stats, f, indent=2)
 console.print(f"  Wrote stats.json ({stats['n_train_nodes']} total nodes)")
 
-console.rule("Phase 4: Metadata")
-train_gidx_to_seq = {gidx: i for i, gidx in enumerate(splits["train"])}
+console.rule("Phase 4: Write meta.json for kagglers")
 meta = {
     "x_dim": X_DIM,
-    "val_splits": VAL_SPLITS,
-    "split_counts": {k: len(v) for k, v in splits.items()},
-    "domain_groups": {
-        name: sorted(train_gidx_to_seq[gidx] for gidx in idxs)
-        for name, idxs in domain_groups.items()
-    },
+    "val_splits": val_splits,
+    "test_splits": test_splits,
+    "split_counts": manifest["split_counts"],
+    "domain_groups": manifest["domain_groups"],
 }
 with open(out_dir / "meta.json", "w") as f:
     json.dump(meta, f, indent=2)
 console.print("  Wrote meta.json")
 
+n_val = manifest["n_per_val"]
+n_test = manifest["n_per_test"]
 console.rule("Done")
 console.print(Panel(
     f"Output: {out_dir}\n"
     f"Train: {stats['n_train_samples']} samples, {stats['n_train_nodes']} nodes\n"
+    f"Val: {4 * n_val} (4 × {n_val}), Test: {4 * n_test} (4 × {n_test})\n"
     f"y_mean: {[f'{v:.2f}' for v in stats['y_mean']]}\n"
     f"y_std: {[f'{v:.2f}' for v in stats['y_std']]}",
     title="Summary",

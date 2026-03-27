@@ -11,8 +11,13 @@ from pathlib import Path
 from torch.utils.data import Dataset
 
 X_DIM = 24
-VAL_SPLIT_NAMES = ["val_in_dist", "val_tandem_transfer", "val_ood_cond", "val_ood_re"]
-SPLITS_DIR = Path("/mnt/new-pvc/datasets/tandemfoil/splits")
+VAL_SPLIT_NAMES = [
+    "val_single_in_dist",
+    "val_geom_camber_rc",
+    "val_geom_camber_cruise",
+    "val_re_rand",
+]
+SPLITS_DIR = Path("/mnt/new-pvc/datasets/tandemfoil/splits_v2")
 
 
 class SplitDataset(Dataset):
