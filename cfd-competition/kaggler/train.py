@@ -123,7 +123,7 @@ def validate(model, val_loaders, stats, device, global_step, surf_weight=10.0):
 # Config + data loading
 # ---------------------------------------------------------------------------
 
-MAX_TIMEOUT = 30.0  # minutes — do not increase
+MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 
 
 @dataclass

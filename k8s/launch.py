@@ -34,6 +34,7 @@ class Args:
     image: str = "ghcr.io/tcapelle/dev_box:477a81a"
     wandb_entity: str = "wandb-applied-ai-team"
     wandb_project: str = "kagent-v1"
+    max_timeout_min: int = 30  # training timeout in minutes
     organizer: bool = False  # deploy the organizer (scoring loop)
     prepare: bool = False  # run prepare_splits.py one-shot job
     dry_run: bool = False
@@ -149,6 +150,7 @@ def main():
                 "WANDB_PROJECT": args.wandb_project,
                 "WANDB_MODE": "online",
                 "AGENT_MODEL": agent_model,
+                "MAX_TIMEOUT_MIN": str(args.max_timeout_min),
                 **competition_env,
             },
         )
