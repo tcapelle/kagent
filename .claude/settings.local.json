@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(kubectl exec:*)",
-      "Bash(kubectl logs:*)",
-      "Bash(git:*)"
-    ]
-  }
-}
