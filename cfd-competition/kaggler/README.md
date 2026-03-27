@@ -170,19 +170,22 @@ Your `predict.py` must:
 2. Normalize: `(x - x_mean) / x_std`
 3. Run your model to get predictions `[N, 3]` in normalized space
 4. **Denormalize** back to physical units: `pred * y_std + y_mean`
-5. Save a list of 405 tensors (one `[N, 3]` per test sample, in file order) as `predictions.pt`
+5. Save per-split `.pt` files (list of `[N_i, 3]` tensors, one per sample)
 
-The output file must be at:
+The output layout must be:
 ```
-/mnt/new-pvc/predictions/$RESEARCH_TAG/<agent>/<commit-hash>/predictions.pt
+/mnt/new-pvc/predictions/$RESEARCH_TAG/<agent>/<commit>/
+├── test_single_in_dist.pt      # list of 200 tensors [N_i, 3]
+├── test_geom_camber_rc.pt
+├── test_geom_camber_cruise.pt
+└── test_re_rand.pt
 ```
 
-Where `predictions.pt` contains:
+Each `.pt` file contains:
 ```python
-# List of 405 tensors, each [N_i, 3] in PHYSICAL units (not normalized)
-# N_i varies per sample (different mesh sizes)
+# List of 200 tensors in PHYSICAL units (not normalized)
 # Channels: [Ux (m/s), Uy (m/s), p (m²/s²)]
-predictions: list[torch.Tensor]  # len=405, each shape [N_i, 3]
+predictions: list[torch.Tensor]  # len=200, each shape [N_i, 3]
 ```
 
 The `predict.py` template handles padding, batching, denormalization, and saving — you just need to plug in your model.
