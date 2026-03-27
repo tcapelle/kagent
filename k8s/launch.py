@@ -93,6 +93,7 @@ def build_competition_env(competition_dir: str) -> dict[str, str]:
     return {
         "COMPETITION_DIR": str(comp_path),
         "COMPETITION_NAME": comp_path.name,
+        "COMPETITION_LABEL": comp_path.name,
         "KAGGLER_WORKDIR": str(comp_root / "kaggler"),
         "ORGANIZER_WORKDIR": str(comp_root / "organizer"),
         "KAGGLER_PROMPT_FILE": "KAGGLER_AGENT.md",
@@ -116,6 +117,7 @@ def main():
     config_path = Path(__file__).parent.parent / "config.yaml"
     args = sp.parse(Args, config_path=str(config_path))
     competition_dir = normalize_competition_dir(args.competition)
+    comp_label = PurePosixPath(competition_dir).name
     agent_runtime = normalize_agent_runtime(args.agent_runtime)
     agent_model = resolve_agent_model(agent_runtime, args.agent_model)
     competition_env = build_competition_env(competition_dir)
@@ -124,7 +126,7 @@ def main():
     if args.prepare:
         configmap = render_configmap(
             name=f"kagent-{args.tag}-config-prepare",
-            labels={"app": "kagent", "role": "prepare", "research-tag": args.tag},
+            labels={"app": "kagent", "role": "prepare", "competition": comp_label, "research-tag": args.tag},
             data={
                 "REPO_URL": args.repo_url,
                 "REPO_BRANCH": args.repo_branch,
@@ -132,7 +134,7 @@ def main():
             },
         )
         job = render_template(PREPARE_TEMPLATE.read_text(), {
-            "RESEARCH_TAG": args.tag, "IMAGE": args.image,
+            "COMPETITION_LABEL": comp_label, "RESEARCH_TAG": args.tag, "IMAGE": args.image,
         })
         manifest = configmap + "\n---\n" + job
         if args.dry_run:
@@ -153,7 +155,7 @@ def main():
     for name in kaggler_list:
         configmap = render_configmap(
             name=f"kagent-{args.tag}-config-{name}",
-            labels={"app": "kagent", "role": "kaggler", "research-tag": args.tag},
+            labels={"app": "kagent", "role": "kaggler", "competition": comp_label, "research-tag": args.tag},
             data={
                 "REPO_URL": args.repo_url,
                 "REPO_BRANCH": args.repo_branch,
@@ -168,6 +170,7 @@ def main():
             },
         )
         deployment = render_template(template, {
+            "COMPETITION_LABEL": comp_label,
             "KAGGLER_NAME": name,
             "RESEARCH_TAG": args.tag,
             "IMAGE": args.image,
@@ -184,7 +187,7 @@ def main():
     if args.organizer:
         configmap = render_configmap(
             name=f"kagent-{args.tag}-config-organizer",
-            labels={"app": "kagent", "role": "organizer", "research-tag": args.tag},
+            labels={"app": "kagent", "role": "organizer", "competition": comp_label, "research-tag": args.tag},
             data={
                 "REPO_URL": args.repo_url,
                 "REPO_BRANCH": args.repo_branch,
@@ -195,6 +198,7 @@ def main():
             },
         )
         deployment = render_template(ORGANIZER_TEMPLATE.read_text(), {
+            "COMPETITION_LABEL": comp_label,
             "RESEARCH_TAG": args.tag,
             "IMAGE": args.image,
         })
@@ -215,12 +219,12 @@ def main():
         if args.organizer:
             print(f"Organizer: scoring every 5 min")
         print(f"\nMonitor:")
-        print(f"  kubectl get deployments -l research-tag={args.tag}")
+        print(f"  kubectl get deployments -l research-tag={args.tag},competition={comp_label}")
         print(f"  kubectl logs -f deployment/kagent-{args.tag}-{kaggler_list[0]}")
         if args.organizer:
             print(f"  kubectl logs -f deployment/kagent-{args.tag}-organizer")
         print(f"\nStop:")
-        print(f"  kubectl delete deployments,configmaps -l research-tag={args.tag}")
+        print(f"  kubectl delete deployments,configmaps -l research-tag={args.tag},competition={comp_label}")
 
 
 if __name__ == "__main__":

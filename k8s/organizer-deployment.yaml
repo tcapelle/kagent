@@ -5,12 +5,14 @@ metadata:
   labels:
     app: kagent
     role: organizer
+    competition: {{COMPETITION_LABEL}}
     research-tag: {{RESEARCH_TAG}}
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: kagent
+      competition: {{COMPETITION_LABEL}}
       role: organizer
       research-tag: {{RESEARCH_TAG}}
   template:
@@ -18,6 +20,7 @@ spec:
       labels:
         app: kagent
         role: organizer
+        competition: {{COMPETITION_LABEL}}
         research-tag: {{RESEARCH_TAG}}
     spec:
       containers:

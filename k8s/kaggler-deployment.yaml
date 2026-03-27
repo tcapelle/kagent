@@ -5,6 +5,7 @@ metadata:
   labels:
     app: kagent
     role: kaggler
+    competition: {{COMPETITION_LABEL}}
     research-tag: {{RESEARCH_TAG}}
 spec:
   replicas: 1
@@ -13,6 +14,7 @@ spec:
   selector:
     matchLabels:
       app: kagent
+      competition: {{COMPETITION_LABEL}}
       kaggler: {{KAGGLER_NAME}}
       research-tag: {{RESEARCH_TAG}}
   template:
@@ -20,6 +22,7 @@ spec:
       labels:
         app: kagent
         role: kaggler
+        competition: {{COMPETITION_LABEL}}
         kaggler: {{KAGGLER_NAME}}
         research-tag: {{RESEARCH_TAG}}
     spec:

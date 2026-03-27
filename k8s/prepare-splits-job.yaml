@@ -5,6 +5,7 @@ metadata:
   labels:
     app: kagent
     role: prepare
+    competition: {{COMPETITION_LABEL}}
     research-tag: {{RESEARCH_TAG}}
 spec:
   ttlSecondsAfterFinished: 3600
@@ -14,6 +15,7 @@ spec:
       labels:
         app: kagent
         role: prepare
+        competition: {{COMPETITION_LABEL}}
         research-tag: {{RESEARCH_TAG}}
     spec:
       restartPolicy: Never

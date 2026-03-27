@@ -107,7 +107,6 @@ The train.py template logs all required W&B metrics automatically. See README.md
 - The 4 val tracks test different failure modes — understand what makes each one hard.
 - Everything is fair game: architecture, loss, optimizer, normalization, data sampling, data augmentation, synthetic data generation, etc.
 
-
 ## Plateau Protocol
 
 5+ consecutive experiments with no improvement triggers escalation — not a stop signal.
