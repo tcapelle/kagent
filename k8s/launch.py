@@ -11,11 +11,7 @@ TEMPLATES_DIR = Path(__file__).parent
 KAGGLER_TEMPLATE = TEMPLATES_DIR / "kaggler-deployment.yaml"
 ORGANIZER_TEMPLATE = TEMPLATES_DIR / "organizer-deployment.yaml"
 PREPARE_TEMPLATE = TEMPLATES_DIR / "prepare-splits-job.yaml"
-SUPPORTED_AGENT_RUNTIMES = {"claude", "codex"}
-DEFAULT_AGENT_MODELS = {
-    "claude": "claude-opus-4-6[1m]",
-    "codex": "gpt-5.4",
-}
+DEFAULT_AGENT_MODEL = "claude-opus-4-6[1m]"
 
 KAGGLER_NAMES = [
     "frieren", "fern", "tanjiro", "nezuko", "alphonse", "edward",
@@ -30,8 +26,7 @@ class Args:
     """Launch kagent kaggler pods on Kubernetes."""
     tag: str  # research tag (e.g. mar18)
     competition: str = "cfd-competition"  # repo-relative competition directory
-    agent_runtime: str = "claude"  # one of: claude, codex
-    agent_model: str = ""  # defaults depend on agent_runtime
+    agent_model: str = ""  # defaults to DEFAULT_AGENT_MODEL
     names: str = ""  # comma-separated kaggler names (e.g. "frieren,fern")
     n_kagglers: int = 4  # number of kagglers (ignored if --names provided)
     repo_url: str = "https://github.com/tcapelle/kagent.git"
@@ -99,17 +94,8 @@ def build_competition_env(competition_dir: str) -> dict[str, str]:
     }
 
 
-def normalize_agent_runtime(agent_runtime: str) -> str:
-    runtime = agent_runtime.strip().lower()
-    if runtime not in SUPPORTED_AGENT_RUNTIMES:
-        valid = ", ".join(sorted(SUPPORTED_AGENT_RUNTIMES))
-        raise ValueError(f"agent_runtime must be one of: {valid}")
-    return runtime
-
-
-def resolve_agent_model(agent_runtime: str, agent_model: str) -> str:
-    model = agent_model.strip()
-    return model or DEFAULT_AGENT_MODELS[agent_runtime]
+def resolve_agent_model(agent_model: str) -> str:
+    return agent_model.strip() or DEFAULT_AGENT_MODEL
 
 
 def main():
@@ -117,8 +103,7 @@ def main():
     args = sp.parse(Args, config_path=str(config_path))
     competition_dir = normalize_competition_dir(args.competition)
     comp_label = PurePosixPath(competition_dir).name
-    agent_runtime = normalize_agent_runtime(args.agent_runtime)
-    agent_model = resolve_agent_model(agent_runtime, args.agent_model)
+    agent_model = resolve_agent_model(args.agent_model)
     competition_env = build_competition_env(competition_dir)
 
     # --- Prepare splits job ---
@@ -163,7 +148,6 @@ def main():
                 "WANDB_ENTITY": args.wandb_entity,
                 "WANDB_PROJECT": args.wandb_project,
                 "WANDB_MODE": "online",
-                "AGENT_RUNTIME": agent_runtime,
                 "AGENT_MODEL": agent_model,
                 **competition_env,
             },
@@ -212,7 +196,7 @@ def main():
     if not args.dry_run:
         print(f"\nLaunched {len(kaggler_list)} kagglers: {', '.join(kaggler_list)}")
         print(f"Competition: {competition_dir}")
-        print(f"Agent runtime: {agent_runtime} ({agent_model})")
+        print(f"Agent model: {agent_model}")
         print(f"Each on branch: {args.tag}/kaggler/<name>")
         print(f"Predictions: /mnt/new-pvc/predictions/{args.tag}/<name>/<commit>/")
         if args.organizer:
