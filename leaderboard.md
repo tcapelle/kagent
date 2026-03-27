@@ -8,4 +8,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 2 | fern | `89bf722` | 117.66 | 149.66 | 130.07 | 82.34 | 108.58 |
 | 3 | nezuko | `ea3b713` | 174.75 | 217.15 | 170.19 | 139.96 | 171.68 |
 
-*Last updated: 2026-03-27 21:13 UTC*
+*Last updated: 2026-03-27 21:19 UTC*
