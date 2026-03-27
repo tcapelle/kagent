@@ -32,11 +32,11 @@ fi
 
 push_leaderboard() {
     [ -f "$LEADERBOARD_PVC" ] || return 0
-    cp "$LEADERBOARD_PVC" "$REPO_DIR/leaderboard.md"
-    git -C "$REPO_DIR" add leaderboard.md
-    git -C "$REPO_DIR" diff --cached --quiet && return 0
-    git -C "$REPO_DIR" commit -m "Update leaderboard"
-    git -C "$REPO_DIR" push origin "$LEADERBOARD_BRANCH" || echo "  Leaderboard push failed"
+    cp "$LEADERBOARD_PVC" leaderboard.md
+    git add leaderboard.md
+    git diff --cached --quiet && return 0
+    git commit -m "Update leaderboard"
+    git push origin "$LEADERBOARD_BRANCH" || echo "  Leaderboard push failed"
 }
 
 echo "=== Organizer ready ==="

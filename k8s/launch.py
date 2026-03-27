@@ -93,7 +93,6 @@ def build_competition_env(competition_dir: str) -> dict[str, str]:
     return {
         "COMPETITION_DIR": str(comp_path),
         "COMPETITION_NAME": comp_path.name,
-        "COMPETITION_LABEL": comp_path.name,
         "KAGGLER_WORKDIR": str(comp_root / "kaggler"),
         "ORGANIZER_WORKDIR": str(comp_root / "organizer"),
         "KAGGLER_PROMPT_FILE": "KAGGLER_AGENT.md",
