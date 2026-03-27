@@ -30,8 +30,9 @@ spec:
         - |
           set -e
           git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-          git clone --branch "$REPO_BRANCH" "$REPO_URL" /workspace/kagent
+          git clone --depth 1 --sparse --branch "$REPO_BRANCH" "$REPO_URL" /workspace/kagent
           cd /workspace/kagent
+          git sparse-checkout set "$COMPETITION_DIR/kaggler" k8s pyproject.toml .gitignore CLAUDE.md
           bash k8s/entrypoint-kaggler.sh
         envFrom:
         - configMapRef:
