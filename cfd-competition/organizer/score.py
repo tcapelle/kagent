@@ -60,8 +60,8 @@ def score_split(preds: list[torch.Tensor], gt: list[dict]) -> dict[str, float]:
     """Score one test split. Returns per-channel surface and volume MAE."""
     assert len(preds) == len(gt), f"Count mismatch: {len(preds)} vs {len(gt)}"
 
-    mae_surf = torch.zeros(3)
-    mae_vol = torch.zeros(3)
+    mae_surf = torch.zeros(3, dtype=torch.float64)
+    mae_vol = torch.zeros(3, dtype=torch.float64)
     n_surf = n_vol = 0
 
     for i in range(len(preds)):
@@ -69,7 +69,7 @@ def score_split(preds: list[torch.Tensor], gt: list[dict]) -> dict[str, float]:
         is_surface = gt[i]["is_surface"]
         assert pred_y.shape == true_y.shape, f"Sample {i}: {pred_y.shape} vs {true_y.shape}"
 
-        err = (pred_y - true_y).abs()
+        err = (pred_y.double() - true_y.double()).abs()
         mae_surf += (err * is_surface.unsqueeze(-1)).sum(0)
         n_surf += is_surface.sum().item()
         mae_vol += (err * (~is_surface).unsqueeze(-1)).sum(0)
