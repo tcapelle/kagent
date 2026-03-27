@@ -298,4 +298,16 @@ if best_metrics:
                 "global_step": global_step,
             })
 
+# --- Auto-submit predictions ---
+if best_metrics and not cfg.debug:
+    import subprocess
+    print("\nGenerating test predictions...")
+    pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
+    if cfg.agent:
+        pred_cmd += ["--agent", cfg.agent]
+    result = subprocess.run(pred_cmd, capture_output=True, text=True)
+    print(result.stdout)
+    if result.returncode != 0:
+        print(f"predict.py failed:\n{result.stderr[-500:]}")
+
 wandb.finish()
