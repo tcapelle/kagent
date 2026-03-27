@@ -127,7 +127,7 @@ def log_to_wandb(results: dict, agent: str, commit: str):
         entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
         project=os.environ.get("WANDB_PROJECT", "kagent-v2"),
         name=f"score/{agent}/{commit}",
-        tags=["score", agent],
+        tags=["score", agent, RESEARCH_TAG],
         config={"agent": agent, "commit": commit},
         job_type="scoring",
     )

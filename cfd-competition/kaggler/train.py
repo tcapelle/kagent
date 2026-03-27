@@ -183,7 +183,7 @@ run = wandb.init(
     project=os.environ.get("WANDB_PROJECT", "kagent-v2"),
     group=cfg.wandb_group,
     name=cfg.wandb_name,
-    tags=[cfg.agent] if cfg.agent else [],
+    tags=[t for t in [cfg.agent, os.environ.get("RESEARCH_TAG")] if t],
     config={**asdict(cfg), "n_params": n_params,
             "train_samples": len(train_ds),
             "val_samples": {k: len(v) for k, v in val_splits.items()}},
