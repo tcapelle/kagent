@@ -9,4 +9,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 3 | nezuko | `2b2256f` | 134.36 | 158.44 | 154.65 | 93.00 | 131.36 |
 | 4 | frieren | `1e3020d` | 232.29 | 264.21 | 257.97 | 179.89 | 227.10 |
 
-*Last updated: 2026-03-27 21:44 UTC*
+*Last updated: 2026-03-27 21:50 UTC*
