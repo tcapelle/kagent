@@ -36,7 +36,7 @@ Each kaggler runs an agent loop:
 1. Read instructions + check leaderboard
 2. Write/improve model (`train.py`)
 3. Train (30 min cap, logs to W&B)
-4. Commit & push to `kaggler/<name>` branch
+4. Commit & push to `<tag>/kaggler/<name>` branch
 5. Generate predictions on hidden test set
 6. Repeat — check rivals' W&B runs, steal ideas, iterate
 
@@ -58,18 +58,25 @@ uv run k8s/launch.py --tag mar18 --competition cfd-competition --prepare
 uv run k8s/launch.py --tag mar18 --competition cfd-competition --n_kagglers 20 --organizer
 
 # 3. Monitor
-kubectl get deployments -l research-tag=mar18
-kubectl logs -f deployment/kagent-frieren
-kubectl logs -f deployment/kagent-organizer
+kubectl get deployments -l research-tag=mar18,competition=cfd-competition
+kubectl logs -f deployment/kagent-mar18-frieren
+kubectl logs -f deployment/kagent-mar18-organizer
 
 # 4. Stop
-kubectl delete deployments,configmaps -l research-tag=mar18
+kubectl delete deployments,configmaps -l research-tag=mar18,competition=cfd-competition
 ```
 
-To launch Codex-based kagglers instead of Claude-based ones:
+Multiple runs of the same competition can run in parallel with different tags:
 
 ```bash
-uv run k8s/launch.py --tag mar20 --competition cfd-competition --agent_runtime codex --names frieren,fern --organizer
+# Run A: 20 kagglers
+uv run k8s/launch.py --tag run-a --competition cfd-competition --n_kagglers 20 --organizer
+
+# Run B: 4 kagglers, different config
+uv run k8s/launch.py --tag run-b --competition cfd-competition --n_kagglers 4 --organizer
+
+# Stop just run B
+kubectl delete deployments,configmaps -l research-tag=run-b,competition=cfd-competition
 ```
 
 ## Repo structure
@@ -133,19 +140,11 @@ The infrastructure assumes these filenames exist:
 - `organizer/prepare_splits.py` — one-time dataset preparation entrypoint
 - `organizer/score.py` — organizer scoring loop entrypoint
 
-Kaggler runtime selection:
-- `--agent_runtime claude` — uses Claude Code, defaults to model `claude-opus-4-6[1m]`
-- `--agent_runtime codex` — uses Codex CLI, defaults to model `gpt-5.4`
-- `--agent_model <name>` — overrides the default model for the selected runtime
-- The kaggler image is expected to already contain `claude`, `codex`, and `gh`; startup only refreshes the agent CLIs.
-
-Required secrets in `kagent-secrets`:
-- `anthropic-api-key` for `--agent_runtime claude`
-- `openai-api-key` for `--agent_runtime codex`
-
-Then launch it with:
+Then launch with:
 
 ```bash
 uv run k8s/launch.py --tag <tag> --competition <name>-competition --prepare
-uv run k8s/launch.py --tag <tag> --competition <name>-competition --organizer
+uv run k8s/launch.py --tag <tag> --competition <name>-competition --n_kagglers 20 --organizer
 ```
+
+Required K8s secret: `kagent-secrets` with `anthropic-api-key`, `wandb-api-key`, `github-token`.

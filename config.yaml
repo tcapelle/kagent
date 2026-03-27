@@ -8,8 +8,7 @@ tag: mar27  # research tag
 competition: cfd-competition  # repo-relative competition directory
 
 # agent
-agent_runtime: claude  # one of: claude, codex
-agent_model: ""  # defaults depend on agent_runtime (claude-opus-4-6[1m] for claude)
+agent_model: ""  # defaults to claude-opus-4-6[1m]
 
 # git
 repo_url: https://github.com/tcapelle/kagent.git

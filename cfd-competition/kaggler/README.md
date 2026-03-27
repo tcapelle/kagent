@@ -11,13 +11,13 @@ The baseline is a [Transolver](https://arxiv.org/abs/2402.02366) with physics-aw
 Pre-processed data lives on the PVC at `/mnt/new-pvc/datasets/tandemfoil/splits_v2/`:
 
 ```
-splits/
+splits_v2/
 ├── train/000000.pt ...           Each: {x: [N,24], y: [N,3], is_surface: [N]}
-├── val_in_dist/...               Interpolation holdout (raceCar single)
-├── val_tandem_transfer/...       Unseen tandem front foil shape
-├── val_ood_cond/...              Extreme AoA/gap/stagger conditions
-├── val_ood_re/...                OOD Reynolds number (Re=4.445M)
-├── test/000000.pt ...            {x: [N,24], is_surface: [N]}  — NO targets
+├── val_single_in_dist/...        Random holdout from single-foil (sanity check)
+├── val_geom_camber_rc/...        Unseen front foil camber M=6-8 (raceCar)
+├── val_geom_camber_cruise/...    Unseen front foil camber M=2-4 (cruise)
+├── val_re_rand/...               Stratified Re holdout across all tandem domains
+├── test_*/...                    4 test splits (same axes as val, no targets)
 ├── stats.json                    Normalization stats (x_mean, x_std, y_mean, y_std)
 └── meta.json                     Split counts, domain groups
 ```
@@ -53,7 +53,7 @@ from data import load_data
 
 train_ds, val_splits, stats, sample_weights = load_data()
 # train_ds[i] → (x, y, is_surface)
-# val_splits["val_in_dist"][i] → (x, y, is_surface)
+# val_splits["val_single_in_dist"][i] → (x, y, is_surface)
 # stats = {x_mean, x_std, y_mean, y_std}
 # sample_weights → for balanced domain sampling
 ```
@@ -138,10 +138,10 @@ Four validation tracks test different failure modes:
 
 | Track | Tests |
 |-------|-------|
-| `val_in_dist` | Interpolation on seen shapes/conditions (sanity check) |
-| `val_tandem_transfer` | Unseen tandem front foil (NACA6416) — does training transfer? |
-| `val_ood_cond` | Extreme AoA/gap/stagger — condition extrapolation |
-| `val_ood_re` | Re=4.445M (above training ceiling) — physics OOD |
+| `val_single_in_dist` | Random holdout from single-foil (sanity check) |
+| `val_geom_camber_rc` | Unseen front foil camber M=6-8 — geometry interpolation (raceCar) |
+| `val_geom_camber_cruise` | Unseen front foil camber M=2-4 — geometry interpolation (cruise) |
+| `val_re_rand` | Stratified Re holdout across all tandem domains — cross-regime generalization |
 
 ## Model contract
 
@@ -163,7 +163,7 @@ pred_phys = pred * stats["y_std"] + stats["y_mean"]
 
 ## Submission
 
-After training, generate predictions on the hidden test set. The test samples are in `splits/test/` — they contain `{x, is_surface}` but **no y** (targets).
+After training, generate predictions on the hidden test set. The test samples are in `splits_v2/test_*/` (4 test splits matching the val axes) — they contain `{x, is_surface}` but **no y** (targets).
 
 Your `predict.py` must:
 1. Load each test sample's `x` tensor `[N, 24]`
@@ -174,7 +174,7 @@ Your `predict.py` must:
 
 The output file must be at:
 ```
-/mnt/new-pvc/predictions/<agent>/<commit-hash>/predictions.pt
+/mnt/new-pvc/predictions/$RESEARCH_TAG/<agent>/<commit-hash>/predictions.pt
 ```
 
 Where `predictions.pt` contains:
@@ -221,7 +221,7 @@ Log these every epoch with `global_step` as the x-axis:
 
 **Validation (per epoch, per split):**
 
-For each split in `[val_in_dist, val_tandem_transfer, val_ood_cond, val_ood_re]`:
+For each split in `[val_single_in_dist, val_geom_camber_rc, val_geom_camber_cruise, val_re_rand]`:
 - `{split}/loss` — combined: vol_loss + surf_weight * surf_loss
 - `{split}/vol_loss`, `{split}/surf_loss` — component losses
 - `{split}/mae_surf_Ux`, `{split}/mae_surf_Uy`, `{split}/mae_surf_p` — surface MAE per channel (physical units)
@@ -249,7 +249,7 @@ mae_vol = (err * vol_mask.unsqueeze(-1)).sum(dim=(0,1)) / vol_mask.sum()
 wandb.define_metric("global_step")
 wandb.define_metric("train/*", step_metric="global_step")
 wandb.define_metric("val/*", step_metric="global_step")
-for split in ["val_in_dist", "val_tandem_transfer", "val_ood_cond", "val_ood_re"]:
+for split in ["val_single_in_dist", "val_geom_camber_rc", "val_geom_camber_cruise", "val_re_rand"]:
     wandb.define_metric(f"{split}/*", step_metric="global_step")
 ```
 

@@ -1,10 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kagent-{{KAGGLER_NAME}}
+  name: kagent-{{RESEARCH_TAG}}-{{KAGGLER_NAME}}
   labels:
     app: kagent
     role: kaggler
+    competition: {{COMPETITION_LABEL}}
     research-tag: {{RESEARCH_TAG}}
 spec:
   replicas: 1
@@ -13,12 +14,15 @@ spec:
   selector:
     matchLabels:
       app: kagent
+      competition: {{COMPETITION_LABEL}}
       kaggler: {{KAGGLER_NAME}}
+      research-tag: {{RESEARCH_TAG}}
   template:
     metadata:
       labels:
         app: kagent
         role: kaggler
+        competition: {{COMPETITION_LABEL}}
         kaggler: {{KAGGLER_NAME}}
         research-tag: {{RESEARCH_TAG}}
     spec:
@@ -36,7 +40,7 @@ spec:
           bash k8s/entrypoint-kaggler.sh
         envFrom:
         - configMapRef:
-            name: kagent-config-kaggler-{{KAGGLER_NAME}}
+            name: kagent-{{RESEARCH_TAG}}-config-{{KAGGLER_NAME}}
         env:
         - name: WANDB_API_KEY
           valueFrom:

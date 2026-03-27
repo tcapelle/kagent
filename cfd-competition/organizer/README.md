@@ -18,14 +18,14 @@ The TandemFoilSet lives on the PVC at `/mnt/new-pvc/datasets/tandemfoil/` — 7 
 
 `prepare_splits.py` splits data into train/val/test with `SAMPLE_FRACTION=0.85` (15% held out for test).
 
-The validation set is structured into 4 tracks testing different failure modes:
+The validation set is structured into 4 tracks testing different generalization axes:
 
-- **val_in_dist** — 10% random holdout from raceCar single (interpolation sanity check)
-- **val_tandem_transfer** — raceCar tandem Part2 (front foil NACA6416 never seen in tandem training)
-- **val_ood_cond** — frontier 20% of cruise Part1+3 in normalized (AoA, gap, stagger) space
-- **val_ood_re** — cruise Part2 (Re=4.445M, above training ceiling)
+- **val_single_in_dist** — random holdout from single-foil (sanity check)
+- **val_geom_camber_rc** — unseen front foil camber M=6-8 (raceCar tandem Part2, full holdout)
+- **val_geom_camber_cruise** — unseen front foil camber M=2-4 (cruise tandem Part2, full holdout)
+- **val_re_rand** — stratified Re holdout across all tandem domains
 
-Parts 2 and 5 go entirely to validation — they test truly held-out shapes and physics.
+See [SPLITS.md](SPLITS.md) for the full split design rationale.
 
 ### Preprocessing
 
@@ -52,12 +52,9 @@ The job takes ~5 minutes on 8 CPU cores.
 
 | Split | Samples |
 |-------|---------|
-| train | 1,606 |
-| val_in_dist | 76 |
-| val_tandem_transfer | 255 |
-| val_ood_cond | 102 |
-| val_ood_re | 255 |
-| test | 405 |
+| train | 1,499 |
+| val (4 x 100) | 400 |
+| test (4 x 200) | 800 |
 | **Total** | **2,699** |
 
 ## 2. Baseline Training
@@ -78,12 +75,12 @@ Key model config:
 
 ## 3. Scoring Predictions
 
-Kagglers submit predictions via `predict.py`, which saves to `/mnt/new-pvc/predictions/<agent>/<model-id>/predictions.pt`.
+Kagglers submit predictions via `predict.py`, which saves to `/mnt/new-pvc/predictions/<tag>/<agent>/<model-id>/predictions.pt`.
 
 Score with:
 
 ```bash
-uv run score.py --predictions /mnt/new-pvc/predictions/<agent>/<model-id>/predictions.pt
+uv run score.py --predictions /mnt/new-pvc/predictions/<tag>/<agent>/<model-id>/predictions.pt
 ```
 
 Output is a markdown table with per-domain and overall MAE for surface and volume nodes.

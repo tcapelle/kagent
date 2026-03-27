@@ -10,6 +10,7 @@ Run:
 """
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +21,8 @@ from tqdm import tqdm
 
 from data import X_DIM
 
-PREDICTIONS_DIR = Path("/mnt/new-pvc/predictions")
+RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
+PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 SPLITS_DIR = Path("/mnt/new-pvc/datasets/tandemfoil/splits_v2")
 
 

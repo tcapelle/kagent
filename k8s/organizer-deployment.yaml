@@ -1,22 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kagent-organizer
+  name: kagent-{{RESEARCH_TAG}}-organizer
   labels:
     app: kagent
     role: organizer
+    competition: {{COMPETITION_LABEL}}
     research-tag: {{RESEARCH_TAG}}
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: kagent
+      competition: {{COMPETITION_LABEL}}
       role: organizer
+      research-tag: {{RESEARCH_TAG}}
   template:
     metadata:
       labels:
         app: kagent
         role: organizer
+        competition: {{COMPETITION_LABEL}}
         research-tag: {{RESEARCH_TAG}}
     spec:
       containers:
@@ -32,7 +36,7 @@ spec:
           bash k8s/entrypoint-organizer.sh
         envFrom:
         - configMapRef:
-            name: kagent-config-organizer
+            name: kagent-{{RESEARCH_TAG}}-config-organizer
         env:
         - name: WANDB_API_KEY
           valueFrom:

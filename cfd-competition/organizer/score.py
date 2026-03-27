@@ -1,19 +1,20 @@
 """Score predictions against hidden test ground truth.
 
-Organizer-only. Scores submissions and logs results to W&B.
+Organizer-only. Scores submissions, logs to W&B, writes leaderboard to PVC.
 
 Predictions layout (per agent/commit):
-  /mnt/new-pvc/predictions/<agent>/<commit>/
+  /mnt/new-pvc/predictions/<tag>/<agent>/<commit>/
   ├── test_single_in_dist.pt    list of [N_i, 3] tensors
   ├── test_geom_camber_rc.pt
   ├── test_geom_camber_cruise.pt
   └── test_re_rand.pt
 
 Run:
-  python score.py --predictions /mnt/new-pvc/predictions/frieren/abc1234
   python score.py --score_all
+  python score.py --predictions /mnt/new-pvc/predictions/<tag>/frieren/abc1234
 """
 
+import datetime
 import json
 import os
 from dataclasses import dataclass
@@ -23,10 +24,10 @@ import simple_parsing as sp
 import torch
 import wandb
 
+RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 SPLITS_DIR = Path("/mnt/new-pvc/datasets/tandemfoil/splits_v2")
-PREDICTIONS_ROOT = Path("/mnt/new-pvc/predictions")
+PREDICTIONS_ROOT = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 SCORES_FILE = PREDICTIONS_ROOT / "scores.json"
-CHANNELS = ["Ux", "Uy", "p"]
 
 TEST_SPLITS = [
     "test_single_in_dist",
@@ -122,7 +123,7 @@ def score_submission(pred_dir: Path, gt: dict[str, list[dict]]) -> dict[str, flo
 
 def log_to_wandb(results: dict, agent: str, commit: str):
     """Log scores as a W&B run."""
-    run = wandb.init(
+    wandb.init(
         entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
         project=os.environ.get("WANDB_PROJECT", "kagent-v2"),
         name=f"score/{agent}/{commit}",
@@ -146,8 +147,8 @@ def save_scores(scores: dict):
     SCORES_FILE.write_text(json.dumps(scores, indent=2))
 
 
-def update_leaderboard(scores: dict, repo_dir: str = "/workspace/kagent"):
-    """Update leaderboard.md ranked by avg surface pressure MAE."""
+def update_leaderboard(scores: dict):
+    """Write leaderboard to PVC (readable by all pods)."""
     if not scores:
         return
 
@@ -160,21 +161,18 @@ def update_leaderboard(scores: dict, repo_dir: str = "/workspace/kagent"):
 
     ranked = sorted(best_per_agent.items(), key=lambda x: x[1][1].get("avg/mae_surf_p", float("inf")))
 
-    CODEX_AGENTS = {"luffy", "zoro", "nami", "sanji"}
-
     lines = [
-        "# Leaderboard",
+        f"# Leaderboard ({RESEARCH_TAG})",
         "",
         "Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).",
         "",
-        "| Rank | Agent | Runtime | Commit | avg_surf_p | single_in_dist | geom_rc | geom_cruise | re_rand |",
-        "|------|-------|---------|--------|-----------|----------------|---------|-------------|---------|",
+        "| Rank | Agent | Commit | avg_surf_p | single_in_dist | geom_rc | geom_cruise | re_rand |",
+        "|------|-------|--------|-----------|----------------|---------|-------------|---------|",
     ]
 
     for rank, (agent, (commit, r)) in enumerate(ranked, 1):
-        runtime = "codex" if agent in CODEX_AGENTS else "claude"
         lines.append(
-            f"| {rank} | {agent} | {runtime} | `{commit[:7]}` "
+            f"| {rank} | {agent} | `{commit[:7]}` "
             f"| {r.get('avg/mae_surf_p', 0):.2f} "
             f"| {r.get('test_single_in_dist/mae_surf_p', 0):.2f} "
             f"| {r.get('test_geom_camber_rc/mae_surf_p', 0):.2f} "
@@ -182,28 +180,11 @@ def update_leaderboard(scores: dict, repo_dir: str = "/workspace/kagent"):
             f"| {r.get('test_re_rand/mae_surf_p', 0):.2f} |"
         )
 
-    lines.extend(["", f"*Last updated: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M UTC')}*", ""])
+    lines.extend(["", f"*Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M UTC')}*", ""])
 
-    leaderboard_path = Path(repo_dir) / "leaderboard.md"
+    leaderboard_path = PREDICTIONS_ROOT / "leaderboard.md"
     leaderboard_path.write_text("\n".join(lines))
-
-    import subprocess
-    git = lambda *args: subprocess.run(["git", "-C", repo_dir] + list(args), capture_output=True, text=True)
-    git("config", "user.name", "kagent-organizer")
-    git("config", "user.email", "kagent-organizer@kagent")
-    git("checkout", "main")
-    git("pull", "origin", "main")
-    git("add", "leaderboard.md")
-    result = git("diff", "--cached", "--quiet")
-    if result.returncode != 0:
-        git("commit", "-m", "Update leaderboard")
-        push = git("push", "origin", "main")
-        if push.returncode == 0:
-            print(f"  Leaderboard pushed to main ({len(ranked)} agents)")
-        else:
-            print(f"  Leaderboard push failed: {push.stderr.strip()}")
-    else:
-        print("  Leaderboard unchanged")
+    print(f"  Leaderboard updated ({len(ranked)} agents) → {leaderboard_path}")
 
 
 cfg = sp.parse(Config)
@@ -242,10 +223,9 @@ if cfg.score_all:
 
 elif cfg.predictions:
     pred_dir = Path(cfg.predictions)
-    parts = pred_dir.parts
-    pred_idx = parts.index("predictions")
-    agent = parts[pred_idx + 1]
-    commit = parts[pred_idx + 2]
+    relative = pred_dir.relative_to(PREDICTIONS_ROOT)
+    agent = relative.parts[0]
+    commit = relative.parts[1]
     print(f"Scoring: {agent} @ {commit}")
     gt = load_ground_truth(splits_dir)
     results = score_submission(pred_dir, gt)
