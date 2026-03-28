@@ -7,6 +7,6 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 1 | tanjiro | `d2feabe` | 48.94 | 43.20 | 82.47 | 22.35 | 47.73 |
 | 2 | frieren | `0dc55d3` | 53.51 | 53.51 | 0.00 | 0.00 | 0.00 |
 | 3 | fern | `7087c6e` | 64.92 | 69.55 | 89.23 | 37.61 | 63.30 |
-| 4 | nezuko | `c8728f5` | 70.93 | 70.82 | 100.42 | 41.72 | 70.77 |
+| 4 | nezuko | `772ae78` | 70.78 | 70.80 | 99.90 | 41.90 | 70.53 |
 
-*Last updated: 2026-03-28 05:49 UTC*
+*Last updated: 2026-03-28 05:59 UTC*
