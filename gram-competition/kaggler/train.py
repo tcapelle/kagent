@@ -56,15 +56,19 @@ class PointToGrid(nn.Module):
         wy = (gy - gy0.float()).unsqueeze(-1)
         wz = (gz - gz0.float()).unsqueeze(-1)
 
-        grid = features.new_zeros(B, Gx, Gy, Gz, C)
-        count = features.new_zeros(B, Gx, Gy, Gz, 1)
+        # Use fp32 for scatter operations (AMP compat)
+        feat_f32 = features.float()
+        wx_f32, wy_f32, wz_f32 = wx.float(), wy.float(), wz.float()
 
-        for dx, dwx in [(gx0, 1 - wx), (gx1, wx)]:
-            for dy, dwy in [(gy0, 1 - wy), (gy1, wy)]:
-                for dz, dwz in [(gz0, 1 - wz), (gz1, wz)]:
+        grid = torch.zeros(B, Gx, Gy, Gz, C, device=features.device, dtype=torch.float32)
+        count = torch.zeros(B, Gx, Gy, Gz, 1, device=features.device, dtype=torch.float32)
+
+        for dx, dwx in [(gx0, 1 - wx_f32), (gx1, wx_f32)]:
+            for dy, dwy in [(gy0, 1 - wy_f32), (gy1, wy_f32)]:
+                for dz, dwz in [(gz0, 1 - wz_f32), (gz1, wz_f32)]:
                     w = dwx * dwy * dwz  # [B, N, 1]
                     idx = (dx * Gy * Gz + dy * Gz + dz).unsqueeze(-1).expand(-1, -1, C)
-                    grid.view(B, -1, C).scatter_add_(1, idx, features * w)
+                    grid.view(B, -1, C).scatter_add_(1, idx, feat_f32 * w)
                     count.view(B, -1, 1).scatter_add_(1, idx[..., :1], w)
 
         grid = grid / count.clamp(min=1e-6)
