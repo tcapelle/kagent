@@ -210,10 +210,10 @@ class VelocityPredictor(nn.Module):
             ResBlock(hidden, dropout),
         )
 
-        # Output head — zero-initialized for copy-last starting point
+        # Output head — small init for residual prediction
         self.norm_out = nn.LayerNorm(hidden)
         self.proj_out = nn.Linear(hidden, out_dim)
-        nn.init.zeros_(self.proj_out.weight)
+        nn.init.xavier_uniform_(self.proj_out.weight, gain=0.01)
         nn.init.zeros_(self.proj_out.bias)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
@@ -315,7 +315,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 3e-4
+        lr: float = 5e-4
         weight_decay: float = 0.01
         batch_size: int = 1
         epochs: int = 60
@@ -412,8 +412,8 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in, pos, t, idcs)
-                # L2 norm loss — matches competition metric
-                loss = (pred - v_out).norm(dim=3).mean()
+                # MSE loss for better gradient flow
+                loss = (pred - v_out).pow(2).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
