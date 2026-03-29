@@ -7,7 +7,6 @@ Run:
 import os
 import math
 import time
-import random
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -22,7 +21,7 @@ from data import T_IN, T_OUT
 # ---------------------------------------------------------------------------
 
 class FourierFeatures(nn.Module):
-    def __init__(self, in_dim=3, n_freqs=128):
+    def __init__(self, in_dim=3, n_freqs=96):
         super().__init__()
         self.register_buffer("B", torch.randn(in_dim, n_freqs) * 10.0)
 
@@ -156,7 +155,7 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
-# Training with scheduled sampling
+# Training — end-to-end autoregressive (backprop through all 5 steps)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -174,8 +173,8 @@ if __name__ == "__main__":
         weight_decay: float = 1e-4
         batch_size: int = 1
         epochs: int = 200
-        subsample_train: int = 10000
-        grad_accum: int = 4
+        subsample_train: int = 15000
+        val_every: int = 2  # validate every N epochs
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -210,8 +209,8 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-    warmup_steps = 300
-    total_steps = MAX_EPOCHS * len(train_ds) // cfg.grad_accum
+    warmup_steps = 500
+    total_steps = MAX_EPOCHS * len(train_ds)
     def lr_lambda(step):
         if step < warmup_steps:
             return (step + 1) / warmup_steps
@@ -243,7 +242,6 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
 
-    # --- Training loop with scheduled sampling ---
     best_val = float("inf")
     best_metrics: dict = {}
     global_step = 0
@@ -259,14 +257,7 @@ if __name__ == "__main__":
         epoch_loss = 0.0
         n_batches = 0
 
-        # Scheduled sampling: increase use of model predictions over time
-        # Start with pure teacher forcing, linearly increase to 50% autoregressive
-        elapsed_frac = min((time.time() - train_start) / (MAX_TIMEOUT * 60), 1.0)
-        ss_prob = min(0.5, elapsed_frac * 0.5)  # prob of using model prediction
-
-        optimizer.zero_grad()
-
-        for batch_idx, (v_in, v_out, pos, t, idcs) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}", leave=False)):
+        for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}", leave=False):
             v_in = v_in.to(device, non_blocking=True)
             v_out = v_out.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
@@ -274,7 +265,6 @@ if __name__ == "__main__":
 
             B, T_i, N, C = v_in.shape
 
-            # Subsample points
             if cfg.subsample_train and cfg.subsample_train < N:
                 idx = torch.randperm(N, device=device)[:cfg.subsample_train]
                 idx = idx.sort().values
@@ -296,84 +286,53 @@ if __name__ == "__main__":
                 v_in_s, v_out_s, pos_s, idcs_s = v_in, v_out, pos, idcs
 
             with torch.amp.autocast("cuda"):
-                vel_norm = (v_in_s - model.vel_mean) / model.vel_std
-                out_norm = (v_out_s - model.vel_mean) / model.vel_std
-                pos_feat = model.fourier(pos_s)
+                # End-to-end autoregressive: backprop through all 5 prediction steps
+                pred = model(v_in_s, pos_s, t, idcs_s)
+                loss = (pred - v_out_s).pow(2).mean()
 
-                airfoil_feat = torch.zeros(B, v_in_s.shape[2], 1, device=device)
-                for i in range(B):
-                    if idcs_s[i] is not None and len(idcs_s[i]) > 0:
-                        airfoil_feat[i, idcs_s[i].to(device), 0] = 1.0
-
-                total_loss = torch.tensor(0.0, device=device)
-                all_vel_gt = torch.cat([vel_norm, out_norm], dim=1)  # [B, 10, N, 3]
-
-                # Scheduled sampling: build window mixing GT and predictions
-                window = vel_norm.clone()  # [B, 5, N, 3] - start with GT input
-
-                for step in range(T_OUT):
-                    target = all_vel_gt[:, step + T_IN]  # [B, N, 3]
-                    pred_norm = model.predict_single_step(window, pos_s, pos_feat, airfoil_feat)
-                    total_loss = total_loss + (pred_norm - target).pow(2).mean()
-
-                    # Decide: use GT or prediction for next window
-                    if random.random() < ss_prob:
-                        # Use model prediction (autoregressive)
-                        next_step = pred_norm.detach()
-                    else:
-                        # Use ground truth (teacher forcing)
-                        next_step = all_vel_gt[:, step + T_IN]
-
-                    window = torch.cat([window[:, 1:], next_step.unsqueeze(1)], dim=1)
-
-                loss = total_loss / (T_OUT * cfg.grad_accum)
-
+            optimizer.zero_grad()
             scaler.scale(loss).backward()
-
-            if (batch_idx + 1) % cfg.grad_accum == 0:
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                scaler.step(optimizer)
-                scaler.update()
-                scheduler.step()
-                optimizer.zero_grad()
-                global_step += 1
-
-            epoch_loss += loss.item() * cfg.grad_accum
-            n_batches += 1
-
-        # Handle remaining gradients
-        if n_batches % cfg.grad_accum != 0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
-            optimizer.zero_grad()
+
             global_step += 1
+            wandb.log({"train/loss": loss.item(), "global_step": global_step})
+            epoch_loss += loss.item()
+            n_batches += 1
 
         epoch_loss /= max(n_batches, 1)
+        dt_train = time.time() - t0
 
-        mean_val, split_metrics = validate(model, val_loaders, device, global_step)
-        dt = time.time() - t0
+        # Validate every N epochs (or always in first few epochs)
+        if epoch < 5 or (epoch + 1) % cfg.val_every == 0:
+            mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+            dt = time.time() - t0
 
-        wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
-                   "epoch_time_s": dt, "ss_prob": ss_prob, "global_step": global_step})
+            wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
+                       "epoch_time_s": dt, "global_step": global_step})
 
-        tag = ""
-        if mean_val < best_val:
-            best_val = mean_val
-            best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
-            for sm in split_metrics.values():
-                best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(model.state_dict(), model_path)
-            tag = " *"
+            tag = ""
+            if mean_val < best_val:
+                best_val = mean_val
+                best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
+                for sm in split_metrics.values():
+                    best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+                torch.save(model.state_dict(), model_path)
+                tag = " *"
 
-        peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
-        print(
-            f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB] ss={ss_prob:.2f}  "
-            f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
-        )
+            peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+            print(
+                f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
+                f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+            )
+        else:
+            print(
+                f"Epoch {epoch+1:3d} ({dt_train:.0f}s)  "
+                f"train={epoch_loss:.4f}"
+            )
 
     total_time = (time.time() - train_start) / 60.0
     print(f"\nDone ({total_time:.1f} min)")
