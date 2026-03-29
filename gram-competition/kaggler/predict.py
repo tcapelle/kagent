@@ -27,16 +27,17 @@ TEST_SPLITS = ["val"]
 
 
 # ---------------------------------------------------------------------------
-# Model definition (duplicated from train.py to avoid import side effects)
+# Model (must match train.py)
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 2, dim),
         )
 
@@ -45,13 +46,25 @@ class ResBlock(nn.Module):
 
 
 class AirflowPredictor(nn.Module):
-    def __init__(self, hidden=512, n_blocks=8, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=10, n_fourier=64, dropout=0.05,
+                 vel_mean=None, vel_std=None):
         super().__init__()
-        in_dim = 3 + T_IN * 3 + T_IN
+        self.n_fourier = n_fourier
+
+        pos_feat_dim = n_fourier * 2 * 3
+        vel_feat_dim = T_IN * 3
+        deriv_feat_dim = (T_IN - 1) * 3
+        time_feat_dim = T_IN
+        surface_dim = 1
+        in_dim = pos_feat_dim + vel_feat_dim + deriv_feat_dim + time_feat_dim + surface_dim
+
         out_dim = T_OUT * 3
 
+        freqs = torch.randn(3, n_fourier) * 2.0
+        self.register_buffer("fourier_freqs", freqs)
+
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
         if vel_mean is not None:
@@ -61,18 +74,36 @@ class AirflowPredictor(nn.Module):
             self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
             self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
 
+    def _fourier_encode(self, pos):
+        B, N, _ = pos.shape
+        feats = []
+        for i in range(3):
+            p = pos[:, :, i:i+1] * self.fourier_freqs[i:i+1, :]
+            feats.append(torch.sin(p))
+            feats.append(torch.cos(p))
+        return torch.cat(feats, dim=-1)
+
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
+        pos_feat = self._fourier_encode(pos)
+        v_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
+
+        v_deriv = v_in_norm[:, 1:] - v_in_norm[:, :-1]
+        v_deriv_flat = v_deriv.permute(0, 2, 1, 3).reshape(B, N, (T-1) * C)
 
         t_in = t[:, :T_IN]
         t_range = t_in[:, -1:] - t_in[:, :1] + 1e-6
         t_features = (t_in - t_in[:, :1]) / t_range
         t_features = t_features.unsqueeze(1).expand(B, N, T_IN)
 
-        v_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
-        x = torch.cat([pos, v_flat, t_features], dim=-1)
+        surface_flag = torch.zeros(B, N, 1, device=pos.device, dtype=pos.dtype)
+        for i in range(B):
+            if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+                surface_flag[i, idcs_airfoil[i], 0] = 1.0
+
+        x = torch.cat([pos_feat, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
 
         x = self.proj_in(x)
         x = self.blocks(x)
@@ -97,11 +128,13 @@ class AirflowPredictor(nn.Module):
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
     checkpoint: str
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
+    hidden: int = 512
+    n_blocks: int = 10
+    n_fourier: int = 64
 
 
 cfg = sp.parse(Config)
@@ -113,7 +146,10 @@ with open(splits_dir / "stats.json") as f:
 vel_mean = torch.tensor(stats_raw["vel_mean"], dtype=torch.float32)
 vel_std = torch.tensor(stats_raw["vel_std"], dtype=torch.float32)
 
-model = AirflowPredictor(hidden=512, n_blocks=8, vel_mean=vel_mean, vel_std=vel_std).to(device)
+model = AirflowPredictor(
+    hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_fourier=cfg.n_fourier,
+    vel_mean=vel_mean, vel_std=vel_std,
+).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()

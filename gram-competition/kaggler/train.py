@@ -1,11 +1,13 @@
 """Train a 3D airflow velocity predictor.
 
-Improved architecture: Residual prediction + no-slip enforcement + normalization + AMP.
+Architecture: Residual MLP with Fourier position encoding, temporal derivatives,
+surface indicator, no-slip enforcement, velocity normalization, AMP.
 
 Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
 
+import math
 import os
 import time
 from dataclasses import dataclass, asdict
@@ -27,12 +29,13 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 2, dim),
         )
 
@@ -41,27 +44,33 @@ class ResBlock(nn.Module):
 
 
 class AirflowPredictor(nn.Module):
-    """Residual MLP with physics-informed design.
+    """Residual MLP with physics-informed design and Fourier features."""
 
-    Key improvements over baseline:
-    - Residual prediction: predicts delta from last input timestep
-    - No-slip enforcement: zeros velocity at airfoil surface
-    - Velocity normalization
-    - Per-timestep input features (not just flattened)
-    - Larger capacity
-    """
-
-    def __init__(self, hidden=512, n_blocks=8, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=10, n_fourier=64, dropout=0.05,
+                 vel_mean=None, vel_std=None):
         super().__init__()
-        # pos(3) + vel_in flattened(5*3=15) + time_features(5) = 23
-        in_dim = 3 + T_IN * 3 + T_IN
+        self.n_fourier = n_fourier
+
+        # Input features:
+        # fourier_pos(n_fourier*2*3=384) + vel_in_norm(15) + vel_derivatives(4*3=12) + time(5) + surface_flag(1) = 417
+        pos_feat_dim = n_fourier * 2 * 3  # sin + cos for each of 3 coords
+        vel_feat_dim = T_IN * 3  # flattened velocity
+        deriv_feat_dim = (T_IN - 1) * 3  # temporal derivatives
+        time_feat_dim = T_IN
+        surface_dim = 1
+        in_dim = pos_feat_dim + vel_feat_dim + deriv_feat_dim + time_feat_dim + surface_dim
+
         out_dim = T_OUT * 3
 
+        # Random Fourier feature frequencies (fixed, not learned)
+        # Multiple scales for multi-resolution spatial encoding
+        freqs = torch.randn(3, n_fourier) * 2.0  # scale factor
+        self.register_buffer("fourier_freqs", freqs)  # [3, n_fourier]
+
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # Register normalization stats as buffers
         if vel_mean is not None:
             self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
             self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
@@ -69,37 +78,65 @@ class AirflowPredictor(nn.Module):
             self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
             self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
 
+    def _fourier_encode(self, pos):
+        """Random Fourier features for position. pos: [B, N, 3]"""
+        # pos @ freqs: [B, N, n_fourier] for each coord
+        proj = pos @ self.fourier_freqs  # [B, N, n_fourier] (broadcasting over 3 coords summed)
+        # Actually we want per-coord Fourier features
+        # pos: [B, N, 3], freqs: [3, n_fourier]
+        # For each coord, compute sin/cos
+        B, N, _ = pos.shape
+        feats = []
+        for i in range(3):
+            p = pos[:, :, i:i+1] * self.fourier_freqs[i:i+1, :]  # [B, N, n_fourier]
+            feats.append(torch.sin(p))
+            feats.append(torch.cos(p))
+        return torch.cat(feats, dim=-1)  # [B, N, n_fourier*6]
+
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
         # Normalize velocities
-        v_in_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, 5, N, 3]
+        v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
 
-        # Compute temporal features: relative time differences
-        # t is [B, 10], input times are t[:, :5]
-        t_in = t[:, :T_IN]  # [B, 5]
-        t_range = t_in[:, -1:] - t_in[:, :1] + 1e-6
-        t_features = (t_in - t_in[:, :1]) / t_range  # normalized to [0, 1], shape [B, 5]
-        # Broadcast to per-point: [B, 5] -> [B, N, 5]
-        t_features = t_features.unsqueeze(1).expand(B, N, T_IN)
+        # Fourier position encoding
+        pos_feat = self._fourier_encode(pos)  # [B, N, n_fourier*6]
 
-        # Build input features per point
+        # Flattened velocity features
         v_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
-        x = torch.cat([pos, v_flat, t_features], dim=-1)  # [B, N, 23]
+
+        # Temporal derivatives: differences between consecutive timesteps
+        v_deriv = v_in_norm[:, 1:] - v_in_norm[:, :-1]  # [B, 4, N, 3]
+        v_deriv_flat = v_deriv.permute(0, 2, 1, 3).reshape(B, N, (T-1) * C)  # [B, N, 12]
+
+        # Time features
+        t_in = t[:, :T_IN]
+        t_range = t_in[:, -1:] - t_in[:, :1] + 1e-6
+        t_features = (t_in - t_in[:, :1]) / t_range
+        t_features = t_features.unsqueeze(1).expand(B, N, T_IN)  # [B, N, 5]
+
+        # Surface indicator
+        surface_flag = torch.zeros(B, N, 1, device=pos.device, dtype=pos.dtype)
+        for i in range(B):
+            if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+                surface_flag[i, idcs_airfoil[i], 0] = 1.0
+
+        # Concatenate all features
+        x = torch.cat([pos_feat, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
 
         x = self.proj_in(x)
         x = self.blocks(x)
-        delta_norm = self.proj_out(x)  # [B, N, 15]
-        delta_norm = delta_norm.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)  # [B, 5, N, 3]
+        delta_norm = self.proj_out(x)
+        delta_norm = delta_norm.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
 
-        # Residual: predict offset from last input timestep (in normalized space)
-        last_in_norm = v_in_norm[:, -1:, :, :]  # [B, 1, N, 3]
-        pred_norm = last_in_norm + delta_norm  # [B, 5, N, 3]
+        # Residual prediction from last input timestep
+        last_in_norm = v_in_norm[:, -1:, :, :]
+        pred_norm = last_in_norm + delta_norm
 
         # Denormalize
         pred = pred_norm * self.vel_std + self.vel_mean
 
-        # No-slip enforcement: zero velocity at airfoil surface
+        # No-slip enforcement
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 pred[i, :, idcs_airfoil[i], :] = 0.0
@@ -171,7 +208,11 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 2
     epochs: int = 50
-    subsample_points: int = 20000  # subsample during training for speed
+    subsample_points: int = 25000
+    hidden: int = 512
+    n_blocks: int = 10
+    n_fourier: int = 64
+    dropout: float = 0.05
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -196,7 +237,8 @@ val_loaders = {
 }
 
 model = AirflowPredictor(
-    hidden=512, n_blocks=8,
+    hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_fourier=cfg.n_fourier,
+    dropout=cfg.dropout,
     vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
 ).to(device)
 
@@ -204,7 +246,16 @@ n_params = sum(p.numel() for p in model.parameters())
 print(f"Model params: {n_params:,}")
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+# Warmup + cosine annealing
+warmup_epochs = 3
+def lr_lambda(epoch):
+    if epoch < warmup_epochs:
+        return (epoch + 1) / warmup_epochs
+    progress = (epoch - warmup_epochs) / max(1, MAX_EPOCHS - warmup_epochs)
+    return 0.5 * (1 + math.cos(math.pi * progress))
+
+scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 scaler = torch.amp.GradScaler("cuda")
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -235,7 +286,7 @@ model_path = model_dir / "checkpoint.pt"
 
 
 # ---------------------------------------------------------------------------
-# Training loop with point subsampling + AMP
+# Training loop
 # ---------------------------------------------------------------------------
 
 best_val = float("inf")
@@ -270,7 +321,6 @@ for epoch in range(MAX_EPOCHS):
             v_out_sub = v_out[:, :, sub_idx, :]
             pos_sub = pos[:, sub_idx, :]
 
-            # Remap airfoil indices to subsampled space
             sub_set = set(sub_idx.cpu().tolist())
             idx_map = {old: new for new, old in enumerate(sub_idx.cpu().tolist())}
             idcs_sub = []
@@ -304,7 +354,6 @@ for epoch in range(MAX_EPOCHS):
     scheduler.step()
     epoch_loss /= n_batches
 
-    # --- Validate (full resolution) ---
     mean_val, split_metrics = validate(model, val_loaders, device, global_step)
     dt = time.time() - t0
 
