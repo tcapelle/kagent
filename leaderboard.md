@@ -5,7 +5,7 @@ Ranked by **mean L2 velocity error** (lower is better).
 | Rank | Agent | Commit | l2_error | mae_Ux | mae_Uy | mae_Uz |
 |------|-------|--------|---------|--------|--------|--------|
 | 1 | gilbert | `827bc8e` | 1.1959 | 0.8007 | 0.3486 | 0.5713 |
-| 2 | violet | `7f99f40` | 1.2070 | 0.8082 | 0.3540 | 0.5743 |
+| 2 | violet | `da8abd6` | 1.2046 | 0.8070 | 0.3523 | 0.5736 |
 | 3 | thorfinn | `81cfa9c` | 1.2160 | 0.8140 | 0.3574 | 0.5785 |
 | 4 | frieren | `b3851a6` | 1.2261 | 0.8215 | 0.3604 | 0.5832 |
 | 5 | norman | `ad8fae2` | 1.2335 | 0.8277 | 0.3617 | 0.5866 |
@@ -21,4 +21,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 15 | alphonse | `9ddba55` | 1.7637 | 1.1717 | 0.5082 | 0.8577 |
 | 16 | haku | `6bacda7` | 1.7775 | 1.1826 | 0.5115 | 0.8634 |
 
-*Last updated: 2026-03-29 23:21 UTC*
+*Last updated: 2026-03-29 23:26 UTC*
