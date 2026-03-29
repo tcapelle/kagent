@@ -87,16 +87,18 @@ def score_split(preds: list[torch.Tensor], gt: list[dict]) -> dict[str, float]:
     }
 
 
-def score_submission(pred_dir: Path, gt: dict[str, list[dict]]) -> dict[str, float]:
-    """Score a full submission (all 4 test splits). Returns flat results dict."""
+def score_submission(pred_dir: Path, gt: dict[str, list[dict]]) -> dict[str, float] | None:
+    """Score a full submission (all 4 test splits). Returns None if incomplete."""
+    missing = [s for s in TEST_SPLITS if not (pred_dir / f"{s}.pt").exists()]
+    if missing:
+        print(f"    INCOMPLETE — missing: {', '.join(missing)}")
+        return None
+
     results = {}
     split_surf_p = []
 
     for split in TEST_SPLITS:
         pred_path = pred_dir / f"{split}.pt"
-        if not pred_path.exists():
-            print(f"    MISSING: {pred_path}")
-            continue
 
         preds = torch.load(pred_path, map_location="cpu", weights_only=True)
         split_results = score_split(preds, gt[split])
@@ -158,6 +160,8 @@ def update_leaderboard(scores: dict):
 
     best_per_agent: dict[str, tuple[str, dict]] = {}
     for key, results in scores.items():
+        if not isinstance(results, dict):
+            continue
         agent, commit = key.split("/", 1)
         surf_p = results.get("avg/mae_surf_p", float("inf"))
         if agent not in best_per_agent or surf_p < best_per_agent[agent][1].get("avg/mae_surf_p", float("inf")):
@@ -217,6 +221,9 @@ if cfg.score_all:
             agent, commit = key.split("/", 1)
             print(f"  [{i+1}/{len(pending)}] {key}")
             results = score_submission(pred_dir, gt)
+            if results is None:
+                scores[key] = "incomplete"
+                continue
             log_to_wandb(results, agent, commit)
             scores[key] = results
             if (i + 1) % 10 == 0:
@@ -233,12 +240,15 @@ elif cfg.predictions:
     print(f"Scoring: {agent} @ {commit}")
     gt = load_ground_truth(splits_dir)
     results = score_submission(pred_dir, gt)
-    for k, v in sorted(results.items()):
-        print(f"  {k}: {v:.4f}")
-    log_to_wandb(results, agent, commit)
-    scores = load_scores()
-    scores[f"{agent}/{commit}"] = results
-    save_scores(scores)
-    print(f"Saved to {SCORES_FILE}")
+    if results is None:
+        print("  Incomplete submission — not scored")
+    else:
+        for k, v in sorted(results.items()):
+            print(f"  {k}: {v:.4f}")
+        log_to_wandb(results, agent, commit)
+        scores = load_scores()
+        scores[f"{agent}/{commit}"] = results
+        save_scores(scores)
+        print(f"Saved to {SCORES_FILE}")
 else:
     print("Specify --predictions <path> or --score_all")
