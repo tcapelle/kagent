@@ -21,22 +21,8 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model
+# Model: Voxel U-Net
 # ---------------------------------------------------------------------------
-
-class ResBlock(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 4),
-            nn.GELU(),
-            nn.Linear(dim * 4, dim),
-        )
-
-    def forward(self, x):
-        return x + self.net(x)
-
 
 class ConvBlock3D(nn.Module):
     def __init__(self, in_ch, out_ch):
@@ -55,132 +41,142 @@ class ConvBlock3D(nn.Module):
         return self.conv(x) + self.skip(x)
 
 
-class VoxelConvMLP(nn.Module):
-    """Hybrid model: voxel 3D convolutions for spatial context + per-point MLP.
+class VoxelUNet(nn.Module):
+    """3D U-Net operating on voxelized velocity field.
 
-    1. Voxelize points into a 3D grid
-    2. Scatter-mean velocity features into grid
-    3. Apply 3D conv network for spatial interaction
-    4. Read conv features back at each point (trilinear interpolation)
-    5. Concatenate with per-point features
-    6. Per-point MLP to predict velocity delta
-    7. Add to last input (residual prediction)
-    8. Zero out airfoil surface (no-slip BC)
+    Architecture:
+    1. Voxelize input velocity + airfoil mask into 3D grid
+    2. U-Net encoder-decoder with skip connections
+    3. Output: correction field in voxel space
+    4. Trilinear interpolate correction to each point
+    5. Add to copy baseline (residual prediction)
+    6. Zero out airfoil surface (no-slip BC)
+
+    The voxel grid enforces spatial smoothness by construction —
+    the 3D convolutions capture local spatial patterns that per-point MLPs miss.
     """
 
-    def __init__(self, hidden=256, n_blocks=6, grid_size=(32, 12, 16), conv_ch=64):
+    def __init__(self, grid_size=(64, 24, 32), base_ch=48):
         super().__init__()
-        self.grid_size = grid_size  # (Gx, Gy, Gz)
-        self.conv_ch = conv_ch
+        self.grid_size = grid_size
+        in_ch = T_IN * 3 + 1  # velocity(15) + airfoil_mask(1) = 16
+        out_ch = T_OUT * 3  # predict 5*3=15 channels
 
-        # Per-point feature dim for voxel grid: velocity(5*3=15) + airfoil_indicator(1) = 16
-        voxel_in_ch = T_IN * 3 + 1
+        # Encoder
+        self.enc1 = ConvBlock3D(in_ch, base_ch)      # 64×24×32
+        self.enc2 = ConvBlock3D(base_ch, base_ch*2)   # 32×12×16
+        self.enc3 = ConvBlock3D(base_ch*2, base_ch*4) # 16×6×8
 
-        # 3D conv network on voxel grid
-        self.voxel_conv = nn.Sequential(
-            ConvBlock3D(voxel_in_ch, conv_ch),
-            ConvBlock3D(conv_ch, conv_ch),
-            ConvBlock3D(conv_ch, conv_ch),
-        )
+        # Bottleneck
+        self.bottleneck = ConvBlock3D(base_ch*4, base_ch*4)  # 8×3×4
 
-        # Per-point MLP: pos(3) + velocity(15) + airfoil(1) + conv_features(conv_ch) = 19 + conv_ch
-        in_dim = 3 + T_IN * 3 + 1 + conv_ch
-        out_dim = T_OUT * 3
+        # Decoder
+        self.up3 = nn.ConvTranspose3d(base_ch*4, base_ch*4, 2, stride=2)
+        self.dec3 = ConvBlock3D(base_ch*8, base_ch*2)  # concat with enc3
 
-        self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        self.up2 = nn.ConvTranspose3d(base_ch*2, base_ch*2, 2, stride=2)
+        self.dec2 = ConvBlock3D(base_ch*4, base_ch)    # concat with enc2
 
-        # Domain bounds (will be set from data)
+        self.up1 = nn.ConvTranspose3d(base_ch, base_ch, 2, stride=2)
+        self.dec1 = ConvBlock3D(base_ch*2, base_ch)    # concat with enc1
+
+        self.head = nn.Conv3d(base_ch, out_ch, 1)
+
+        # Domain bounds
         self.register_buffer("domain_min", torch.tensor([0.0, -0.45, 0.0]))
         self.register_buffer("domain_max", torch.tensor([2.15, 0.45, 1.25]))
 
-    def voxelize_and_conv(self, pos, features):
-        """Voxelize features, run 3D conv, read back at point locations.
+        # Per-point refinement MLP (small, operates on concat of voxel features + local features)
+        refine_in = out_ch + 3 + T_IN * 3 + 1  # correction(15) + pos(3) + vel(15) + airfoil(1) = 34
+        self.refine = nn.Sequential(
+            nn.Linear(refine_in, 128),
+            nn.GELU(),
+            nn.Linear(128, 128),
+            nn.GELU(),
+            nn.Linear(128, out_ch),
+        )
 
-        Args:
-            pos: [B, N, 3]
-            features: [B, N, C]
-
-        Returns:
-            conv_features: [B, N, conv_ch]
-        """
+    def points_to_grid(self, pos, features):
+        """Scatter-mean points into voxel grid."""
         B, N, C = features.shape
         Gx, Gy, Gz = self.grid_size
         device = pos.device
 
-        # Normalize positions to [0, 1] within domain
         pos_norm = (pos - self.domain_min) / (self.domain_max - self.domain_min + 1e-8)
         pos_norm = pos_norm.clamp(0, 1 - 1e-6)
 
-        # Compute grid indices
-        ix = (pos_norm[..., 0] * Gx).long().clamp(0, Gx - 1)  # [B, N]
+        ix = (pos_norm[..., 0] * Gx).long().clamp(0, Gx - 1)
         iy = (pos_norm[..., 1] * Gy).long().clamp(0, Gy - 1)
         iz = (pos_norm[..., 2] * Gz).long().clamp(0, Gz - 1)
 
-        # Scatter features into grid (mean aggregation)
-        grid = torch.zeros(B, C, Gx, Gy, Gz, device=device)
-        count = torch.zeros(B, 1, Gx, Gy, Gz, device=device)
-
+        grid = torch.zeros(B, C, Gx * Gy * Gz, device=device)
+        count = torch.zeros(B, 1, Gx * Gy * Gz, device=device)
         flat_idx = ix * Gy * Gz + iy * Gz + iz  # [B, N]
 
         for b in range(B):
-            # Scatter add features
-            idx = flat_idx[b]  # [N]
-            for c in range(C):
-                grid[b, c].view(-1).scatter_add_(0, idx, features[b, :, c])
-            count[b, 0].view(-1).scatter_add_(0, idx, torch.ones(N, device=device))
+            idx_b = flat_idx[b].unsqueeze(0).expand(C, -1)  # [C, N]
+            grid[b].scatter_add_(1, idx_b, features[b].t())
+            count[b, 0].scatter_add_(0, flat_idx[b], torch.ones(N, device=device))
 
-        # Average (avoid div by zero)
         grid = grid / (count + 1e-8)
+        return grid.reshape(B, C, Gx, Gy, Gz)
 
-        # 3D convolution
-        conv_out = self.voxel_conv(grid)  # [B, conv_ch, Gx, Gy, Gz]
+    def grid_to_points(self, grid, pos):
+        """Trilinear interpolate grid values to point locations."""
+        B, C, Gx, Gy, Gz = grid.shape
+        N = pos.shape[1]
 
-        # Read back features at each point using grid_sample (trilinear interpolation)
-        # grid_sample expects input in [-1, 1] range
-        grid_coords = pos_norm * 2 - 1  # [B, N, 3] in [-1, 1]
-        # grid_sample expects [B, D, H, W, 3] grid, with (x,y,z) -> (W,H,D) mapping
-        # Our grid is [B, C, Gx, Gy, Gz] where Gx=depth, Gy=height, Gz=width
-        # So grid_sample coords should be: (z->W, y->H, x->D)
-        grid_coords_5d = torch.stack([grid_coords[..., 2], grid_coords[..., 1], grid_coords[..., 0]], dim=-1)
-        grid_coords_5d = grid_coords_5d.reshape(B, 1, 1, N, 3)  # [B, 1, 1, N, 3]
+        pos_norm = (pos - self.domain_min) / (self.domain_max - self.domain_min + 1e-8)
+        pos_norm = pos_norm.clamp(0, 1)
 
-        conv_features = F.grid_sample(
-            conv_out, grid_coords_5d,
-            mode='bilinear', padding_mode='border', align_corners=False,
-        )  # [B, conv_ch, 1, 1, N]
-        conv_features = conv_features.reshape(B, self.conv_ch, N).permute(0, 2, 1)  # [B, N, conv_ch]
+        # grid_sample coords in [-1, 1], format: [B, 1, 1, N, 3] with (z, y, x) ordering
+        coords = pos_norm * 2 - 1
+        coords = torch.stack([coords[..., 2], coords[..., 1], coords[..., 0]], dim=-1)
+        coords = coords.reshape(B, 1, 1, N, 3)
 
-        return conv_features
+        out = F.grid_sample(grid, coords, mode='bilinear', padding_mode='border', align_corners=False)
+        return out.reshape(B, C, N).permute(0, 2, 1)  # [B, N, C]
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
-        v_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
+        v_flat = velocity_in.reshape(B, N, T * C)
 
-        # Binary airfoil indicator
+        # Airfoil mask
         airfoil_mask = torch.zeros(B, N, 1, device=pos.device)
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 idx = idcs_airfoil[i].to(pos.device)
                 airfoil_mask[i, idx, 0] = 1.0
 
-        # Voxel features for conv
-        voxel_features = torch.cat([v_flat, airfoil_mask], dim=-1)  # [B, N, 16]
-        conv_features = self.voxelize_and_conv(pos, voxel_features)  # [B, N, conv_ch]
+        # Voxelize
+        features = torch.cat([v_flat, airfoil_mask], dim=-1)  # [B, N, 16]
+        grid = self.points_to_grid(pos, features)  # [B, 16, Gx, Gy, Gz]
 
-        # Concatenate all per-point features
-        x = torch.cat([pos, v_flat, airfoil_mask, conv_features], dim=-1)
+        # U-Net
+        e1 = self.enc1(grid)           # [B, ch, 64, 24, 32]
+        e2 = self.enc2(F.avg_pool3d(e1, 2))  # [B, 2ch, 32, 12, 16]
+        e3 = self.enc3(F.avg_pool3d(e2, 2))  # [B, 4ch, 16, 6, 8]
+        b = self.bottleneck(F.avg_pool3d(e3, 2))  # [B, 4ch, 8, 3, 4]
 
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        delta = self.proj_out(x)  # [B, N, 15]
-        delta = delta.reshape(B, T_OUT, N, 3)
+        d3 = self.dec3(torch.cat([self.up3(b), e3], dim=1))   # [B, 2ch, 16, 6, 8]
+        d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))  # [B, ch, 32, 12, 16]
+        d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))  # [B, ch, 64, 24, 32]
 
-        # Residual: add last input timestep
-        last_v = velocity_in[:, -1:, :, :]
-        pred = last_v + delta
+        correction_grid = self.head(d1)  # [B, 15, 64, 24, 32]
+
+        # Interpolate correction to point locations
+        correction = self.grid_to_points(correction_grid, pos)  # [B, N, 15]
+
+        # Per-point refinement
+        refine_in = torch.cat([correction, pos, v_flat, airfoil_mask], dim=-1)  # [B, N, 34]
+        refinement = self.refine(refine_in)  # [B, N, 15]
+        correction = correction + refinement
+
+        correction = correction.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)  # [B, 5, N, 3]
+
+        # Residual: add last input
+        pred = velocity_in[:, -1:, :, :] + correction
 
         # No-slip BC
         for i in range(B):
@@ -260,9 +256,7 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    hidden: int = 256
-    n_blocks: int = 6
-    conv_ch: int = 64
+    base_ch: int = 48
 
 
 if __name__ == "__main__":
@@ -282,9 +276,7 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = VoxelConvMLP(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks, conv_ch=cfg.conv_ch,
-    ).to(device)
+    model = VoxelUNet(base_ch=cfg.base_ch).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
