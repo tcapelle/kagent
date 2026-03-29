@@ -27,8 +27,7 @@ TEST_SPLITS = ["val"]
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    checkpoint: str
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
@@ -39,26 +38,21 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 # Load stats for model init
-stats_path = splits_dir / "stats.json"
-with open(stats_path) as f:
+with open(splits_dir / "stats.json") as f:
     stats_raw = json.load(f)
 vel_mean = torch.tensor(stats_raw["vel_mean"], dtype=torch.float32).to(device)
 vel_std = torch.tensor(stats_raw["vel_std"], dtype=torch.float32).to(device)
 
-from train import EnhancedMLP
-model = EnhancedMLP(
-    hidden=512,
-    n_blocks=8,
-    n_fourier_freqs=64,
-    vel_mean=vel_mean,
-    vel_std=vel_std,
+from train import AirflowMLP
+model = AirflowMLP(
+    hidden=512, n_blocks=10, n_fourier_freqs=64,
+    vel_mean=vel_mean, vel_std=vel_std, dropout=0.0,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
-# Save predictions keyed by agent + commit hash
 agent_name = cfg.agent or "unknown"
 commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
@@ -67,7 +61,6 @@ commit = subprocess.run(
 output_dir = PREDICTIONS_DIR / agent_name / commit
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Run inference on each scored split
 for split in TEST_SPLITS:
     ds = GRAMDataset(splits_dir / split)
     loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_fn)

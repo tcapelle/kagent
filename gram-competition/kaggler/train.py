@@ -20,7 +20,6 @@ from data import T_IN, T_OUT
 # ---------------------------------------------------------------------------
 
 class FourierFeatures(nn.Module):
-    """Random Fourier features for positional encoding."""
     def __init__(self, in_dim=3, n_freqs=64):
         super().__init__()
         self.register_buffer("B", torch.randn(in_dim, n_freqs) * 10.0)
@@ -31,12 +30,13 @@ class FourierFeatures(nn.Module):
 
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 2, dim),
         )
 
@@ -44,51 +44,76 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class EnhancedMLP(nn.Module):
-    """Enhanced MLP with residual prediction, Fourier features, and no-slip enforcement."""
+class AirflowMLP(nn.Module):
+    """MLP with input normalization, residual prediction, temporal features, no-slip."""
 
-    def __init__(self, hidden=512, n_blocks=8, n_fourier_freqs=64, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=10, n_fourier_freqs=64,
+                 vel_mean=None, vel_std=None, dropout=0.0):
         super().__init__()
-        self.n_fourier_freqs = n_fourier_freqs
         self.fourier = FourierFeatures(in_dim=3, n_freqs=n_fourier_freqs)
 
-        # Input: fourier_pos(2*n_freqs) + pos(3) + velocity_in(5*3) + velocity_stats(3+3)
-        in_dim = 2 * n_fourier_freqs + 3 + T_IN * 3 + 6
+        # Register normalization stats
+        self.register_buffer("vel_mean", vel_mean if vel_mean is not None else torch.zeros(3))
+        self.register_buffer("vel_std", vel_std if vel_std is not None else torch.ones(3))
+
+        # Input features per point:
+        # - Fourier pos: 2*n_fourier_freqs
+        # - Normalized pos: 3
+        # - Normalized velocity_in (5 timesteps): 5*3 = 15
+        # - Velocity temporal diffs (4 diffs between consecutive timesteps): 4*3 = 12
+        # - Per-point velocity mean and std: 3+3 = 6
+        # - Airfoil indicator: 1
+        in_dim = 2 * n_fourier_freqs + 3 + T_IN * 3 + 4 * 3 + 6 + 1
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
-
-        if vel_mean is not None:
-            self.register_buffer("vel_mean", vel_mean)
-            self.register_buffer("vel_std", vel_std)
-        else:
-            self.register_buffer("vel_mean", torch.zeros(3))
-            self.register_buffer("vel_std", torch.ones(3))
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
+        # Normalize velocities
+        vel_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
+
+        # Fourier position features
         pos_feat = self.fourier(pos)  # [B, N, 2*n_freqs]
 
-        vel_mean = velocity_in.mean(dim=1)  # [B, N, 3]
-        vel_std = velocity_in.std(dim=1)    # [B, N, 3]
-        vel_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
+        # Temporal differences (acceleration-like features)
+        vel_diffs = vel_norm[:, 1:] - vel_norm[:, :-1]  # [B, T-1, N, 3]
+        vel_diffs_flat = vel_diffs.permute(0, 2, 1, 3).reshape(B, N, (T - 1) * C)  # [B, N, 12]
 
-        x = torch.cat([pos_feat, pos, vel_flat, vel_mean, vel_std], dim=-1)
+        # Per-point statistics
+        vel_pt_mean = vel_norm.mean(dim=1)  # [B, N, 3]
+        vel_pt_std = vel_norm.std(dim=1)    # [B, N, 3]
+
+        # Flatten normalized velocities
+        vel_flat = vel_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
+
+        # Airfoil indicator feature
+        airfoil_feat = torch.zeros(B, N, 1, device=velocity_in.device)
+        for i in range(B):
+            if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+                airfoil_feat[i, idcs_airfoil[i].to(velocity_in.device), 0] = 1.0
+
+        # Concatenate all features
+        x = torch.cat([pos_feat, pos, vel_flat, vel_diffs_flat, vel_pt_mean, vel_pt_std, airfoil_feat], dim=-1)
 
         x = self.proj_in(x)
         x = self.blocks(x)
-        delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
 
-        # Residual: add last input timestep as base
-        pred = velocity_in[:, -1:, :, :] + delta
+        # Predict delta in normalized space, then denormalize
+        # Output = last_input + delta (in raw space)
+        # delta_raw = delta_norm * vel_std
+        delta_raw = delta_norm * self.vel_std
+
+        pred = velocity_in[:, -1:, :, :] + delta_raw
 
         # No-slip boundary condition
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
-                pred[i, :, idcs_airfoil[i], :] = 0.0
+                pred[i, :, idcs_airfoil[i].to(pred.device), :] = 0.0
 
         return pred
 
@@ -146,7 +171,7 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
-# Training (only runs as main script)
+# Training
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -160,11 +185,11 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 3e-4
+        lr: float = 5e-4
         weight_decay: float = 1e-4
         batch_size: int = 1
-        epochs: int = 50
-        subsample_train: int = 25000
+        epochs: int = 80
+        subsample_train: int = 40000
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -189,16 +214,25 @@ if __name__ == "__main__":
     vel_mean = stats["vel_mean"].to(device)
     vel_std = stats["vel_std"].to(device)
 
-    model = EnhancedMLP(
-        hidden=512, n_blocks=8, n_fourier_freqs=64,
-        vel_mean=vel_mean, vel_std=vel_std,
+    model = AirflowMLP(
+        hidden=512, n_blocks=10, n_fourier_freqs=64,
+        vel_mean=vel_mean, vel_std=vel_std, dropout=0.05,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+    # Warmup + cosine decay
+    warmup_epochs = 5
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs
+        progress = (epoch - warmup_epochs) / max(MAX_EPOCHS - warmup_epochs, 1)
+        return 0.5 * (1 + __import__('math').cos(__import__('math').pi * progress))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     scaler = torch.amp.GradScaler("cuda")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -247,7 +281,7 @@ if __name__ == "__main__":
 
             B, T_i, N, C = v_in.shape
 
-            # Subsample points during training for speed
+            # Subsample points during training
             if cfg.subsample_train and cfg.subsample_train < N:
                 idx = torch.randperm(N, device=device)[:cfg.subsample_train]
                 idx = idx.sort().values
@@ -270,7 +304,8 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean()
+                # Smooth L1 (Huber) loss — more robust than MSE, better for L2 metric
+                loss = nn.functional.smooth_l1_loss(pred, v_out_s)
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
@@ -281,7 +316,6 @@ if __name__ == "__main__":
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
-
             epoch_loss += loss.item()
             n_batches += 1
 
@@ -309,7 +343,6 @@ if __name__ == "__main__":
             f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
         )
 
-    # --- Final ---
     total_time = (time.time() - train_start) / 60.0
     print(f"\nDone ({total_time:.1f} min)")
 
@@ -317,7 +350,6 @@ if __name__ == "__main__":
         print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
         wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-    # --- Auto-submit predictions ---
     if best_metrics and not cfg.debug:
         import subprocess
         print("\nGenerating test predictions...")
