@@ -1,10 +1,9 @@
 """Generate predictions on hidden test samples.
 
 Run:
-  python predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <your-name>
+  python predict.py --checkpoint models/model-<id>/checkpoint.pt --config models/model-<id>/config.pt --agent <your-name>
 """
 
-import json
 import os
 import subprocess
 from dataclasses import dataclass
@@ -13,10 +12,10 @@ from pathlib import Path
 import simple_parsing as sp
 import torch
 from tqdm import tqdm
-
 from torch.utils.data import DataLoader
 
 from data import GRAMDataset, collate_fn
+from train import VelocityPredictor
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -27,8 +26,8 @@ TEST_SPLITS = ["val"]
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    checkpoint: str
+    config: str = ""
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
@@ -38,14 +37,19 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+# Load model config
+if cfg.config and Path(cfg.config).exists():
+    model_cfg = torch.load(cfg.config, map_location="cpu", weights_only=True)
+else:
+    model_cfg = {"hidden": 256, "n_blocks": 8}
 
+model = VelocityPredictor(
+    hidden=model_cfg["hidden"], n_blocks=model_cfg["n_blocks"],
+).to(device)
+model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
-# Save predictions keyed by agent + commit hash
 agent_name = cfg.agent or "unknown"
 commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
@@ -54,7 +58,6 @@ commit = subprocess.run(
 output_dir = PREDICTIONS_DIR / agent_name / commit
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Run inference on each scored split
 for split in TEST_SPLITS:
     ds = GRAMDataset(splits_dir / split)
     loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_fn)
@@ -67,7 +70,10 @@ for split in TEST_SPLITS:
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            with torch.amp.autocast("cuda"):
+                pred = model(v_in, pos, t, idcs)
+            pred = pred.float()
+
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
