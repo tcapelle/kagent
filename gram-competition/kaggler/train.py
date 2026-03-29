@@ -287,14 +287,7 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-
-                # Variance-weighted MSE: upweight high-change points
-                target_delta = v_out_s - v_in_s[:, -1:, :, :]
-                point_importance = 1.0 + target_delta.detach().norm(dim=3).mean(dim=1)  # [B, N]
-                point_importance = point_importance / point_importance.mean()  # normalize
-
-                sq_err = (pred - v_out_s).pow(2).sum(dim=3)  # [B, 5, N]
-                loss = (sq_err * point_importance.unsqueeze(1)).mean()
+                loss = (pred - v_out_s).pow(2).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
