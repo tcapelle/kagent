@@ -210,7 +210,7 @@ if __name__ == "__main__":
         weight_decay: float = 1e-4
         batch_size: int = 1
         epochs: int = 100
-        subsample_train: int = 30000
+        subsample_train: int = 15000
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -236,7 +236,7 @@ if __name__ == "__main__":
     vel_std = stats["vel_std"].to(device)
 
     model = AutoregressivePredictor(
-        hidden=768, n_blocks=12, n_fourier_freqs=128,
+        hidden=512, n_blocks=10, n_fourier_freqs=96,
         vel_mean=vel_mean, vel_std=vel_std, window=T_IN,
     ).to(device)
 

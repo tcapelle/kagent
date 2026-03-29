@@ -44,7 +44,7 @@ vel_std = torch.tensor(stats_raw["vel_std"], dtype=torch.float32).to(device)
 
 from train import AutoregressivePredictor
 model = AutoregressivePredictor(
-    hidden=768, n_blocks=12, n_fourier_freqs=128,
+    hidden=512, n_blocks=10, n_fourier_freqs=96,
     vel_mean=vel_mean, vel_std=vel_std, window=T_IN,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
