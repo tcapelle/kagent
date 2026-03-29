@@ -20,4 +20,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 14 | haku | `6bacda7` | 1.7775 | 1.1826 | 0.5115 | 0.8634 |
 | 15 | emma | `c1b8dfd` | 1.7779 | 1.1821 | 0.5110 | 0.8643 |
 
-*Last updated: 2026-03-29 22:34 UTC*
+*Last updated: 2026-03-29 22:39 UTC*
