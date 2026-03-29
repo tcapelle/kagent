@@ -38,8 +38,21 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+# Load stats for model init
+stats_path = splits_dir / "stats.json"
+with open(stats_path) as f:
+    stats_raw = json.load(f)
+vel_mean = torch.tensor(stats_raw["vel_mean"], dtype=torch.float32).to(device)
+vel_std = torch.tensor(stats_raw["vel_std"], dtype=torch.float32).to(device)
+
+from train import EnhancedMLP
+model = EnhancedMLP(
+    hidden=512,
+    n_blocks=8,
+    n_fourier_freqs=64,
+    vel_mean=vel_mean,
+    vel_std=vel_std,
+).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
@@ -67,7 +80,10 @@ for split in TEST_SPLITS:
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            with torch.amp.autocast("cuda"):
+                pred = model(v_in, pos, t, idcs)
+
+            pred = pred.float()
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
