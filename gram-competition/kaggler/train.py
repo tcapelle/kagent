@@ -20,12 +20,13 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 4),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 4, dim),
         )
 
@@ -34,43 +35,48 @@ class ResBlock(nn.Module):
 
 
 class VelocityPredictor(nn.Module):
-    """Enhanced baseline: residual prediction + no-slip BC.
+    """Residual MLP with zero-initialized output for copy-last starting point.
 
-    Predicts delta from last input timestep. Uses wider FFN (4x) in ResBlocks.
-    No normalization, no Fourier features — keep it simple and let the data speak.
+    Key design decisions:
+    - Output layer zero-initialized: model starts at copy-last baseline (L2=1.75)
+      and learns only corrections that improve upon it
+    - Temporal diffs as input: encodes the velocity change trend
+    - No-slip BC: hard constraint on airfoil surface
     """
 
-    def __init__(self, hidden=256, n_blocks=8):
+    def __init__(self, hidden=256, n_blocks=8, dropout=0.1):
         super().__init__()
-        # Input: pos(3) + velocity_in(5*3=15) + temporal_diff(5*3=15) = 33
-        # temporal_diff = velocity_in[t] - velocity_in[t-1] for each timestep
-        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3  # 3 + 15 + 12 = 30
+        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3  # pos + vel + diffs = 30
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
+        self.norm_out = nn.LayerNorm(hidden)
+        self.proj_out = nn.Linear(hidden, out_dim)
+
+        # Zero-initialize output layer so delta starts at 0 (copy-last baseline)
+        nn.init.zeros_(self.proj_out.weight)
+        nn.init.zeros_(self.proj_out.bias)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         last_vel = velocity_in[:, -1]  # [B, N, 3]
 
-        # Temporal differences: capture the velocity change trend
+        # Temporal differences
         vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]  # [B, 4, N, 3]
 
-        # Build input features
-        vel_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
-        diff_flat = vel_diff.reshape(B, N, (T - 1) * C)  # [B, N, 12]
-        x = torch.cat([pos, vel_flat, diff_flat], dim=-1)  # [B, N, 30]
+        vel_flat = velocity_in.reshape(B, N, T * C)
+        diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
+        x = torch.cat([pos, vel_flat, diff_flat], dim=-1)
 
         x = self.proj_in(x)
         x = self.blocks(x)
+        x = self.norm_out(x)
         delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
 
-        # Residual: add last input velocity
         out = delta + last_vel.unsqueeze(1)
 
-        # No-slip BC: zero velocity on airfoil surface
+        # No-slip BC
         for i in range(B):
             out[i, :, idcs_airfoil[i], :] = 0.0
 
@@ -101,7 +107,6 @@ def validate(model, val_loaders, device, global_step):
                 with torch.amp.autocast("cuda"):
                     pred = model(v_in, pos, t, idcs)
 
-                # Compute in fp32
                 pred = pred.float()
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
                 total_l2 += l2_err.sum().item()
@@ -144,10 +149,10 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
-        weight_decay: float = 1e-4
+        lr: float = 1e-4
+        weight_decay: float = 0.01
         batch_size: int = 1
-        epochs: int = 100
+        epochs: int = 40
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -155,6 +160,7 @@ if __name__ == "__main__":
         debug: bool = False
         hidden: int = 256
         n_blocks: int = 8
+        dropout: float = 0.1
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -171,13 +177,22 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = VelocityPredictor(hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+    model = VelocityPredictor(
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks, dropout=cfg.dropout,
+    ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    # Warmup then cosine decay
+    warmup_epochs = 3
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs
+        progress = (epoch - warmup_epochs) / max(1, MAX_EPOCHS - warmup_epochs)
+        return 0.5 * (1 + __import__('math').cos(__import__('math').pi * progress))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     scaler = torch.amp.GradScaler("cuda")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -202,8 +217,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
 
-    # Save model config for predict.py
-    model_cfg = {"hidden": cfg.hidden, "n_blocks": cfg.n_blocks}
+    model_cfg = {"hidden": cfg.hidden, "n_blocks": cfg.n_blocks, "dropout": cfg.dropout}
     torch.save(model_cfg, model_dir / "config.pt")
 
     best_val = float("inf")
@@ -229,7 +243,8 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in, pos, t, idcs)
-                loss = (pred - v_out).pow(2).mean()
+                # L2 norm loss — matches the competition metric exactly
+                loss = (pred - v_out).norm(dim=3).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
@@ -250,7 +265,7 @@ if __name__ == "__main__":
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
         dt = time.time() - t0
 
-        wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
+        wandb.log({"train/epoch_loss": epoch_loss, "lr": optimizer.param_groups[0]['lr'],
                    "epoch_time_s": dt, "global_step": global_step})
 
         tag = ""
