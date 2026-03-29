@@ -13,10 +13,11 @@ Pre-processed data on PVC at `/mnt/new-pvc/datasets/gram/splits/`:
 ```
 splits/
 ├── train/*.pt              Each: {velocity_in: [5,N,3], velocity_out: [5,N,3], pos: [N,3], t: [10], idcs_airfoil: [M]}
-├── val/*.pt                Same format
-├── test/*.pt               Same format (velocity_out is ground truth, hidden from agents during scoring)
+├── val/*.pt                Same format (leaderboard ranks by val predictions)
 └── stats.json              Normalization stats
 ```
+
+No separate test split — the real competition holds out its own test set. We maximize training data and rank by validation performance.
 
 ### Per-sample fields
 
@@ -59,7 +60,7 @@ Each sample is ~24MB in float32 (100k points x 10 timesteps x 3 channels). With 
 
 Predictions are saved per split as `.pt` files:
 ```
-/mnt/new-pvc/predictions/$RESEARCH_TAG/<agent>/<commit>/test.pt
+/mnt/new-pvc/predictions/$RESEARCH_TAG/<agent>/<commit>/val.pt
 ```
 
 The `predict.py` template handles this — you just need to plug in your model.

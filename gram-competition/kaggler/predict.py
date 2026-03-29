@@ -22,7 +22,7 @@ RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 SPLITS_DIR = Path("/mnt/new-pvc/datasets/gram/splits")
 
-TEST_SPLITS = ["test"]
+TEST_SPLITS = ["val"]
 
 
 @dataclass
@@ -59,15 +59,15 @@ commit = subprocess.run(
 output_dir = PREDICTIONS_DIR / agent_name / commit
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Run inference on each test split
+# Run inference on each scored split
 for split in TEST_SPLITS:
-    test_ds = GRAMDataset(splits_dir / split)
-    test_loader = DataLoader(test_ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_fn)
-    print(f"{split}: {len(test_ds)} samples")
+    ds = GRAMDataset(splits_dir / split)
+    loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_fn)
+    print(f"{split}: {len(ds)} samples")
 
     predictions = []
     with torch.no_grad():
-        for v_in, v_out, pos, t, idcs in tqdm(test_loader, desc=split, leave=False):
+        for v_in, v_out, pos, t, idcs in tqdm(loader, desc=split, leave=False):
             v_in = v_in.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)

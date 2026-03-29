@@ -16,7 +16,7 @@ huggingface-cli download gram-competition/warped-ifw --repo-type dataset --local
 uv run k8s/launch.py --tag <tag> --competition gram-competition --prepare
 ```
 
-Splits by simulation ID (80/10/10) with seed 42. Output: `/mnt/new-pvc/datasets/gram/splits/`.
+Splits by simulation ID (90/10 train/val) with seed 42. No test split — the real competition holds out its own. Output: `/mnt/new-pvc/datasets/gram/splits/`.
 
 ## 2. Scoring
 

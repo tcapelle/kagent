@@ -22,7 +22,7 @@ SPLITS_DIR = Path("/mnt/new-pvc/datasets/gram/splits")
 PREDICTIONS_ROOT = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 SCORES_FILE = PREDICTIONS_ROOT / "scores.json"
 
-TEST_SPLITS = ["test"]
+TEST_SPLITS = ["val"]
 
 
 @dataclass
@@ -34,7 +34,7 @@ class Config:
 
 
 def load_ground_truth(splits_dir: Path) -> dict[str, list[dict]]:
-    """Load all ground truth files for test splits into memory."""
+    """Load all ground truth files into memory."""
     gt = {}
     for split in TEST_SPLITS:
         gt_dir = splits_dir / f".{split}_gt"
@@ -45,7 +45,7 @@ def load_ground_truth(splits_dir: Path) -> dict[str, list[dict]]:
 
 
 def score_split(preds: list[torch.Tensor], gt: list[dict]) -> dict[str, float]:
-    """Score one test split. Returns L2 error and per-component MAE."""
+    """Score one split. Returns L2 error and per-component MAE."""
     assert len(preds) == len(gt), f"Count mismatch: {len(preds)} vs {len(gt)}"
 
     total_l2 = 0.0
@@ -89,11 +89,11 @@ def score_submission(pred_dir: Path, gt: dict[str, list[dict]]) -> dict[str, flo
         for k, v in split_results.items():
             results[f"{split}/{k}"] = v
 
-    # Overall (just test for now, single split)
-    results["avg/l2_error"] = results.get("test/l2_error", float("inf"))
-    results["avg/mae_Ux"] = results.get("test/mae_Ux", 0)
-    results["avg/mae_Uy"] = results.get("test/mae_Uy", 0)
-    results["avg/mae_Uz"] = results.get("test/mae_Uz", 0)
+    # Overall (single val split)
+    results["avg/l2_error"] = results.get("val/l2_error", float("inf"))
+    results["avg/mae_Ux"] = results.get("val/mae_Ux", 0)
+    results["avg/mae_Uy"] = results.get("val/mae_Uy", 0)
+    results["avg/mae_Uz"] = results.get("val/mae_Uz", 0)
     return results
 
 

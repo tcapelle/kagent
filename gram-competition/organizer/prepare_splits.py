@@ -1,7 +1,7 @@
 """Prepare GRAM competition splits from raw HuggingFace .npz files.
 
-Downloads from gram-competition/warped-ifw, splits by simulation ID,
-saves per-sample .pt files and normalization stats.
+Splits by simulation ID into train/val. No test split — the real
+competition holds out its own test set.
 
 Run:
   python prepare_splits.py [--data_dir /path/to/npz/files]
@@ -20,9 +20,7 @@ from rich.console import Console
 console = Console()
 
 SEED = 42
-TRAIN_FRAC = 0.80
 VAL_FRAC = 0.10
-# remaining 0.10 goes to test
 
 DATA_ROOT = Path("/mnt/new-pvc/datasets/gram")
 
@@ -56,23 +54,20 @@ console.rule("Splitting by simulation ID")
 random.seed(SEED)
 random.shuffle(sim_ids)
 
-n_train = int(len(sim_ids) * TRAIN_FRAC)
-n_val = int(len(sim_ids) * VAL_FRAC)
-train_sims = sim_ids[:n_train]
-val_sims = sim_ids[n_train:n_train + n_val]
-test_sims = sim_ids[n_train + n_val:]
+n_val = max(1, int(len(sim_ids) * VAL_FRAC))
+val_sims = sim_ids[:n_val]
+train_sims = sim_ids[n_val:]
 
-print(f"Train: {len(train_sims)} sims, Val: {len(val_sims)} sims, Test: {len(test_sims)} sims")
+print(f"Train: {len(train_sims)} sims, Val: {len(val_sims)} sims")
 
 
-def save_split(split_name: str, sims: list[str]):
+def save_split(split_name: str, sims: list[str], save_gt: bool = False):
     """Convert .npz files for given simulation IDs to .pt files."""
     split_dir = out_dir / split_name
     split_dir.mkdir(parents=True, exist_ok=True)
 
-    gt_dir = out_dir / f".{split_name}_gt"
-    is_test = split_name == "test"
-    if is_test:
+    if save_gt:
+        gt_dir = out_dir / f".{split_name}_gt"
         gt_dir.mkdir(parents=True, exist_ok=True)
 
     idx = 0
@@ -90,9 +85,8 @@ def save_split(split_name: str, sims: list[str]):
 
             torch.save(sample, split_dir / f"{idx:06d}.pt")
 
-            if is_test:
-                gt = {"velocity_out": sample["velocity_out"]}
-                torch.save(gt, gt_dir / f"{idx:06d}.pt")
+            if save_gt:
+                torch.save({"velocity_out": sample["velocity_out"]}, gt_dir / f"{idx:06d}.pt")
 
             idx += 1
 
@@ -103,8 +97,7 @@ def save_split(split_name: str, sims: list[str]):
 # --- Save splits ---
 console.rule("Saving splits")
 n_train_samples = save_split("train", train_sims)
-n_val_samples = save_split("val", val_sims)
-n_test_samples = save_split("test", test_sims)
+n_val_samples = save_split("val", val_sims, save_gt=True)
 
 # --- Compute normalization stats on training set ---
 console.rule("Computing velocity stats (train set)")
@@ -117,7 +110,6 @@ n_total = 0
 
 for f in train_files:
     s = torch.load(f, weights_only=True)
-    # Combine velocity_in and velocity_out for stats
     vel = torch.cat([s["velocity_in"], s["velocity_out"]], dim=0)  # [10, N, 3]
     vel = vel.reshape(-1, 3).double()
     vel_sum += vel.sum(0)
@@ -140,17 +132,14 @@ console.rule("Summary")
 meta = {
     "n_train": n_train_samples,
     "n_val": n_val_samples,
-    "n_test": n_test_samples,
     "n_simulations": len(sim_ids),
     "train_sims": train_sims,
     "val_sims": val_sims,
-    "test_sims": test_sims,
 }
 with open(out_dir / "meta.json", "w") as f:
     json.dump(meta, f, indent=2)
 
 print(f"Train: {n_train_samples} samples ({len(train_sims)} sims)")
 print(f"Val:   {n_val_samples} samples ({len(val_sims)} sims)")
-print(f"Test:  {n_test_samples} samples ({len(test_sims)} sims)")
 print(f"Stats: vel_mean={vel_mean.tolist()}, vel_std={vel_std.tolist()}")
 print(f"\nSaved to {out_dir}")
