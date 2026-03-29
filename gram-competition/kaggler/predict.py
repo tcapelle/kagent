@@ -38,8 +38,8 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+from train import ResidualMLP
+model = ResidualMLP(hidden=512, n_blocks=8, n_freqs=64, dropout=0.05).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
@@ -61,7 +61,7 @@ for split in TEST_SPLITS:
     print(f"{split}: {len(ds)} samples")
 
     predictions = []
-    with torch.no_grad():
+    with torch.no_grad(), torch.cuda.amp.autocast():
         for v_in, v_out, pos, t, idcs in tqdm(loader, desc=split, leave=False):
             v_in = v_in.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)

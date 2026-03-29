@@ -24,24 +24,29 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Baseline MLP — replace with your own architecture
-#
-# Model contract:
-#   Input:  velocity_in [B, 5, N, 3], pos [B, N, 3], t [B, 10], idcs_airfoil list[tensor]
-#   Output: velocity_out [B, 5, N, 3]  (predicted future velocity field)
-#
-# Note: the real competition uses model(t, pos, idcs_airfoil, velocity_in) —
-#       different arg order. If you submit to the real comp, wrap accordingly.
+# Model
 # ---------------------------------------------------------------------------
 
 
+class FourierFeatures(nn.Module):
+    """Random Fourier features for positional encoding."""
+    def __init__(self, in_dim, n_freqs=64):
+        super().__init__()
+        self.register_buffer("B", torch.randn(in_dim, n_freqs) * 2.0)
+
+    def forward(self, x):
+        proj = x @ self.B  # [..., n_freqs]
+        return torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)  # [..., 2*n_freqs]
+
+
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 2, dim),
         )
 
@@ -49,24 +54,77 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class BaselineMLP(nn.Module):
-    """Concat pos + velocity_in per point, predict velocity_out through ResMLP."""
+class ResidualMLP(nn.Module):
+    """
+    Improved MLP with:
+    - Fourier positional features
+    - Time conditioning
+    - Residual prediction (predict delta from last input timestep)
+    - No-slip boundary enforcement
+    - Input normalization
+    """
 
-    def __init__(self, hidden=256, n_blocks=6):
+    def __init__(self, hidden=512, n_blocks=8, n_freqs=64, dropout=0.05):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
+        self.n_freqs = n_freqs
+
+        # Fourier features for position
+        self.pos_ff = FourierFeatures(3, n_freqs)
+        pos_dim = 2 * n_freqs  # 128
+
+        # Time embedding
+        self.time_ff = FourierFeatures(1, 32)
+        time_dim = 2 * 32  # 64
+        self.time_mlp = nn.Sequential(
+            nn.Linear(time_dim * 10, 128),  # 10 timesteps
+            nn.GELU(),
+            nn.Linear(128, hidden),
+        )
+
+        # Input: pos_fourier(128) + pos_raw(3) + velocity_in(5*3=15) + velocity_stats(6: mean+std of last timestep)
+        in_dim = pos_dim + 3 + T_IN * 3 + 6
+        out_dim = T_OUT * 3
+
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
-        x = self.proj_in(x)
+
+        # Fourier position features
+        pos_feat = self.pos_ff(pos)  # [B, N, 128]
+
+        # Velocity features: flatten all input timesteps
+        vel_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
+
+        # Local velocity statistics from last timestep (per-point context)
+        last_vel = velocity_in[:, -1]  # [B, N, 3]
+        vel_mean = velocity_in.mean(dim=1)  # [B, N, 3] mean over time
+        vel_stats = torch.cat([last_vel, vel_mean], dim=-1)  # [B, N, 6]
+
+        # Combine inputs
+        x = torch.cat([pos, pos_feat, vel_flat, vel_stats], dim=-1)  # [B, N, in_dim]
+        x = self.proj_in(x)  # [B, N, hidden]
+
+        # Time conditioning (global, broadcast to all points)
+        t_feat = self.time_ff(t.unsqueeze(-1))  # [B, 10, 64]
+        t_feat = t_feat.reshape(B, -1)  # [B, 640]
+        t_cond = self.time_mlp(t_feat)  # [B, hidden]
+        x = x + t_cond.unsqueeze(1)  # broadcast to [B, N, hidden]
+
         x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        return out.reshape(B, T_OUT, N, 3)
+        delta = self.proj_out(x)  # [B, N, T_OUT*3]
+        delta = delta.reshape(B, T_OUT, N, 3)
+
+        # Residual prediction: add last input timestep
+        pred = last_vel.unsqueeze(1) + delta  # [B, 5, N, 3]
+
+        # No-slip boundary condition: zero velocity at airfoil surface
+        for i, idcs in enumerate(idcs_airfoil):
+            pred[i, :, idcs, :] = 0.0
+
+        return pred
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +141,7 @@ def validate(model, val_loaders, device, global_step):
         total_mae = torch.zeros(3, device=device, dtype=torch.float64)
         n_samples = 0
 
-        with torch.no_grad():
+        with torch.no_grad(), torch.cuda.amp.autocast():
             for v_in, v_out, pos, t, idcs in vloader:
                 v_in = v_in.to(device, non_blocking=True)
                 v_out = v_out.to(device, non_blocking=True)
@@ -130,10 +188,11 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 3e-4
     weight_decay: float = 1e-4
-    batch_size: int = 1
+    batch_size: int = 2
     epochs: int = 50
+    subsample_train: int = 25000  # subsample points during training
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -157,11 +216,13 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+model = ResidualMLP(hidden=512, n_blocks=8, n_freqs=64, dropout=0.05).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
+print(f"Model params: {n_params:,}")
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+scaler = torch.amp.GradScaler("cuda")
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
@@ -191,6 +252,51 @@ model_path = model_dir / "checkpoint.pt"
 
 
 # ---------------------------------------------------------------------------
+# Point subsampling helper
+# ---------------------------------------------------------------------------
+
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
+    """Subsample points during training, preserving airfoil indices."""
+    B, T, N, C = v_in.shape
+    if n_points >= N:
+        return v_in, v_out, pos, idcs_airfoil
+
+    new_v_in = []
+    new_v_out = []
+    new_pos = []
+    new_idcs = []
+
+    for i in range(B):
+        # Ensure airfoil points are included
+        airfoil = idcs_airfoil[i]
+        n_airfoil = len(airfoil)
+
+        # Random sample from non-airfoil points
+        all_idx = torch.arange(N, device=v_in.device)
+        mask = torch.ones(N, dtype=torch.bool, device=v_in.device)
+        mask[airfoil] = False
+        non_airfoil = all_idx[mask]
+
+        n_random = min(n_points - n_airfoil, len(non_airfoil))
+        if n_random > 0:
+            perm = torch.randperm(len(non_airfoil), device=v_in.device)[:n_random]
+            selected_non_airfoil = non_airfoil[perm]
+        else:
+            selected_non_airfoil = non_airfoil[:0]
+
+        # Combine: airfoil first, then random
+        selected = torch.cat([airfoil.to(v_in.device), selected_non_airfoil])
+
+        new_v_in.append(v_in[i, :, selected, :])
+        new_v_out.append(v_out[i, :, selected, :])
+        new_pos.append(pos[i, selected, :])
+        # Airfoil indices are now 0..n_airfoil-1
+        new_idcs.append(torch.arange(n_airfoil, device=v_in.device))
+
+    return torch.stack(new_v_in), torch.stack(new_v_out), torch.stack(new_pos), new_idcs
+
+
+# ---------------------------------------------------------------------------
 # Training loop
 # ---------------------------------------------------------------------------
 
@@ -215,12 +321,22 @@ for epoch in range(MAX_EPOCHS):
         pos = pos.to(device, non_blocking=True)
         t = t.to(device, non_blocking=True)
 
-        pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-        loss = (pred - v_out).pow(2).mean()
+        # Subsample points during training
+        v_in_sub, v_out_sub, pos_sub, idcs_sub = subsample_batch(
+            v_in, v_out, pos, idcs, cfg.subsample_train
+        )
+
+        with torch.cuda.amp.autocast():
+            pred = model(v_in_sub, pos_sub, t, idcs_sub)  # [B, 5, n_sub, 3]
+            loss = (pred - v_out_sub).pow(2).mean()
 
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(optimizer)
+        scaler.update()
+
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
