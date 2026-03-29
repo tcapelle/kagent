@@ -39,36 +39,35 @@ class ResBlock(nn.Module):
 
 
 class AirflowMLP(nn.Module):
-    """Per-point MLP with residual prediction and smart features.
+    """Per-point MLP for velocity prediction.
 
-    Key features:
-    - Residual prediction (predict delta from last input timestep)
-    - Input velocity temporal variance per point (identifies turbulent regions)
-    - Airfoil surface indicator
-    - Zero-initialized output (starts from copy baseline)
+    Trains in normalized velocity space for stable optimization.
+    Adds airfoil indicator and enforces no-slip BC.
     """
 
-    def __init__(self, hidden=512, n_blocks=8):
+    def __init__(self, hidden=512, n_blocks=8, vel_mean=None, vel_std=None):
         super().__init__()
-        # pos(3) + velocity_in(5*3=15) + temporal_var(3) + airfoil(1) = 22
-        in_dim = 3 + T_IN * 3 + 3 + 1
+        # pos(3) + normalized velocity_in(5*3=15) + airfoil(1) = 19
+        in_dim = 3 + T_IN * 3 + 1
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # Zero-init output so model starts from copy baseline
-        nn.init.zeros_(self.proj_out[-1].weight)
-        nn.init.zeros_(self.proj_out[-1].bias)
+        if vel_mean is not None:
+            self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
+            self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
+        else:
+            self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
+            self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
-        v_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
-
-        # Temporal variance of velocity per point (identifies turbulent regions)
-        v_var = velocity_in.var(dim=1)  # [B, N, 3]
+        # Normalize velocity to zero mean, unit variance
+        v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, 5, N, 3]
+        v_flat = v_norm.reshape(B, N, T * C)  # [B, N, 15]
 
         # Airfoil indicator
         airfoil_mask = torch.zeros(B, N, 1, device=pos.device)
@@ -77,15 +76,15 @@ class AirflowMLP(nn.Module):
                 idx = idcs_airfoil[i].to(pos.device)
                 airfoil_mask[i, idx, 0] = 1.0
 
-        x = torch.cat([pos, v_flat, v_var, airfoil_mask], dim=-1)  # [B, N, 22]
+        x = torch.cat([pos, v_flat, airfoil_mask], dim=-1)  # [B, N, 19]
 
         x = self.proj_in(x)
         x = self.blocks(x)
-        delta = self.proj_out(x)  # [B, N, 15]
-        delta = delta.reshape(B, T_OUT, N, 3)
+        out = self.proj_out(x)  # [B, N, 15]
+        out = out.reshape(B, T_OUT, N, 3)
 
-        # Residual: add last input timestep
-        pred = velocity_in[:, -1:, :, :] + delta
+        # Denormalize output back to velocity space
+        pred = out * self.vel_std + self.vel_mean
 
         # No-slip BC
         for i in range(B):
@@ -148,44 +147,6 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
-# Point subsampling
-# ---------------------------------------------------------------------------
-
-def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=20000, surface_weight=3.0):
-    """Subsample points, weighting airfoil surface and high-variance points."""
-    B, T, N, C = v_in.shape
-    device = v_in.device
-
-    new_v_in, new_v_out, new_pos, new_idcs = [], [], [], []
-
-    for i in range(B):
-        # Weight by temporal velocity variance (turbulent points get higher weight)
-        v_var = v_in[i].var(dim=0).sum(dim=-1)  # [N]
-        weights = 1.0 + v_var / (v_var.mean() + 1e-8)
-
-        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
-            surface_idx = idcs_airfoil[i].to(device)
-            weights[surface_idx] = weights[surface_idx] * surface_weight
-
-        idx = torch.multinomial(weights, n_points, replacement=False)
-        idx_sorted = idx.sort().values
-
-        new_v_in.append(v_in[i, :, idx_sorted, :])
-        new_v_out.append(v_out[i, :, idx_sorted, :])
-        new_pos.append(pos[i, idx_sorted, :])
-
-        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
-            mask = torch.zeros(N, dtype=torch.bool, device=device)
-            mask[surface_idx] = True
-            sub_mask = mask[idx_sorted]
-            new_idcs.append(sub_mask.nonzero(as_tuple=True)[0].cpu())
-        else:
-            new_idcs.append(torch.tensor([], dtype=torch.long))
-
-    return torch.stack(new_v_in), torch.stack(new_v_out), torch.stack(new_pos), new_idcs
-
-
-# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
@@ -197,7 +158,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 2
-    epochs: int = 100
+    epochs: int = 200
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -205,7 +166,6 @@ class Config:
     debug: bool = False
     hidden: int = 512
     n_blocks: int = 8
-    n_subsample: int = 20000
 
 
 if __name__ == "__main__":
@@ -225,7 +185,13 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = AirflowMLP(hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+    vel_mean = stats["vel_mean"].to(device)
+    vel_std = stats["vel_std"].to(device)
+
+    model = AirflowMLP(
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
+        vel_mean=vel_mean, vel_std=vel_std,
+    ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
@@ -261,6 +227,10 @@ if __name__ == "__main__":
     global_step = 0
     train_start = time.time()
 
+    # Compute normalized targets for training loss
+    vel_mean_t = vel_mean.reshape(1, 1, 1, 3)
+    vel_std_t = vel_std.reshape(1, 1, 1, 3)
+
     for epoch in range(MAX_EPOCHS):
         if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
             print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
@@ -277,17 +247,12 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            # Subsample for speed
-            if cfg.n_subsample < N_POINTS:
-                v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
-                    v_in, v_out, pos, idcs, n_points=cfg.n_subsample
-                )
-            else:
-                v_in_s, v_out_s, pos_s, idcs_s = v_in, v_out, pos, idcs
-
             with torch.amp.autocast("cuda"):
-                pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean()
+                pred = model(v_in, pos, t, idcs)
+                # Compute loss in normalized space for balanced gradients
+                pred_norm = (pred - vel_mean_t) / vel_std_t
+                target_norm = (v_out - vel_mean_t) / vel_std_t
+                loss = (pred_norm - target_norm).pow(2).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
