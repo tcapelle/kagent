@@ -13,7 +13,6 @@ import simple_parsing as sp
 import torch
 import torch.nn as nn
 import wandb
-from einops import rearrange
 from flash_attn import flash_attn_func
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -22,17 +21,14 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Transformer model with flash attention for point cloud
+# Model: Transformer predicting residual from temporal mean
 # ---------------------------------------------------------------------------
 
-class PointTransformerBlock(nn.Module):
-    """Transformer block using flash attention for point-to-point interaction."""
-
+class TransformerBlock(nn.Module):
     def __init__(self, dim, n_heads=8, mlp_ratio=4):
         super().__init__()
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
-        assert dim % n_heads == 0
 
         self.norm1 = nn.LayerNorm(dim)
         self.qkv = nn.Linear(dim, 3 * dim)
@@ -46,20 +42,12 @@ class PointTransformerBlock(nn.Module):
         )
 
     def forward(self, x):
-        # x: [B, N, D]
         B, N, D = x.shape
-
-        # Self-attention
         h = self.norm1(x)
         qkv = self.qkv(h).reshape(B, N, 3, self.n_heads, self.head_dim)
-        q, k, v = qkv.unbind(dim=2)  # each [B, N, H, D_head]
-
-        # Flash attention expects [B, N, H, D_head]
-        attn_out = flash_attn_func(q, k, v)  # [B, N, H, D_head]
-        attn_out = attn_out.reshape(B, N, D)
+        q, k, v = qkv.unbind(dim=2)
+        attn_out = flash_attn_func(q, k, v).reshape(B, N, D)
         x = x + self.proj(attn_out)
-
-        # MLP
         x = x + self.mlp(self.norm2(x))
         return x
 
@@ -78,18 +66,17 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class AirflowTransformer(nn.Module):
+class AirflowModel(nn.Module):
     """
-    Point cloud transformer for airflow prediction.
-    - Projects per-point features to hidden dim
-    - Applies transformer blocks with flash attention for spatial interaction
-    - Residual prediction from last input timestep
-    - No-slip boundary enforcement
+    Predicts residual from temporal mean of input velocities.
+    Uses transformer blocks for spatial interaction.
     """
 
-    def __init__(self, hidden=256, n_heads=8, n_transformer_blocks=4, n_mlp_blocks=2,
+    def __init__(self, hidden=256, n_heads=8, n_transformer_blocks=4, n_pre_mlp=2, n_post_mlp=2,
                  vel_mean=None, vel_std=None):
         super().__init__()
+        self.n_transformer_blocks = n_transformer_blocks
+
         if vel_mean is not None:
             self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
             self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
@@ -97,26 +84,25 @@ class AirflowTransformer(nn.Module):
             self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
             self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
 
-        # Input: pos(3) + vel_in_norm(15) + vel_diff(12) + vel_accel(9) = 39
-        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + (T_IN - 2) * 3
+        # Per-point input features:
+        # pos(3) + vel_norm per timestep(5*3=15) + deviation from temporal mean(5*3=15) = 33
+        in_dim = 3 + T_IN * 3 + T_IN * 3
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
+        self.pre_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_pre_mlp)])
 
-        # Pre-transformer MLP blocks (per-point feature extraction)
-        self.pre_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks)])
+        if n_transformer_blocks > 0:
+            self.transformer = nn.Sequential(
+                *[TransformerBlock(hidden, n_heads=n_heads) for _ in range(n_transformer_blocks)]
+            )
+        else:
+            self.transformer = nn.Identity()
 
-        # Transformer blocks (spatial interaction)
-        self.transformer_blocks = nn.Sequential(
-            *[PointTransformerBlock(hidden, n_heads=n_heads) for _ in range(n_transformer_blocks)]
-        )
-
-        # Post-transformer MLP blocks (per-point prediction)
-        self.post_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks)])
-
+        self.post_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_post_mlp)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # Zero-init for residual
+        # Zero-init for residual learning
         nn.init.zeros_(self.proj_out[-1].weight)
         nn.init.zeros_(self.proj_out[-1].bias)
 
@@ -125,28 +111,27 @@ class AirflowTransformer(nn.Module):
 
         # Normalize velocity
         vel_norm = (velocity_in - self.vel_mean) / (self.vel_std + 1e-8)
-        vel_flat = vel_norm.reshape(B, N, T * C)
 
-        # Temporal derivatives
-        vel_diff = vel_norm[:, 1:, :, :] - vel_norm[:, :-1, :, :]
-        vel_diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
+        # Temporal mean (our baseline prediction)
+        vel_mean_t = vel_norm.mean(dim=1, keepdim=True)  # [B, 1, N, 3]
 
-        vel_accel = vel_diff[:, 1:, :, :] - vel_diff[:, :-1, :, :]
-        vel_accel_flat = vel_accel.reshape(B, N, (T - 2) * C)
+        # Deviation from temporal mean per timestep
+        vel_dev = vel_norm - vel_mean_t  # [B, 5, N, 3]
 
-        # Build input features
-        x = torch.cat([pos, vel_flat, vel_diff_flat, vel_accel_flat], dim=-1)
+        vel_flat = vel_norm.reshape(B, N, T * C)  # [B, N, 15]
+        dev_flat = vel_dev.reshape(B, N, T * C)  # [B, N, 15]
+
+        x = torch.cat([pos, vel_flat, dev_flat], dim=-1)  # [B, N, 33]
 
         x = self.proj_in(x)
         x = self.pre_blocks(x)
-        x = self.transformer_blocks(x)  # spatial interaction via attention
+        x = self.transformer(x)
         x = self.post_blocks(x)
 
         delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
 
-        # Residual: add last normalized input
-        last_norm = vel_norm[:, -1:, :, :]
-        out_norm = delta_norm + last_norm
+        # Residual from temporal mean
+        out_norm = delta_norm + vel_mean_t
 
         # Denormalize
         out = out_norm * (self.vel_std + 1e-8) + self.vel_mean
@@ -157,10 +142,6 @@ class AirflowTransformer(nn.Module):
                 out[i, :, idcs_airfoil[i].to(out.device), :] = 0.0
 
         return out
-
-
-# Alias for predict.py compatibility
-AirflowModel = AirflowTransformer
 
 
 # ---------------------------------------------------------------------------
@@ -267,8 +248,8 @@ class Config:
     hidden: int = 256
     n_heads: int = 8
     n_transformer_blocks: int = 4
-    n_mlp_blocks: int = 2
-    n_blocks: int = 8  # kept for predict.py compat
+    n_pre_mlp: int = 2
+    n_post_mlp: int = 2
 
 
 def main():
@@ -290,10 +271,10 @@ def main():
     vel_mean = stats["vel_mean"].to(device)
     vel_std = stats["vel_std"].to(device)
 
-    model = AirflowTransformer(
+    model = AirflowModel(
         hidden=cfg.hidden, n_heads=cfg.n_heads,
         n_transformer_blocks=cfg.n_transformer_blocks,
-        n_mlp_blocks=cfg.n_mlp_blocks,
+        n_pre_mlp=cfg.n_pre_mlp, n_post_mlp=cfg.n_post_mlp,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
 
@@ -362,8 +343,8 @@ def main():
 
             with torch.cuda.amp.autocast():
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                # L2 competition loss
-                loss = (pred - v_out_s).norm(dim=3).mean()
+                # MSE loss (better gradients than L2)
+                loss = (pred - v_out_s).pow(2).mean()
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
