@@ -3,7 +3,6 @@
 import torch
 import torch.nn as nn
 from data import T_IN, T_OUT
-from torch_geometric.nn import knn_graph
 
 
 class FourierFeatures(nn.Module):
@@ -144,24 +143,30 @@ class GNNModel(nn.Module):
         # Pre-GNN per-point processing
         x = self.pre_blocks(x)
 
-        # Flatten batch for graph operations
-        x_flat = x.reshape(B * N, -1)  # [B*N, hidden]
-        pos_flat = pos.reshape(B * N, 3)
+        # Build k-NN graph per sample and run GNN
+        # Process each sample independently to avoid cross-batch edges
+        x_list = []
+        for b in range(B):
+            xb = x[b]  # [N, hidden]
+            pb = pos[b]  # [N, 3]
 
-        # Build k-NN graph (batch-aware)
-        batch_idx = torch.arange(B, device=x.device).repeat_interleave(N)
-        edge_index = knn_graph(pos_flat, k=self.k, batch=batch_idx, loop=False)
+            # k-NN via cdist (pure PyTorch)
+            dists = torch.cdist(pb, pb)  # [N, N]
+            _, knn_idx = dists.topk(self.k + 1, largest=False)  # +1 for self
+            knn_idx = knn_idx[:, 1:]  # remove self, [N, k]
 
-        # Relative positions for edges
-        src, dst = edge_index
-        rel_pos = pos_flat[src] - pos_flat[dst]
+            # Build edge_index
+            src = knn_idx.reshape(-1)  # [N*k]
+            dst = torch.arange(N, device=x.device).repeat_interleave(self.k)  # [N*k]
+            edge_index = torch.stack([src, dst])  # [2, N*k]
+            rel_pos_edges = pb[src] - pb[dst]  # [N*k, 3]
 
-        # GNN message passing
-        for gnn in self.gnn_blocks:
-            x_flat = gnn(x_flat, edge_index, rel_pos)
+            for gnn in self.gnn_blocks:
+                xb = gnn(xb, edge_index, rel_pos_edges)
 
-        # Unflatten
-        x = x_flat.reshape(B, N, -1)
+            x_list.append(xb)
+
+        x = torch.stack(x_list)
 
         # Post-GNN processing
         x = self.post_blocks(x)

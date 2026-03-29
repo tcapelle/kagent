@@ -124,7 +124,7 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 1
     epochs: int = 40
-    subsample_train: int = 15000
+    subsample_train: int = 8000
     hidden: int = 256
     n_mlp_blocks: int = 4
     n_gnn_blocks: int = 4
