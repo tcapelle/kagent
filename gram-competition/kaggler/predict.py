@@ -41,10 +41,11 @@ splits_dir = Path(cfg.splits_dir)
 if cfg.config and Path(cfg.config).exists():
     model_cfg = torch.load(cfg.config, map_location="cpu", weights_only=True)
 else:
-    model_cfg = {"hidden": 256, "n_blocks": 8, "dropout": 0.1}
+    model_cfg = {"hidden": 128, "n_blocks": 4, "grid_ch": 64, "dropout": 0.1}
 
 model = VelocityPredictor(
     hidden=model_cfg["hidden"], n_blocks=model_cfg["n_blocks"],
+    grid_size=(32, 16, 24), grid_ch=model_cfg.get("grid_ch", 64),
     dropout=model_cfg.get("dropout", 0.1),
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))

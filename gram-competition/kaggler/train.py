@@ -11,12 +11,148 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model
+# Grid-based 3D spatial mixing
+# ---------------------------------------------------------------------------
+
+class PointToGrid(nn.Module):
+    """Scatter point features onto a regular 3D grid using trilinear splatting."""
+
+    def __init__(self, grid_size=(32, 16, 24)):
+        super().__init__()
+        self.grid_size = grid_size  # (Gx, Gy, Gz)
+
+    def forward(self, features, pos):
+        """
+        features: [B, N, C]
+        pos: [B, N, 3] — raw positions
+        Returns: grid [B, C, Gx, Gy, Gz]
+        """
+        B, N, C = features.shape
+        Gx, Gy, Gz = self.grid_size
+
+        # Normalize positions to [0, 1] per sample
+        pos_min = pos.min(dim=1, keepdim=True).values  # [B, 1, 3]
+        pos_max = pos.max(dim=1, keepdim=True).values  # [B, 1, 3]
+        pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)  # [B, N, 3] in [0,1]
+
+        # Map to grid coordinates [0, G-1]
+        gx = (pos_norm[..., 0] * (Gx - 1)).clamp(0, Gx - 1)  # [B, N]
+        gy = (pos_norm[..., 1] * (Gy - 1)).clamp(0, Gy - 1)
+        gz = (pos_norm[..., 2] * (Gz - 1)).clamp(0, Gz - 1)
+
+        # Trilinear splatting
+        gx0 = gx.long().clamp(0, Gx - 2)
+        gy0 = gy.long().clamp(0, Gy - 2)
+        gz0 = gz.long().clamp(0, Gz - 2)
+        gx1, gy1, gz1 = gx0 + 1, gy0 + 1, gz0 + 1
+
+        wx = (gx - gx0.float()).unsqueeze(-1)  # [B, N, 1]
+        wy = (gy - gy0.float()).unsqueeze(-1)
+        wz = (gz - gz0.float()).unsqueeze(-1)
+
+        grid = features.new_zeros(B, Gx, Gy, Gz, C)
+        count = features.new_zeros(B, Gx, Gy, Gz, 1)
+
+        for dx, dwx in [(gx0, 1 - wx), (gx1, wx)]:
+            for dy, dwy in [(gy0, 1 - wy), (gy1, wy)]:
+                for dz, dwz in [(gz0, 1 - wz), (gz1, wz)]:
+                    w = dwx * dwy * dwz  # [B, N, 1]
+                    idx = (dx * Gy * Gz + dy * Gz + dz).unsqueeze(-1).expand(-1, -1, C)
+                    grid.view(B, -1, C).scatter_add_(1, idx, features * w)
+                    count.view(B, -1, 1).scatter_add_(1, idx[..., :1], w)
+
+        grid = grid / count.clamp(min=1e-6)
+        return grid.permute(0, 4, 1, 2, 3), pos_min, pos_max  # [B, C, Gx, Gy, Gz]
+
+
+class GridToPoint(nn.Module):
+    """Gather features from 3D grid back to points using grid_sample."""
+
+    def forward(self, grid, pos, pos_min, pos_max):
+        """
+        grid: [B, C, Gx, Gy, Gz]
+        pos: [B, N, 3]
+        Returns: [B, N, C]
+        """
+        B, C, Gx, Gy, Gz = grid.shape
+        N = pos.shape[1]
+
+        # Normalize to [-1, 1] for grid_sample
+        pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)  # [0, 1]
+        pos_grid = pos_norm * 2 - 1  # [-1, 1]
+
+        # grid_sample expects [B, C, D, H, W] and grid [B, D_out, H_out, W_out, 3]
+        # We sample at N points, so reshape to [B, 1, 1, N, 3]
+        sample_grid = pos_grid.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, N, 3]
+
+        sampled = F.grid_sample(grid, sample_grid, mode='bilinear',
+                                padding_mode='border', align_corners=True)
+        # sampled: [B, C, 1, 1, N]
+        return sampled.squeeze(2).squeeze(2).permute(0, 2, 1)  # [B, N, C]
+
+
+class ConvBlock3D(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv3d(in_ch, out_ch, 3, padding=1),
+            nn.GroupNorm(min(8, out_ch), out_ch),
+            nn.GELU(),
+            nn.Conv3d(out_ch, out_ch, 3, padding=1),
+            nn.GroupNorm(min(8, out_ch), out_ch),
+            nn.GELU(),
+        )
+        self.skip = nn.Conv3d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
+
+    def forward(self, x):
+        return self.net(x) + self.skip(x)
+
+
+class Grid3DNet(nn.Module):
+    """3D U-Net operating on voxelized point cloud."""
+
+    def __init__(self, in_ch, out_ch, base_ch=64):
+        super().__init__()
+        # Encoder
+        self.enc1 = ConvBlock3D(in_ch, base_ch)
+        self.enc2 = ConvBlock3D(base_ch, base_ch * 2)
+        self.enc3 = ConvBlock3D(base_ch * 2, base_ch * 4)
+
+        # Decoder
+        self.up2 = nn.ConvTranspose3d(base_ch * 4, base_ch * 2, 2, stride=2)
+        self.dec2 = ConvBlock3D(base_ch * 4, base_ch * 2)  # concat skip
+        self.up1 = nn.ConvTranspose3d(base_ch * 2, base_ch, 2, stride=2)
+        self.dec1 = ConvBlock3D(base_ch * 2, base_ch)  # concat skip
+
+        self.out_conv = nn.Conv3d(base_ch, out_ch, 1)
+
+    def forward(self, x):
+        # Encoder
+        e1 = self.enc1(x)
+        e2 = self.enc2(F.avg_pool3d(e1, 2))
+        e3 = self.enc3(F.avg_pool3d(e2, 2))
+
+        # Decoder with skip connections
+        d2 = self.up2(e3)
+        # Handle size mismatch from non-power-of-2 grids
+        d2 = F.interpolate(d2, size=e2.shape[2:], mode='trilinear', align_corners=False)
+        d2 = self.dec2(torch.cat([d2, e2], dim=1))
+
+        d1 = self.up1(d2)
+        d1 = F.interpolate(d1, size=e1.shape[2:], mode='trilinear', align_corners=False)
+        d1 = self.dec1(torch.cat([d1, e1], dim=1))
+
+        return self.out_conv(d1)
+
+
+# ---------------------------------------------------------------------------
+# Main model
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -35,45 +171,71 @@ class ResBlock(nn.Module):
 
 
 class VelocityPredictor(nn.Module):
-    """Residual MLP with zero-initialized output for copy-last starting point.
+    """Hybrid grid + pointwise model for velocity prediction.
 
-    Key design decisions:
-    - Output layer zero-initialized: model starts at copy-last baseline (L2=1.75)
-      and learns only corrections that improve upon it
-    - Temporal diffs as input: encodes the velocity change trend
-    - No-slip BC: hard constraint on airfoil surface
+    1. Encode per-point features (MLP)
+    2. Voxelize onto 3D grid
+    3. Apply 3D U-Net for spatial mixing
+    4. Interpolate back to points
+    5. Combine with pointwise features
+    6. Predict residual delta
+    7. Enforce no-slip BC
     """
 
-    def __init__(self, hidden=256, n_blocks=8, dropout=0.1):
+    def __init__(self, hidden=128, n_blocks=4, grid_size=(32, 16, 24),
+                 grid_ch=64, dropout=0.1):
         super().__init__()
-        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3  # pos + vel + diffs = 30
-        out_dim = T_OUT * 3
+        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3  # 30
+        out_dim = T_OUT * 3  # 15
 
-        self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
+        # Pointwise feature encoder
+        self.point_encoder = nn.Sequential(
+            nn.Linear(in_dim, hidden),
+            *[ResBlock(hidden, dropout) for _ in range(n_blocks)],
+        )
+
+        # Grid branch
+        self.point_to_grid = PointToGrid(grid_size)
+        self.grid_net = Grid3DNet(hidden, grid_ch, base_ch=grid_ch)
+        self.grid_to_point = GridToPoint()
+
+        # Combiner: merge pointwise + grid features
+        self.combiner = nn.Sequential(
+            nn.Linear(hidden + grid_ch, hidden),
+            ResBlock(hidden, dropout),
+            ResBlock(hidden, dropout),
+        )
+
+        # Output head — zero-initialized for copy-last starting point
         self.norm_out = nn.LayerNorm(hidden)
         self.proj_out = nn.Linear(hidden, out_dim)
-
-        # Zero-initialize output layer so delta starts at 0 (copy-last baseline)
         nn.init.zeros_(self.proj_out.weight)
         nn.init.zeros_(self.proj_out.bias)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        last_vel = velocity_in[:, -1]  # [B, N, 3]
+        last_vel = velocity_in[:, -1]
 
         # Temporal differences
-        vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]  # [B, 4, N, 3]
-
+        vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
         vel_flat = velocity_in.reshape(B, N, T * C)
         diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
-        x = torch.cat([pos, vel_flat, diff_flat], dim=-1)
+        x_in = torch.cat([pos, vel_flat, diff_flat], dim=-1)
 
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        x = self.norm_out(x)
-        delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        # Pointwise encoding
+        point_feat = self.point_encoder(x_in)  # [B, N, hidden]
 
+        # Grid-based spatial mixing
+        grid, pos_min, pos_max = self.point_to_grid(point_feat, pos)
+        grid = self.grid_net(grid)
+        grid_feat = self.grid_to_point(grid, pos, pos_min, pos_max)  # [B, N, grid_ch]
+
+        # Combine
+        combined = torch.cat([point_feat, grid_feat], dim=-1)
+        x = self.combiner(combined)
+
+        # Predict delta
+        delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
         out = delta + last_vel.unsqueeze(1)
 
         # No-slip BC
@@ -149,17 +311,18 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 1e-4
+        lr: float = 3e-4
         weight_decay: float = 0.01
         batch_size: int = 1
-        epochs: int = 40
+        epochs: int = 60
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 256
-        n_blocks: int = 8
+        hidden: int = 128
+        n_blocks: int = 4
+        grid_ch: int = 64
         dropout: float = 0.1
 
     cfg = sp.parse(Config)
@@ -178,20 +341,21 @@ if __name__ == "__main__":
     }
 
     model = VelocityPredictor(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks, dropout=cfg.dropout,
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
+        grid_size=(32, 16, 24), grid_ch=cfg.grid_ch, dropout=cfg.dropout,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    # Warmup then cosine decay
     warmup_epochs = 3
+    import math
     def lr_lambda(epoch):
         if epoch < warmup_epochs:
             return (epoch + 1) / warmup_epochs
         progress = (epoch - warmup_epochs) / max(1, MAX_EPOCHS - warmup_epochs)
-        return 0.5 * (1 + __import__('math').cos(__import__('math').pi * progress))
+        return 0.5 * (1 + math.cos(math.pi * progress))
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     scaler = torch.amp.GradScaler("cuda")
 
@@ -217,8 +381,9 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
 
-    model_cfg = {"hidden": cfg.hidden, "n_blocks": cfg.n_blocks, "dropout": cfg.dropout}
-    torch.save(model_cfg, model_dir / "config.pt")
+    model_cfg_dict = {"hidden": cfg.hidden, "n_blocks": cfg.n_blocks,
+                      "grid_ch": cfg.grid_ch, "dropout": cfg.dropout}
+    torch.save(model_cfg_dict, model_dir / "config.pt")
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -243,7 +408,7 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in, pos, t, idcs)
-                # L2 norm loss — matches the competition metric exactly
+                # L2 norm loss — matches competition metric
                 loss = (pred - v_out).norm(dim=3).mean()
 
             optimizer.zero_grad()
