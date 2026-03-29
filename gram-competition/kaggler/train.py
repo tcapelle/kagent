@@ -20,7 +20,7 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model: Per-point MLP with local neighbor aggregation
+# Model
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -28,90 +28,28 @@ class ResBlock(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
+            nn.Linear(dim, dim * 4),
             nn.GELU(),
-            nn.Linear(dim * 2, dim),
+            nn.Linear(dim * 4, dim),
         )
 
     def forward(self, x):
         return x + self.net(x)
 
 
-def knn_graph(pos, k=16):
-    """Build k-NN graph. pos: [B, N, 3]. Returns indices [B, N, k]."""
-    # Use chunked distance computation to save memory
-    B, N, _ = pos.shape
-    idx_list = []
-    chunk_size = 4096
-    for b in range(B):
-        indices_b = []
-        for i in range(0, N, chunk_size):
-            end = min(i + chunk_size, N)
-            # Distances from chunk to all points
-            diff = pos[b, i:end].unsqueeze(1) - pos[b].unsqueeze(0)  # [chunk, N, 3]
-            dist = diff.pow(2).sum(-1)  # [chunk, N]
-            _, knn_idx = dist.topk(k, dim=-1, largest=False)  # [chunk, k]
-            indices_b.append(knn_idx)
-        idx_list.append(torch.cat(indices_b, dim=0))
-    return torch.stack(idx_list)  # [B, N, k]
-
-
-class NeighborAggBlock(nn.Module):
-    """Aggregate features from k nearest neighbors."""
-    def __init__(self, dim, k=16):
-        super().__init__()
-        self.k = k
-        self.edge_mlp = nn.Sequential(
-            nn.Linear(dim * 2 + 3, dim),  # [feat_i, feat_j, rel_pos] -> dim
-            nn.GELU(),
-            nn.Linear(dim, dim),
-        )
-        self.norm = nn.LayerNorm(dim)
-        self.gate = nn.Linear(dim, dim)
-
-    def forward(self, x, pos, knn_idx):
-        """x: [B, N, D], pos: [B, N, 3], knn_idx: [B, N, k]"""
-        B, N, D = x.shape
-        k = knn_idx.shape[-1]
-
-        # Gather neighbor features
-        idx_expanded = knn_idx.unsqueeze(-1).expand(B, N, k, D)
-        x_neighbors = torch.gather(x.unsqueeze(2).expand(B, N, k, D).contiguous().view(B, N*k, D),
-                                    1,
-                                    knn_idx.view(B, N*k, 1).expand(B, N*k, D)).view(B, N, k, D)
-
-        # Relative positions
-        pos_expanded = knn_idx.unsqueeze(-1).expand(B, N, k, 3)
-        pos_neighbors = torch.gather(pos.unsqueeze(2).expand(B, N, k, 3).contiguous().view(B, N*k, 3),
-                                      1,
-                                      knn_idx.view(B, N*k, 1).expand(B, N*k, 3)).view(B, N, k, 3)
-        rel_pos = pos_neighbors - pos.unsqueeze(2)  # [B, N, k, 3]
-
-        # Edge features
-        x_i = x.unsqueeze(2).expand(B, N, k, D)
-        edge_feat = torch.cat([x_i, x_neighbors, rel_pos], dim=-1)  # [B, N, k, 2D+3]
-        edge_out = self.edge_mlp(edge_feat)  # [B, N, k, D]
-
-        # Aggregate (mean pooling over neighbors)
-        agg = edge_out.mean(dim=2)  # [B, N, D]
-
-        # Gated residual
-        gate = torch.sigmoid(self.gate(agg))
-        x = self.norm(x + gate * agg)
-        return x
-
-
 class AirflowModel(nn.Module):
     """
-    Residual prediction model with local neighbor aggregation.
-    Predicts normalized delta from last input timestep.
+    Per-point MLP with rich temporal features and global conditioning.
+
+    Key features:
+    - Temporal derivatives (acceleration, jerk)
+    - Global flow statistics as conditioning
+    - Residual prediction from last timestep
+    - No-slip boundary condition
     """
 
-    def __init__(self, hidden=384, n_mlp_blocks=6, n_gnn_blocks=2, k_neighbors=16,
-                 vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=8, vel_mean=None, vel_std=None):
         super().__init__()
-        self.k_neighbors = k_neighbors
-
         if vel_mean is not None:
             self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
             self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
@@ -119,65 +57,57 @@ class AirflowModel(nn.Module):
             self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
             self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
 
-        # Input: pos(3) + velocity_in(5*3=15) = 18
-        in_dim = 3 + T_IN * 3
+        # Per-point features:
+        # pos(3) + vel_in_norm(5*3=15) + vel_diff(4*3=12) + vel_accel(3*3=9) + vel_local_stats(6) = 45
+        # Global conditioning: global_mean(3) + global_std(3) + global_vel_trend(3) = 9
+        in_dim = 3 + 15 + 12 + 9 + 6 + 9  # = 54
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
-
-        # Mix of MLP blocks and GNN blocks
-        layers = []
-        for i in range(n_mlp_blocks):
-            layers.append(ResBlock(hidden))
-            if i > 0 and i % (n_mlp_blocks // max(n_gnn_blocks, 1)) == 0 and n_gnn_blocks > 0:
-                layers.append(("gnn", NeighborAggBlock(hidden, k=k_neighbors)))
-                n_gnn_blocks -= 1
-
-        self.mlp_blocks = nn.ModuleList()
-        self.gnn_blocks = nn.ModuleList()
-        self.gnn_positions = []  # which position in the forward gets a GNN block
-
-        idx = 0
-        gnn_idx = 0
-        for layer in layers:
-            if isinstance(layer, tuple):
-                self.gnn_blocks.append(layer[1])
-                self.gnn_positions.append(idx)
-                gnn_idx += 1
-            else:
-                self.mlp_blocks.append(layer)
-                idx += 1
-
+        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # Zero-init output for residual learning
+        # Zero-init for residual
         nn.init.zeros_(self.proj_out[-1].weight)
         nn.init.zeros_(self.proj_out[-1].bias)
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil, knn_idx=None):
+    def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
         # Normalize velocity
-        vel_norm = (velocity_in - self.vel_mean) / (self.vel_std + 1e-8)
+        vel_norm = (velocity_in - self.vel_mean) / (self.vel_std + 1e-8)  # [B, 5, N, 3]
+
+        # Per-point features
         vel_flat = vel_norm.reshape(B, N, T * C)  # [B, N, 15]
 
-        x = torch.cat([pos, vel_flat], dim=-1)  # [B, N, 18]
+        # Temporal derivatives: vel[t+1] - vel[t]
+        vel_diff = vel_norm[:, 1:, :, :] - vel_norm[:, :-1, :, :]  # [B, 4, N, 3]
+        vel_diff_flat = vel_diff.reshape(B, N, 4 * C)  # [B, N, 12]
+
+        # Acceleration: second derivative
+        vel_accel = vel_diff[:, 1:, :, :] - vel_diff[:, :-1, :, :]  # [B, 3, N, 3]
+        vel_accel_flat = vel_accel.reshape(B, N, 3 * C)  # [B, N, 9]
+
+        # Local temporal statistics per point
+        vel_local_mean = vel_norm.mean(dim=1)  # [B, N, 3]
+        vel_local_std = vel_norm.std(dim=1)  # [B, N, 3]
+        vel_local_stats = torch.cat([vel_local_mean, vel_local_std], dim=-1)  # [B, N, 6]
+
+        # Global flow statistics (conditioning)
+        global_mean = vel_norm.mean(dim=(1, 2))  # [B, 3]
+        global_std = vel_norm.std(dim=(1, 2))  # [B, 3]
+        global_trend = vel_diff.mean(dim=(1, 2))  # [B, 3]
+        global_feat = torch.cat([global_mean, global_std, global_trend], dim=-1)  # [B, 9]
+        global_feat = global_feat.unsqueeze(1).expand(B, N, 9)  # [B, N, 9]
+
+        # Concatenate all features
+        x = torch.cat([pos, vel_flat, vel_diff_flat, vel_accel_flat, vel_local_stats, global_feat], dim=-1)
+
         x = self.proj_in(x)
-
-        # Build kNN graph if needed and if we have GNN blocks
-        if knn_idx is None and len(self.gnn_blocks) > 0:
-            knn_idx = knn_graph(pos, k=self.k_neighbors)
-
-        gnn_i = 0
-        for mlp_i, block in enumerate(self.mlp_blocks):
-            x = block(x)
-            if mlp_i in self.gnn_positions and gnn_i < len(self.gnn_blocks):
-                x = self.gnn_blocks[gnn_i](x, pos, knn_idx)
-                gnn_i += 1
-
+        x = self.blocks(x)
         delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
 
-        # Residual in normalized space
+        # Residual: add last normalized input
         last_norm = vel_norm[:, -1:, :, :]
         out_norm = delta_norm + last_norm
 
@@ -293,10 +223,8 @@ class Config:
     agent: str | None = None
     debug: bool = False
     subsample_train: int = 20000
-    hidden: int = 384
-    n_mlp_blocks: int = 6
-    n_gnn_blocks: int = 0
-    k_neighbors: int = 16
+    hidden: int = 512
+    n_blocks: int = 8
 
 
 def main():
@@ -319,8 +247,7 @@ def main():
     vel_std = stats["vel_std"].to(device)
 
     model = AirflowModel(
-        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
-        n_gnn_blocks=cfg.n_gnn_blocks, k_neighbors=cfg.k_neighbors,
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
 
@@ -389,10 +316,9 @@ def main():
 
             with torch.cuda.amp.autocast():
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                # Normalized MSE: compute loss in normalized space
-                vel_std_bcast = model.vel_std.squeeze(0).squeeze(0)  # [1, 3]
-                diff = (pred - v_out_s) / (vel_std_bcast + 1e-8)
-                loss = diff.pow(2).mean()
+                # Use competition-style L2 loss for direct optimization
+                l2_loss = (pred - v_out_s).norm(dim=3).mean()
+                loss = l2_loss
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
