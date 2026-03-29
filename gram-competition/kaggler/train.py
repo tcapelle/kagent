@@ -6,6 +6,7 @@ Run:
 
 import os
 import time
+import math
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -17,46 +18,36 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Grid-based 3D spatial mixing
+# Grid-based spatial mixing
 # ---------------------------------------------------------------------------
 
 class PointToGrid(nn.Module):
     """Scatter point features onto a regular 3D grid using trilinear splatting."""
-
-    def __init__(self, grid_size=(32, 16, 24)):
+    def __init__(self, grid_size):
         super().__init__()
-        self.grid_size = grid_size  # (Gx, Gy, Gz)
+        self.grid_size = grid_size
 
     def forward(self, features, pos):
-        """
-        features: [B, N, C]
-        pos: [B, N, 3] — raw positions
-        Returns: grid [B, C, Gx, Gy, Gz]
-        """
         B, N, C = features.shape
         Gx, Gy, Gz = self.grid_size
 
-        # Normalize positions to [0, 1] per sample
-        pos_min = pos.min(dim=1, keepdim=True).values  # [B, 1, 3]
-        pos_max = pos.max(dim=1, keepdim=True).values  # [B, 1, 3]
-        pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)  # [B, N, 3] in [0,1]
+        pos_min = pos.min(dim=1, keepdim=True).values
+        pos_max = pos.max(dim=1, keepdim=True).values
+        pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)
 
-        # Map to grid coordinates [0, G-1]
-        gx = (pos_norm[..., 0] * (Gx - 1)).clamp(0, Gx - 1)  # [B, N]
+        gx = (pos_norm[..., 0] * (Gx - 1)).clamp(0, Gx - 1)
         gy = (pos_norm[..., 1] * (Gy - 1)).clamp(0, Gy - 1)
         gz = (pos_norm[..., 2] * (Gz - 1)).clamp(0, Gz - 1)
 
-        # Trilinear splatting
         gx0 = gx.long().clamp(0, Gx - 2)
         gy0 = gy.long().clamp(0, Gy - 2)
         gz0 = gz.long().clamp(0, Gz - 2)
         gx1, gy1, gz1 = gx0 + 1, gy0 + 1, gz0 + 1
 
-        wx = (gx - gx0.float()).unsqueeze(-1)  # [B, N, 1]
+        wx = (gx - gx0.float()).unsqueeze(-1)
         wy = (gy - gy0.float()).unsqueeze(-1)
         wz = (gz - gz0.float()).unsqueeze(-1)
 
-        # Use fp32 for scatter operations (AMP compat)
         feat_f32 = features.float()
         wx_f32, wy_f32, wz_f32 = wx.float(), wy.float(), wz.float()
 
@@ -66,39 +57,23 @@ class PointToGrid(nn.Module):
         for dx, dwx in [(gx0, 1 - wx_f32), (gx1, wx_f32)]:
             for dy, dwy in [(gy0, 1 - wy_f32), (gy1, wy_f32)]:
                 for dz, dwz in [(gz0, 1 - wz_f32), (gz1, wz_f32)]:
-                    w = dwx * dwy * dwz  # [B, N, 1]
+                    w = dwx * dwy * dwz
                     idx = (dx * Gy * Gz + dy * Gz + dz).unsqueeze(-1).expand(-1, -1, C)
                     grid.view(B, -1, C).scatter_add_(1, idx, feat_f32 * w)
                     count.view(B, -1, 1).scatter_add_(1, idx[..., :1], w)
 
         grid = grid / count.clamp(min=1e-6)
-        return grid.permute(0, 4, 1, 2, 3), pos_min, pos_max  # [B, C, Gx, Gy, Gz]
+        return grid.permute(0, 4, 1, 2, 3), pos_min, pos_max
 
 
 class GridToPoint(nn.Module):
-    """Gather features from 3D grid back to points using grid_sample."""
-
     def forward(self, grid, pos, pos_min, pos_max):
-        """
-        grid: [B, C, Gx, Gy, Gz]
-        pos: [B, N, 3]
-        Returns: [B, N, C]
-        """
-        B, C, Gx, Gy, Gz = grid.shape
-        N = pos.shape[1]
-
-        # Normalize to [-1, 1] for grid_sample
-        pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)  # [0, 1]
-        pos_grid = pos_norm * 2 - 1  # [-1, 1]
-
-        # grid_sample expects [B, C, D, H, W] and grid [B, D_out, H_out, W_out, 3]
-        # We sample at N points, so reshape to [B, 1, 1, N, 3]
-        sample_grid = pos_grid.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, N, 3]
-
-        sampled = F.grid_sample(grid, sample_grid, mode='bilinear',
+        pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)
+        pos_grid = pos_norm * 2 - 1
+        sample_grid = pos_grid.unsqueeze(1).unsqueeze(1)
+        sampled = F.grid_sample(grid.float(), sample_grid.float(), mode='bilinear',
                                 padding_mode='border', align_corners=True)
-        # sampled: [B, C, 1, 1, N]
-        return sampled.squeeze(2).squeeze(2).permute(0, 2, 1)  # [B, N, C]
+        return sampled.squeeze(2).squeeze(2).permute(0, 2, 1)
 
 
 class ConvBlock3D(nn.Module):
@@ -119,32 +94,25 @@ class ConvBlock3D(nn.Module):
 
 
 class Grid3DNet(nn.Module):
-    """3D U-Net operating on voxelized point cloud."""
-
     def __init__(self, in_ch, out_ch, base_ch=64):
         super().__init__()
-        # Encoder
         self.enc1 = ConvBlock3D(in_ch, base_ch)
         self.enc2 = ConvBlock3D(base_ch, base_ch * 2)
         self.enc3 = ConvBlock3D(base_ch * 2, base_ch * 4)
 
-        # Decoder
         self.up2 = nn.ConvTranspose3d(base_ch * 4, base_ch * 2, 2, stride=2)
-        self.dec2 = ConvBlock3D(base_ch * 4, base_ch * 2)  # concat skip
+        self.dec2 = ConvBlock3D(base_ch * 4, base_ch * 2)
         self.up1 = nn.ConvTranspose3d(base_ch * 2, base_ch, 2, stride=2)
-        self.dec1 = ConvBlock3D(base_ch * 2, base_ch)  # concat skip
+        self.dec1 = ConvBlock3D(base_ch * 2, base_ch)
 
         self.out_conv = nn.Conv3d(base_ch, out_ch, 1)
 
     def forward(self, x):
-        # Encoder
         e1 = self.enc1(x)
         e2 = self.enc2(F.avg_pool3d(e1, 2))
         e3 = self.enc3(F.avg_pool3d(e2, 2))
 
-        # Decoder with skip connections
         d2 = self.up2(e3)
-        # Handle size mismatch from non-power-of-2 grids
         d2 = F.interpolate(d2, size=e2.shape[2:], mode='trilinear', align_corners=False)
         d2 = self.dec2(torch.cat([d2, e2], dim=1))
 
@@ -156,7 +124,7 @@ class Grid3DNet(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Main model
+# Model
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -175,72 +143,62 @@ class ResBlock(nn.Module):
 
 
 class VelocityPredictor(nn.Module):
-    """Hybrid grid + pointwise model for velocity prediction.
+    """Hybrid model: pointwise MLP + grid-based 3D U-Net for spatial mixing.
 
-    1. Encode per-point features (MLP)
-    2. Voxelize onto 3D grid
-    3. Apply 3D U-Net for spatial mixing
-    4. Interpolate back to points
-    5. Combine with pointwise features
-    6. Predict residual delta
-    7. Enforce no-slip BC
+    Direct prediction mode: predicts full output velocity (not residual).
+    Also supports residual mode via residual flag.
     """
 
-    def __init__(self, hidden=128, n_blocks=4, grid_size=(32, 16, 24),
-                 grid_ch=64, dropout=0.1):
+    def __init__(self, hidden=192, n_point_blocks=4, grid_size=(48, 24, 36),
+                 grid_ch=48, n_combine_blocks=3, dropout=0.1, residual=True):
         super().__init__()
+        self.residual = residual
         in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3  # 30
         out_dim = T_OUT * 3  # 15
 
-        # Pointwise feature encoder
-        self.point_encoder = nn.Sequential(
-            nn.Linear(in_dim, hidden),
-            *[ResBlock(hidden, dropout) for _ in range(n_blocks)],
-        )
+        # Per-point feature encoder
+        self.point_proj = nn.Linear(in_dim, hidden)
+        self.point_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_point_blocks)])
 
-        # Grid branch
+        # Grid branch for spatial mixing
         self.point_to_grid = PointToGrid(grid_size)
         self.grid_net = Grid3DNet(hidden, grid_ch, base_ch=grid_ch)
         self.grid_to_point = GridToPoint()
 
-        # Combiner: merge pointwise + grid features
-        self.combiner = nn.Sequential(
-            nn.Linear(hidden + grid_ch, hidden),
-            ResBlock(hidden, dropout),
-            ResBlock(hidden, dropout),
-        )
+        # Combine pointwise + spatial features
+        self.combine_proj = nn.Linear(hidden + grid_ch, hidden)
+        self.combine_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_combine_blocks)])
 
-        # Output head — small init for residual prediction
+        # Output
         self.norm_out = nn.LayerNorm(hidden)
         self.proj_out = nn.Linear(hidden, out_dim)
-        nn.init.xavier_uniform_(self.proj_out.weight, gain=0.01)
-        nn.init.zeros_(self.proj_out.bias)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         last_vel = velocity_in[:, -1]
 
-        # Temporal differences
         vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
         vel_flat = velocity_in.reshape(B, N, T * C)
         diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
         x_in = torch.cat([pos, vel_flat, diff_flat], dim=-1)
 
         # Pointwise encoding
-        point_feat = self.point_encoder(x_in)  # [B, N, hidden]
+        point_feat = self.point_proj(x_in)
+        point_feat = self.point_blocks(point_feat)
 
-        # Grid-based spatial mixing
+        # Grid spatial mixing
         grid, pos_min, pos_max = self.point_to_grid(point_feat, pos)
         grid = self.grid_net(grid)
-        grid_feat = self.grid_to_point(grid, pos, pos_min, pos_max)  # [B, N, grid_ch]
+        grid_feat = self.grid_to_point(grid, pos, pos_min, pos_max)
 
         # Combine
-        combined = torch.cat([point_feat, grid_feat], dim=-1)
-        x = self.combiner(combined)
+        x = self.combine_proj(torch.cat([point_feat, grid_feat], dim=-1))
+        x = self.combine_blocks(x)
 
-        # Predict delta
-        delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
-        out = delta + last_vel.unsqueeze(1)
+        out = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
+
+        if self.residual:
+            out = out + last_vel.unsqueeze(1)
 
         # No-slip BC
         for i in range(B):
@@ -272,18 +230,16 @@ def validate(model, val_loaders, device, global_step):
 
                 with torch.amp.autocast("cuda"):
                     pred = model(v_in, pos, t, idcs)
-
                 pred = pred.float()
+
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
                 total_l2 += l2_err.sum().item()
-
                 mae = (pred - v_out).abs().mean(dim=(1, 2))
                 total_mae += mae.double().sum(dim=0)
                 n_samples += v_in.shape[0]
 
         mean_l2 = total_l2 / max(n_samples, 1)
         mean_mae = total_mae / max(n_samples, 1)
-
         val_metrics[split_name] = {
             f"{split_name}/l2_error": mean_l2,
             f"{split_name}/mae_Ux": mean_mae[0].item(),
@@ -292,13 +248,36 @@ def validate(model, val_loaders, device, global_step):
         }
 
     mean_val = sum(m[f"{k}/l2_error"] for k, m in val_metrics.items()) / len(val_metrics)
-
     metrics = {"val/l2_error": mean_val, "global_step": global_step}
     for sm in val_metrics.values():
         metrics.update(sm)
     wandb.log(metrics)
-
     return mean_val, val_metrics
+
+
+# ---------------------------------------------------------------------------
+# Data augmentation
+# ---------------------------------------------------------------------------
+
+def augment_batch(v_in, v_out, pos):
+    """Random spatial flipping for data augmentation."""
+    # Flip y-axis with 50% probability
+    if torch.rand(1).item() < 0.5:
+        pos = pos.clone()
+        pos[..., 1] = -pos[..., 1]
+        v_in = v_in.clone()
+        v_in[..., 1] = -v_in[..., 1]
+        v_out = v_out.clone()
+        v_out[..., 1] = -v_out[..., 1]
+    # Flip z-axis with 50% probability
+    if torch.rand(1).item() < 0.5:
+        pos = pos.clone()
+        pos[..., 2] = -pos[..., 2]
+        v_in = v_in.clone()
+        v_in[..., 2] = -v_in[..., 2]
+        v_out = v_out.clone()
+        v_out[..., 2] = -v_out[..., 2]
+    return v_in, v_out, pos
 
 
 # ---------------------------------------------------------------------------
@@ -324,10 +303,13 @@ if __name__ == "__main__":
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 128
-        n_blocks: int = 4
-        grid_ch: int = 64
+        hidden: int = 192
+        n_point_blocks: int = 4
+        n_combine_blocks: int = 3
+        grid_ch: int = 48
         dropout: float = 0.1
+        residual: bool = True
+        augment: bool = True
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -345,8 +327,10 @@ if __name__ == "__main__":
     }
 
     model = VelocityPredictor(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
-        grid_size=(32, 16, 24), grid_ch=cfg.grid_ch, dropout=cfg.dropout,
+        hidden=cfg.hidden, n_point_blocks=cfg.n_point_blocks,
+        grid_size=(48, 24, 36), grid_ch=cfg.grid_ch,
+        n_combine_blocks=cfg.n_combine_blocks, dropout=cfg.dropout,
+        residual=cfg.residual,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -354,7 +338,6 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     warmup_epochs = 3
-    import math
     def lr_lambda(epoch):
         if epoch < warmup_epochs:
             return (epoch + 1) / warmup_epochs
@@ -385,8 +368,11 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
 
-    model_cfg_dict = {"hidden": cfg.hidden, "n_blocks": cfg.n_blocks,
-                      "grid_ch": cfg.grid_ch, "dropout": cfg.dropout}
+    model_cfg_dict = {
+        "hidden": cfg.hidden, "n_point_blocks": cfg.n_point_blocks,
+        "n_combine_blocks": cfg.n_combine_blocks,
+        "grid_ch": cfg.grid_ch, "dropout": cfg.dropout, "residual": cfg.residual,
+    }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
     best_val = float("inf")
@@ -410,9 +396,11 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
+            if cfg.augment:
+                v_in, v_out, pos = augment_batch(v_in, v_out, pos)
+
             with torch.amp.autocast("cuda"):
                 pred = model(v_in, pos, t, idcs)
-                # MSE loss for better gradient flow
                 loss = (pred - v_out).pow(2).mean()
 
             optimizer.zero_grad()
@@ -424,7 +412,6 @@ if __name__ == "__main__":
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
-
             epoch_loss += loss.item()
             n_batches += 1
 
