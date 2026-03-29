@@ -37,8 +37,8 @@ cfg = sp.parse(PredictConfig)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import VoxelUNet
-model = VoxelUNet(base_ch=48).to(device)
+from train import AirflowMLP
+model = AirflowMLP(hidden=512, n_blocks=8).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()

@@ -21,168 +21,71 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model: Voxel U-Net
+# Model
 # ---------------------------------------------------------------------------
 
-class ConvBlock3D(nn.Module):
-    def __init__(self, in_ch, out_ch):
+class ResBlock(nn.Module):
+    def __init__(self, dim):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv3d(in_ch, out_ch, 3, padding=1),
-            nn.GroupNorm(min(8, out_ch), out_ch),
+        self.net = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim * 4),
             nn.GELU(),
-            nn.Conv3d(out_ch, out_ch, 3, padding=1),
-            nn.GroupNorm(min(8, out_ch), out_ch),
-            nn.GELU(),
+            nn.Linear(dim * 4, dim),
         )
-        self.skip = nn.Conv3d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
 
     def forward(self, x):
-        return self.conv(x) + self.skip(x)
+        return x + self.net(x)
 
 
-class VoxelUNet(nn.Module):
-    """3D U-Net operating on voxelized velocity field.
+class AirflowMLP(nn.Module):
+    """Per-point MLP with residual prediction and smart features.
 
-    Architecture:
-    1. Voxelize input velocity + airfoil mask into 3D grid
-    2. U-Net encoder-decoder with skip connections
-    3. Output: correction field in voxel space
-    4. Trilinear interpolate correction to each point
-    5. Add to copy baseline (residual prediction)
-    6. Zero out airfoil surface (no-slip BC)
-
-    The voxel grid enforces spatial smoothness by construction —
-    the 3D convolutions capture local spatial patterns that per-point MLPs miss.
+    Key features:
+    - Residual prediction (predict delta from last input timestep)
+    - Input velocity temporal variance per point (identifies turbulent regions)
+    - Airfoil surface indicator
+    - Zero-initialized output (starts from copy baseline)
     """
 
-    def __init__(self, grid_size=(64, 24, 32), base_ch=48):
+    def __init__(self, hidden=512, n_blocks=8):
         super().__init__()
-        self.grid_size = grid_size
-        in_ch = T_IN * 3 + 1  # velocity(15) + airfoil_mask(1) = 16
-        out_ch = T_OUT * 3  # predict 5*3=15 channels
+        # pos(3) + velocity_in(5*3=15) + temporal_var(3) + airfoil(1) = 22
+        in_dim = 3 + T_IN * 3 + 3 + 1
+        out_dim = T_OUT * 3
 
-        # Encoder
-        self.enc1 = ConvBlock3D(in_ch, base_ch)      # 64×24×32
-        self.enc2 = ConvBlock3D(base_ch, base_ch*2)   # 32×12×16
-        self.enc3 = ConvBlock3D(base_ch*2, base_ch*4) # 16×6×8
+        self.proj_in = nn.Linear(in_dim, hidden)
+        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # Bottleneck
-        self.bottleneck = ConvBlock3D(base_ch*4, base_ch*4)  # 8×3×4
-
-        # Decoder
-        self.up3 = nn.ConvTranspose3d(base_ch*4, base_ch*4, 2, stride=2)
-        self.dec3 = ConvBlock3D(base_ch*8, base_ch*2)  # concat with enc3
-
-        self.up2 = nn.ConvTranspose3d(base_ch*2, base_ch*2, 2, stride=2)
-        self.dec2 = ConvBlock3D(base_ch*4, base_ch)    # concat with enc2
-
-        self.up1 = nn.ConvTranspose3d(base_ch, base_ch, 2, stride=2)
-        self.dec1 = ConvBlock3D(base_ch*2, base_ch)    # concat with enc1
-
-        self.head = nn.Conv3d(base_ch, out_ch, 1)
-        # Zero-init head so model starts from copy baseline
-        nn.init.zeros_(self.head.weight)
-        nn.init.zeros_(self.head.bias)
-
-        # Domain bounds
-        self.register_buffer("domain_min", torch.tensor([0.0, -0.45, 0.0]))
-        self.register_buffer("domain_max", torch.tensor([2.15, 0.45, 1.25]))
-
-        # Per-point refinement MLP (small, operates on concat of voxel features + local features)
-        refine_in = out_ch + 3 + T_IN * 3 + 1  # correction(15) + pos(3) + vel(15) + airfoil(1) = 34
-        self.refine = nn.Sequential(
-            nn.Linear(refine_in, 128),
-            nn.GELU(),
-            nn.Linear(128, 128),
-            nn.GELU(),
-            nn.Linear(128, out_ch),
-        )
-        # Zero-init last layer of refinement MLP too
-        nn.init.zeros_(self.refine[-1].weight)
-        nn.init.zeros_(self.refine[-1].bias)
-
-    def points_to_grid(self, pos, features):
-        """Scatter-mean points into voxel grid."""
-        B, N, C = features.shape
-        Gx, Gy, Gz = self.grid_size
-        device = pos.device
-
-        pos_norm = (pos - self.domain_min) / (self.domain_max - self.domain_min + 1e-8)
-        pos_norm = pos_norm.clamp(0, 1 - 1e-6)
-
-        ix = (pos_norm[..., 0] * Gx).long().clamp(0, Gx - 1)
-        iy = (pos_norm[..., 1] * Gy).long().clamp(0, Gy - 1)
-        iz = (pos_norm[..., 2] * Gz).long().clamp(0, Gz - 1)
-
-        grid = torch.zeros(B, C, Gx * Gy * Gz, device=device)
-        count = torch.zeros(B, 1, Gx * Gy * Gz, device=device)
-        flat_idx = ix * Gy * Gz + iy * Gz + iz  # [B, N]
-
-        for b in range(B):
-            idx_b = flat_idx[b].unsqueeze(0).expand(C, -1)  # [C, N]
-            grid[b].scatter_add_(1, idx_b, features[b].t())
-            count[b, 0].scatter_add_(0, flat_idx[b], torch.ones(N, device=device))
-
-        grid = grid / (count + 1e-8)
-        return grid.reshape(B, C, Gx, Gy, Gz)
-
-    def grid_to_points(self, grid, pos):
-        """Trilinear interpolate grid values to point locations."""
-        B, C, Gx, Gy, Gz = grid.shape
-        N = pos.shape[1]
-
-        pos_norm = (pos - self.domain_min) / (self.domain_max - self.domain_min + 1e-8)
-        pos_norm = pos_norm.clamp(0, 1)
-
-        # grid_sample coords in [-1, 1], format: [B, 1, 1, N, 3] with (z, y, x) ordering
-        coords = pos_norm * 2 - 1
-        coords = torch.stack([coords[..., 2], coords[..., 1], coords[..., 0]], dim=-1)
-        coords = coords.reshape(B, 1, 1, N, 3)
-
-        out = F.grid_sample(grid, coords, mode='bilinear', padding_mode='border', align_corners=False)
-        return out.reshape(B, C, N).permute(0, 2, 1)  # [B, N, C]
+        # Zero-init output so model starts from copy baseline
+        nn.init.zeros_(self.proj_out[-1].weight)
+        nn.init.zeros_(self.proj_out[-1].bias)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
-        v_flat = velocity_in.reshape(B, N, T * C)
+        v_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
 
-        # Airfoil mask
+        # Temporal variance of velocity per point (identifies turbulent regions)
+        v_var = velocity_in.var(dim=1)  # [B, N, 3]
+
+        # Airfoil indicator
         airfoil_mask = torch.zeros(B, N, 1, device=pos.device)
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 idx = idcs_airfoil[i].to(pos.device)
                 airfoil_mask[i, idx, 0] = 1.0
 
-        # Voxelize
-        features = torch.cat([v_flat, airfoil_mask], dim=-1)  # [B, N, 16]
-        grid = self.points_to_grid(pos, features)  # [B, 16, Gx, Gy, Gz]
+        x = torch.cat([pos, v_flat, v_var, airfoil_mask], dim=-1)  # [B, N, 22]
 
-        # U-Net
-        e1 = self.enc1(grid)           # [B, ch, 64, 24, 32]
-        e2 = self.enc2(F.avg_pool3d(e1, 2))  # [B, 2ch, 32, 12, 16]
-        e3 = self.enc3(F.avg_pool3d(e2, 2))  # [B, 4ch, 16, 6, 8]
-        b = self.bottleneck(F.avg_pool3d(e3, 2))  # [B, 4ch, 8, 3, 4]
+        x = self.proj_in(x)
+        x = self.blocks(x)
+        delta = self.proj_out(x)  # [B, N, 15]
+        delta = delta.reshape(B, T_OUT, N, 3)
 
-        d3 = self.dec3(torch.cat([self.up3(b), e3], dim=1))   # [B, 2ch, 16, 6, 8]
-        d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))  # [B, ch, 32, 12, 16]
-        d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))  # [B, ch, 64, 24, 32]
-
-        correction_grid = self.head(d1)  # [B, 15, 64, 24, 32]
-
-        # Interpolate correction to point locations
-        correction = self.grid_to_points(correction_grid, pos)  # [B, N, 15]
-
-        # Per-point refinement
-        refine_in = torch.cat([correction, pos, v_flat, airfoil_mask], dim=-1)  # [B, N, 34]
-        refinement = self.refine(refine_in)  # [B, N, 15]
-        correction = correction + refinement
-
-        correction = correction.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)  # [B, 5, N, 3]
-
-        # Residual: add last input
-        pred = velocity_in[:, -1:, :, :] + correction
+        # Residual: add last input timestep
+        pred = velocity_in[:, -1:, :, :] + delta
 
         # No-slip BC
         for i in range(B):
@@ -245,6 +148,44 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
+# Point subsampling
+# ---------------------------------------------------------------------------
+
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=20000, surface_weight=3.0):
+    """Subsample points, weighting airfoil surface and high-variance points."""
+    B, T, N, C = v_in.shape
+    device = v_in.device
+
+    new_v_in, new_v_out, new_pos, new_idcs = [], [], [], []
+
+    for i in range(B):
+        # Weight by temporal velocity variance (turbulent points get higher weight)
+        v_var = v_in[i].var(dim=0).sum(dim=-1)  # [N]
+        weights = 1.0 + v_var / (v_var.mean() + 1e-8)
+
+        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+            surface_idx = idcs_airfoil[i].to(device)
+            weights[surface_idx] = weights[surface_idx] * surface_weight
+
+        idx = torch.multinomial(weights, n_points, replacement=False)
+        idx_sorted = idx.sort().values
+
+        new_v_in.append(v_in[i, :, idx_sorted, :])
+        new_v_out.append(v_out[i, :, idx_sorted, :])
+        new_pos.append(pos[i, idx_sorted, :])
+
+        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+            mask = torch.zeros(N, dtype=torch.bool, device=device)
+            mask[surface_idx] = True
+            sub_mask = mask[idx_sorted]
+            new_idcs.append(sub_mask.nonzero(as_tuple=True)[0].cpu())
+        else:
+            new_idcs.append(torch.tensor([], dtype=torch.long))
+
+    return torch.stack(new_v_in), torch.stack(new_v_out), torch.stack(new_pos), new_idcs
+
+
+# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
@@ -256,13 +197,15 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 2
-    epochs: int = 50
+    epochs: int = 100
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    base_ch: int = 48
+    hidden: int = 512
+    n_blocks: int = 8
+    n_subsample: int = 20000
 
 
 if __name__ == "__main__":
@@ -282,7 +225,7 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = VoxelUNet(base_ch=cfg.base_ch).to(device)
+    model = AirflowMLP(hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
@@ -334,9 +277,24 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
+            # Subsample for speed
+            if cfg.n_subsample < N_POINTS:
+                v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
+                    v_in, v_out, pos, idcs, n_points=cfg.n_subsample
+                )
+            else:
+                v_in_s, v_out_s, pos_s, idcs_s = v_in, v_out, pos, idcs
+
             with torch.amp.autocast("cuda"):
-                pred = model(v_in, pos, t, idcs)
-                loss = (pred - v_out).pow(2).mean()
+                pred = model(v_in_s, pos_s, t, idcs_s)
+
+                # Variance-weighted MSE: upweight high-change points
+                target_delta = v_out_s - v_in_s[:, -1:, :, :]
+                point_importance = 1.0 + target_delta.detach().norm(dim=3).mean(dim=1)  # [B, N]
+                point_importance = point_importance / point_importance.mean()  # normalize
+
+                sq_err = (pred - v_out_s).pow(2).sum(dim=3)  # [B, 5, N]
+                loss = (sq_err * point_importance.unsqueeze(1)).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
