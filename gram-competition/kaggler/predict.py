@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from torch.utils.data import DataLoader
 
-from data import GRAMDataset, collate_fn
+from data import GRAMDataset, collate_fn, load_data
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -26,7 +26,7 @@ TEST_SPLITS = ["val"]
 
 
 @dataclass
-class Config:
+class PredictConfig:
     """Generate test predictions from a trained checkpoint."""
     checkpoint: str  # path to best model checkpoint
     splits_dir: str = str(SPLITS_DIR)
@@ -34,12 +34,17 @@ class Config:
     batch_size: int = 1
 
 
-cfg = sp.parse(Config)
+cfg = sp.parse(PredictConfig)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import ResidualMLP
-model = ResidualMLP(hidden=512, n_blocks=8).to(device)
+# Load stats for model initialization
+_, _, stats = load_data(splits_dir, debug=False)
+vel_mean = stats["vel_mean"].to(device)
+vel_std = stats["vel_std"].to(device)
+
+from train import AirflowMLP
+model = AirflowMLP(hidden=384, n_blocks=10, vel_mean=vel_mean, vel_std=vel_std).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
@@ -68,7 +73,7 @@ for split in TEST_SPLITS:
             t = t.to(device, non_blocking=True)
 
             with torch.amp.autocast("cuda"):
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                pred = model(v_in, pos, t, idcs)
 
             pred = pred.float()
             for j in range(pred.shape[0]):
