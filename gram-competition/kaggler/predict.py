@@ -26,56 +26,72 @@ TEST_SPLITS = ["val"]
 
 
 @dataclass
-class Config:
+class PredictConfig:
     """Generate test predictions from a trained checkpoint."""
     checkpoint: str  # path to best model checkpoint
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
+    hidden: int = 512
+    n_blocks: int = 8
 
 
-cfg = sp.parse(Config)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-splits_dir = Path(cfg.splits_dir)
+def main():
+    cfg = sp.parse(PredictConfig)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    splits_dir = Path(cfg.splits_dir)
 
-from train import AirflowModel
-model = AirflowModel(hidden=512, n_blocks=8).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+    # Load stats for normalization
+    with open(splits_dir / "stats.json") as f:
+        import json
+        stats_raw = json.load(f)
 
-model.eval()
-print(f"Loaded model from {cfg.checkpoint}")
+    vel_mean = torch.tensor(stats_raw["vel_mean"], dtype=torch.float32).to(device)
+    vel_std = torch.tensor(stats_raw["vel_std"], dtype=torch.float32).to(device)
 
-# Save predictions keyed by agent + commit hash
-agent_name = cfg.agent or "unknown"
-commit = subprocess.run(
-    ["git", "rev-parse", "--short", "HEAD"],
-    capture_output=True, text=True,
-).stdout.strip() or "unknown"
-output_dir = PREDICTIONS_DIR / agent_name / commit
-output_dir.mkdir(parents=True, exist_ok=True)
+    from train import AirflowModel
+    model = AirflowModel(
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
+        vel_mean=vel_mean, vel_std=vel_std,
+    ).to(device)
+    model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
-# Run inference on each scored split
-for split in TEST_SPLITS:
-    ds = GRAMDataset(splits_dir / split)
-    loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_fn)
-    print(f"{split}: {len(ds)} samples")
+    model.eval()
+    print(f"Loaded model from {cfg.checkpoint}")
 
-    predictions = []
-    with torch.no_grad():
-        for v_in, v_out, pos, t, idcs in tqdm(loader, desc=split, leave=False):
-            v_in = v_in.to(device, non_blocking=True)
-            pos = pos.to(device, non_blocking=True)
-            t = t.to(device, non_blocking=True)
+    agent_name = cfg.agent or "unknown"
+    commit = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        capture_output=True, text=True,
+    ).stdout.strip() or "unknown"
+    output_dir = PREDICTIONS_DIR / agent_name / commit
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-            with torch.cuda.amp.autocast():
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+    for split in TEST_SPLITS:
+        ds = GRAMDataset(splits_dir / split)
+        loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_fn)
+        print(f"{split}: {len(ds)} samples")
 
-            pred = pred.float()
-            for j in range(pred.shape[0]):
-                predictions.append(pred[j].cpu())
+        predictions = []
+        with torch.no_grad():
+            for v_in, v_out, pos, t, idcs in tqdm(loader, desc=split, leave=False):
+                v_in = v_in.to(device, non_blocking=True)
+                pos = pos.to(device, non_blocking=True)
+                t = t.to(device, non_blocking=True)
 
-    output_path = output_dir / f"{split}.pt"
-    torch.save(predictions, output_path)
-    print(f"  -> {output_path} ({len(predictions)} samples)")
+                with torch.cuda.amp.autocast():
+                    pred = model(v_in, pos, t, idcs)
 
-print(f"\nAll predictions saved to {output_dir}")
+                pred = pred.float()
+                for j in range(pred.shape[0]):
+                    predictions.append(pred[j].cpu())
+
+        output_path = output_dir / f"{split}.pt"
+        torch.save(predictions, output_path)
+        print(f"  -> {output_path} ({len(predictions)} samples)")
+
+    print(f"\nAll predictions saved to {output_dir}")
+
+
+if __name__ == "__main__":
+    main()
