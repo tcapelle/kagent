@@ -38,39 +38,140 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class AirflowMLP(nn.Module):
-    """Per-point MLP with residual prediction.
+class ConvBlock3D(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv3d(in_ch, out_ch, 3, padding=1),
+            nn.GroupNorm(min(8, out_ch), out_ch),
+            nn.GELU(),
+            nn.Conv3d(out_ch, out_ch, 3, padding=1),
+            nn.GroupNorm(min(8, out_ch), out_ch),
+            nn.GELU(),
+        )
+        self.skip = nn.Conv3d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
 
-    Key design choices:
-    - Residual prediction (predicts delta from last input timestep)
-    - Binary airfoil indicator feature (tells model which points are on surface)
-    - No-slip boundary enforcement (hard constraint)
-    - Works on raw velocity values (no normalization tricks that cause instability)
+    def forward(self, x):
+        return self.conv(x) + self.skip(x)
+
+
+class VoxelConvMLP(nn.Module):
+    """Hybrid model: voxel 3D convolutions for spatial context + per-point MLP.
+
+    1. Voxelize points into a 3D grid
+    2. Scatter-mean velocity features into grid
+    3. Apply 3D conv network for spatial interaction
+    4. Read conv features back at each point (trilinear interpolation)
+    5. Concatenate with per-point features
+    6. Per-point MLP to predict velocity delta
+    7. Add to last input (residual prediction)
+    8. Zero out airfoil surface (no-slip BC)
     """
 
-    def __init__(self, hidden=384, n_blocks=10):
+    def __init__(self, hidden=256, n_blocks=6, grid_size=(32, 12, 16), conv_ch=64):
         super().__init__()
-        # pos(3) + velocity_in(5*3=15) + airfoil_indicator(1) = 19
-        in_dim = 3 + T_IN * 3 + 1
+        self.grid_size = grid_size  # (Gx, Gy, Gz)
+        self.conv_ch = conv_ch
+
+        # Per-point feature dim for voxel grid: velocity(5*3=15) + airfoil_indicator(1) = 16
+        voxel_in_ch = T_IN * 3 + 1
+
+        # 3D conv network on voxel grid
+        self.voxel_conv = nn.Sequential(
+            ConvBlock3D(voxel_in_ch, conv_ch),
+            ConvBlock3D(conv_ch, conv_ch),
+            ConvBlock3D(conv_ch, conv_ch),
+        )
+
+        # Per-point MLP: pos(3) + velocity(15) + airfoil(1) + conv_features(conv_ch) = 19 + conv_ch
+        in_dim = 3 + T_IN * 3 + 1 + conv_ch
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
+        # Domain bounds (will be set from data)
+        self.register_buffer("domain_min", torch.tensor([0.0, -0.45, 0.0]))
+        self.register_buffer("domain_max", torch.tensor([2.15, 0.45, 1.25]))
+
+    def voxelize_and_conv(self, pos, features):
+        """Voxelize features, run 3D conv, read back at point locations.
+
+        Args:
+            pos: [B, N, 3]
+            features: [B, N, C]
+
+        Returns:
+            conv_features: [B, N, conv_ch]
+        """
+        B, N, C = features.shape
+        Gx, Gy, Gz = self.grid_size
+        device = pos.device
+
+        # Normalize positions to [0, 1] within domain
+        pos_norm = (pos - self.domain_min) / (self.domain_max - self.domain_min + 1e-8)
+        pos_norm = pos_norm.clamp(0, 1 - 1e-6)
+
+        # Compute grid indices
+        ix = (pos_norm[..., 0] * Gx).long().clamp(0, Gx - 1)  # [B, N]
+        iy = (pos_norm[..., 1] * Gy).long().clamp(0, Gy - 1)
+        iz = (pos_norm[..., 2] * Gz).long().clamp(0, Gz - 1)
+
+        # Scatter features into grid (mean aggregation)
+        grid = torch.zeros(B, C, Gx, Gy, Gz, device=device)
+        count = torch.zeros(B, 1, Gx, Gy, Gz, device=device)
+
+        flat_idx = ix * Gy * Gz + iy * Gz + iz  # [B, N]
+
+        for b in range(B):
+            # Scatter add features
+            idx = flat_idx[b]  # [N]
+            for c in range(C):
+                grid[b, c].view(-1).scatter_add_(0, idx, features[b, :, c])
+            count[b, 0].view(-1).scatter_add_(0, idx, torch.ones(N, device=device))
+
+        # Average (avoid div by zero)
+        grid = grid / (count + 1e-8)
+
+        # 3D convolution
+        conv_out = self.voxel_conv(grid)  # [B, conv_ch, Gx, Gy, Gz]
+
+        # Read back features at each point using grid_sample (trilinear interpolation)
+        # grid_sample expects input in [-1, 1] range
+        grid_coords = pos_norm * 2 - 1  # [B, N, 3] in [-1, 1]
+        # grid_sample expects [B, D, H, W, 3] grid, with (x,y,z) -> (W,H,D) mapping
+        # Our grid is [B, C, Gx, Gy, Gz] where Gx=depth, Gy=height, Gz=width
+        # So grid_sample coords should be: (z->W, y->H, x->D)
+        grid_coords_5d = torch.stack([grid_coords[..., 2], grid_coords[..., 1], grid_coords[..., 0]], dim=-1)
+        grid_coords_5d = grid_coords_5d.reshape(B, 1, 1, N, 3)  # [B, 1, 1, N, 3]
+
+        conv_features = F.grid_sample(
+            conv_out, grid_coords_5d,
+            mode='bilinear', padding_mode='border', align_corners=False,
+        )  # [B, conv_ch, 1, 1, N]
+        conv_features = conv_features.reshape(B, self.conv_ch, N).permute(0, 2, 1)  # [B, N, conv_ch]
+
+        return conv_features
+
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
         v_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
 
-        # Binary indicator: is this point on the airfoil surface?
+        # Binary airfoil indicator
         airfoil_mask = torch.zeros(B, N, 1, device=pos.device)
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 idx = idcs_airfoil[i].to(pos.device)
                 airfoil_mask[i, idx, 0] = 1.0
 
-        x = torch.cat([pos, v_flat, airfoil_mask], dim=-1)  # [B, N, 19]
+        # Voxel features for conv
+        voxel_features = torch.cat([v_flat, airfoil_mask], dim=-1)  # [B, N, 16]
+        conv_features = self.voxelize_and_conv(pos, voxel_features)  # [B, N, conv_ch]
+
+        # Concatenate all per-point features
+        x = torch.cat([pos, v_flat, airfoil_mask, conv_features], dim=-1)
 
         x = self.proj_in(x)
         x = self.blocks(x)
@@ -78,10 +179,10 @@ class AirflowMLP(nn.Module):
         delta = delta.reshape(B, T_OUT, N, 3)
 
         # Residual: add last input timestep
-        last_v = velocity_in[:, -1:, :, :]  # [B, 1, N, 3]
+        last_v = velocity_in[:, -1:, :, :]
         pred = last_v + delta
 
-        # No-slip BC: zero velocity on airfoil surface
+        # No-slip BC
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 idx = idcs_airfoil[i].to(pred.device)
@@ -152,15 +253,16 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 4
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    hidden: int = 384
-    n_blocks: int = 10
+    hidden: int = 256
+    n_blocks: int = 6
+    conv_ch: int = 64
 
 
 if __name__ == "__main__":
@@ -180,21 +282,15 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = AirflowMLP(hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+    model = VoxelConvMLP(
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks, conv_ch=cfg.conv_ch,
+    ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-
-    # Warmup + cosine decay
-    warmup_epochs = 3
-    def lr_lambda(epoch):
-        if epoch < warmup_epochs:
-            return (epoch + 1) / warmup_epochs
-        return 0.5 * (1 + torch.cos(torch.tensor((epoch - warmup_epochs) / (MAX_EPOCHS - warmup_epochs) * 3.14159)).item())
-
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
     scaler = torch.amp.GradScaler("cuda")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -242,8 +338,7 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in, pos, t, idcs)
-                # L2 loss — directly optimizes the competition metric
-                loss = (pred - v_out).norm(dim=3).mean()
+                loss = (pred - v_out).pow(2).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
