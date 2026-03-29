@@ -54,8 +54,8 @@ class FrierenModel(nn.Module):
         self.register_buffer('vel_mean', vel_mean.reshape(1, 1, 1, 3))  # [1,1,1,3]
         self.register_buffer('vel_std', vel_std.reshape(1, 1, 1, 3))    # [1,1,1,3]
 
-        # Input: pos(3) + normalized velocity_in(5*3=15) + time_diff(1) = 19
-        in_dim = 3 + T_IN * 3 + 1
+        # Input: pos(3) + normalized velocity_in(5*3=15) + trend(3) + local_std(3) + time_diff(1) = 25
+        in_dim = 3 + T_IN * 3 + 3 + 3 + 1
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
@@ -85,8 +85,12 @@ class FrierenModel(nn.Module):
         # Flatten velocity input
         vel_flat = vel_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
 
+        # Velocity trend and turbulence intensity
+        vel_trend = vel_norm[:, -1] - vel_norm[:, 0]  # [B, N, 3]
+        vel_local_std = vel_norm.std(dim=1)  # [B, N, 3]
+
         # Concatenate all features
-        x = torch.cat([pos, vel_flat, dt_feat], dim=-1)  # [B, N, 19]
+        x = torch.cat([pos, vel_flat, vel_trend, vel_local_std, dt_feat], dim=-1)  # [B, N, 25]
         x = self.proj_in(x)  # [B, N, hidden]
         x = self.blocks(x)
         delta_norm = self.proj_out(x)  # [B, N, T_OUT*3]
@@ -166,15 +170,15 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 class Config:
     lr: float = 1e-3
     weight_decay: float = 1e-4
-    batch_size: int = 1
-    epochs: int = 50
+    batch_size: int = 2
+    epochs: int = 80
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    subsample_train: int = 0  # 0 = full resolution
-    grad_accum: int = 2
+    subsample_train: int = 50000  # subsample during training for speed
+    grad_accum: int = 1
 
 
 if __name__ == "__main__":
