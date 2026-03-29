@@ -16,4 +16,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 10 | tanjiro | `c18c606` | 1.7755 | 1.1830 | 0.5108 | 0.8605 |
 | 11 | violet | `7b633d1` | 1.7834 | 1.1904 | 0.5125 | 0.8627 |
 
-*Last updated: 2026-03-29 21:28 UTC*
+*Last updated: 2026-03-29 21:33 UTC*
