@@ -7,6 +7,7 @@ Run:
 import os
 import math
 import time
+import random
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -45,13 +46,9 @@ class ResBlock(nn.Module):
 
 
 class AutoregressivePredictor(nn.Module):
-    """Predicts one timestep at a time, autoregressively.
+    """Predicts one timestep at a time, autoregressively."""
 
-    Given a window of K input timesteps, predicts the next timestep.
-    For multi-step prediction, rolls the window forward using own predictions.
-    """
-
-    def __init__(self, hidden=768, n_blocks=12, n_fourier_freqs=128,
+    def __init__(self, hidden=512, n_blocks=10, n_fourier_freqs=96,
                  vel_mean=None, vel_std=None, window=5):
         super().__init__()
         self.window = window
@@ -60,55 +57,27 @@ class AutoregressivePredictor(nn.Module):
         self.register_buffer("vel_mean", vel_mean if vel_mean is not None else torch.zeros(3))
         self.register_buffer("vel_std", vel_std if vel_std is not None else torch.ones(3))
 
-        # Input per point:
-        # - Fourier pos: 2*n_fourier_freqs
-        # - Normalized pos: 3
-        # - Normalized velocities (window timesteps): window*3
-        # - Velocity temporal diffs: (window-1)*3
-        # - Airfoil indicator: 1
         in_dim = 2 * n_fourier_freqs + 3 + window * 3 + (window - 1) * 3 + 1
-        out_dim = 3  # predict single next timestep velocity (normalized delta)
+        out_dim = 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
     def predict_single_step(self, vel_window_norm, pos, pos_feat, airfoil_feat):
-        """Predict next timestep given a window of normalized velocities.
-
-        Args:
-            vel_window_norm: [B, window, N, 3] normalized velocities
-            pos: [B, N, 3]
-            pos_feat: [B, N, 2*n_freqs] precomputed Fourier features
-            airfoil_feat: [B, N, 1]
-
-        Returns:
-            next_vel_norm: [B, N, 3] predicted normalized velocity for next timestep
-        """
         B, W, N, C = vel_window_norm.shape
-
-        # Temporal diffs
-        diffs = vel_window_norm[:, 1:] - vel_window_norm[:, :-1]  # [B, W-1, N, 3]
+        diffs = vel_window_norm[:, 1:] - vel_window_norm[:, :-1]
         diffs_flat = diffs.permute(0, 2, 1, 3).reshape(B, N, (W - 1) * C)
-
-        # Flatten window velocities
         vel_flat = vel_window_norm.permute(0, 2, 1, 3).reshape(B, N, W * C)
-
         x = torch.cat([pos_feat, pos, vel_flat, diffs_flat, airfoil_feat], dim=-1)
         x = self.proj_in(x)
         x = self.blocks(x)
-        delta_norm = self.proj_out(x)  # [B, N, 3]
-
-        # Predict delta from last timestep in window
+        delta_norm = self.proj_out(x)
         return vel_window_norm[:, -1] + delta_norm
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-
-        # Normalize
         vel_norm = (velocity_in - self.vel_mean) / self.vel_std
-
-        # Precompute static features
         pos_feat = self.fourier(pos)
 
         airfoil_feat = torch.zeros(B, N, 1, device=velocity_in.device)
@@ -116,22 +85,17 @@ class AutoregressivePredictor(nn.Module):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 airfoil_feat[i, idcs_airfoil[i].to(velocity_in.device), 0] = 1.0
 
-        # Autoregressive prediction
         preds_norm = []
-        window = vel_norm  # [B, 5, N, 3]
+        window = vel_norm
 
         for step in range(T_OUT):
             next_norm = self.predict_single_step(window, pos, pos_feat, airfoil_feat)
             preds_norm.append(next_norm)
-            # Roll window: drop oldest, append prediction
             window = torch.cat([window[:, 1:], next_norm.unsqueeze(1)], dim=1)
 
-        preds_norm = torch.stack(preds_norm, dim=1)  # [B, T_OUT, N, 3]
-
-        # Denormalize
+        preds_norm = torch.stack(preds_norm, dim=1)
         pred = preds_norm * self.vel_std + self.vel_mean
 
-        # No-slip boundary condition
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 pred[i, :, idcs_airfoil[i].to(pred.device), :] = 0.0
@@ -192,7 +156,7 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
-# Training
+# Training with scheduled sampling
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -209,8 +173,9 @@ if __name__ == "__main__":
         lr: float = 3e-4
         weight_decay: float = 1e-4
         batch_size: int = 1
-        epochs: int = 100
-        subsample_train: int = 15000
+        epochs: int = 200
+        subsample_train: int = 10000
+        grad_accum: int = 4
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -245,8 +210,8 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-    warmup_steps = 500
-    total_steps = MAX_EPOCHS * len(train_ds)
+    warmup_steps = 300
+    total_steps = MAX_EPOCHS * len(train_ds) // cfg.grad_accum
     def lr_lambda(step):
         if step < warmup_steps:
             return (step + 1) / warmup_steps
@@ -278,8 +243,7 @@ if __name__ == "__main__":
     model_dir.mkdir(parents=True)
     model_path = model_dir / "checkpoint.pt"
 
-    # --- Training loop ---
-    # Use teacher forcing: train each output timestep with ground truth history
+    # --- Training loop with scheduled sampling ---
     best_val = float("inf")
     best_metrics: dict = {}
     global_step = 0
@@ -295,7 +259,14 @@ if __name__ == "__main__":
         epoch_loss = 0.0
         n_batches = 0
 
-        for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+        # Scheduled sampling: increase use of model predictions over time
+        # Start with pure teacher forcing, linearly increase to 50% autoregressive
+        elapsed_frac = min((time.time() - train_start) / (MAX_TIMEOUT * 60), 1.0)
+        ss_prob = min(0.5, elapsed_frac * 0.5)  # prob of using model prediction
+
+        optimizer.zero_grad()
+
+        for batch_idx, (v_in, v_out, pos, t, idcs) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}", leave=False)):
             v_in = v_in.to(device, non_blocking=True)
             v_out = v_out.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
@@ -325,7 +296,6 @@ if __name__ == "__main__":
                 v_in_s, v_out_s, pos_s, idcs_s = v_in, v_out, pos, idcs
 
             with torch.amp.autocast("cuda"):
-                # Teacher forcing: use ground truth for window during training
                 vel_norm = (v_in_s - model.vel_mean) / model.vel_std
                 out_norm = (v_out_s - model.vel_mean) / model.vel_std
                 pos_feat = model.fourier(pos_s)
@@ -336,28 +306,51 @@ if __name__ == "__main__":
                         airfoil_feat[i, idcs_s[i].to(device), 0] = 1.0
 
                 total_loss = torch.tensor(0.0, device=device)
-                all_vel = torch.cat([vel_norm, out_norm], dim=1)  # [B, 10, N, 3]
+                all_vel_gt = torch.cat([vel_norm, out_norm], dim=1)  # [B, 10, N, 3]
+
+                # Scheduled sampling: build window mixing GT and predictions
+                window = vel_norm.clone()  # [B, 5, N, 3] - start with GT input
 
                 for step in range(T_OUT):
-                    window = all_vel[:, step:step + T_IN]  # [B, 5, N, 3]
-                    target = all_vel[:, step + T_IN]        # [B, N, 3]
+                    target = all_vel_gt[:, step + T_IN]  # [B, N, 3]
                     pred_norm = model.predict_single_step(window, pos_s, pos_feat, airfoil_feat)
                     total_loss = total_loss + (pred_norm - target).pow(2).mean()
 
-                loss = total_loss / T_OUT
+                    # Decide: use GT or prediction for next window
+                    if random.random() < ss_prob:
+                        # Use model prediction (autoregressive)
+                        next_step = pred_norm.detach()
+                    else:
+                        # Use ground truth (teacher forcing)
+                        next_step = all_vel_gt[:, step + T_IN]
 
-            optimizer.zero_grad()
+                    window = torch.cat([window[:, 1:], next_step.unsqueeze(1)], dim=1)
+
+                loss = total_loss / (T_OUT * cfg.grad_accum)
+
             scaler.scale(loss).backward()
+
+            if (batch_idx + 1) % cfg.grad_accum == 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                scheduler.step()
+                optimizer.zero_grad()
+                global_step += 1
+
+            epoch_loss += loss.item() * cfg.grad_accum
+            n_batches += 1
+
+        # Handle remaining gradients
+        if n_batches % cfg.grad_accum != 0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
-
+            optimizer.zero_grad()
             global_step += 1
-            wandb.log({"train/loss": loss.item(), "global_step": global_step})
-            epoch_loss += loss.item()
-            n_batches += 1
 
         epoch_loss /= max(n_batches, 1)
 
@@ -365,7 +358,7 @@ if __name__ == "__main__":
         dt = time.time() - t0
 
         wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
-                   "epoch_time_s": dt, "global_step": global_step})
+                   "epoch_time_s": dt, "ss_prob": ss_prob, "global_step": global_step})
 
         tag = ""
         if mean_val < best_val:
@@ -378,7 +371,7 @@ if __name__ == "__main__":
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
         print(
-            f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
+            f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB] ss={ss_prob:.2f}  "
             f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
         )
 
