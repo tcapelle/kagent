@@ -21,7 +21,7 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model
+# Model: Anchor-based Spatial MLP
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -38,53 +38,97 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class AirflowMLP(nn.Module):
-    """Per-point MLP for velocity prediction.
+class AnchorSpatialMLP(nn.Module):
+    """Per-point MLP with spatial context from anchor points.
 
-    Trains in normalized velocity space for stable optimization.
-    Adds airfoil indicator and enforces no-slip BC.
+    Architecture:
+    1. Sample K anchor points from each sample
+    2. Compute per-point features at all N points and K anchors
+    3. RBF-weighted aggregation: each point gets spatial context from anchors
+    4. Concatenate per-point features + spatial context
+    5. MLP → predict velocity delta
+    6. Add to last input (residual)
+    7. No-slip BC
+
+    The anchor approach gives O(N*K) spatial interaction instead of O(N²).
     """
 
-    def __init__(self, hidden=512, n_blocks=8, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=256, n_blocks=6, n_anchors=256, sigma=0.1):
         super().__init__()
-        # pos(3) + normalized velocity_in(5*3=15) + airfoil(1) = 19
-        in_dim = 3 + T_IN * 3 + 1
+        self.n_anchors = n_anchors
+        self.sigma = sigma
+
+        # Per-point features: pos(3) + velocity_in(5*3=15) + airfoil(1) = 19
+        point_feat_dim = 3 + T_IN * 3 + 1
+
+        # Anchor feature encoder: point features → anchor features
+        self.anchor_encoder = nn.Sequential(
+            nn.Linear(point_feat_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, hidden),
+        )
+
+        # Main MLP: per-point features(19) + spatial context from anchors(hidden) = 19+hidden
+        in_dim = point_feat_dim + hidden
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        if vel_mean is not None:
-            self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
-            self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
-        else:
-            self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
-            self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
-
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
+        device = pos.device
 
-        # Normalize velocity to zero mean, unit variance
-        v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, 5, N, 3]
-        v_flat = v_norm.reshape(B, N, T * C)  # [B, N, 15]
+        v_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
 
         # Airfoil indicator
-        airfoil_mask = torch.zeros(B, N, 1, device=pos.device)
+        airfoil_mask = torch.zeros(B, N, 1, device=device)
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
-                idx = idcs_airfoil[i].to(pos.device)
+                idx = idcs_airfoil[i].to(device)
                 airfoil_mask[i, idx, 0] = 1.0
 
-        x = torch.cat([pos, v_flat, airfoil_mask], dim=-1)  # [B, N, 19]
+        # Per-point features
+        point_feats = torch.cat([pos, v_flat, airfoil_mask], dim=-1)  # [B, N, 19]
+
+        # Sample anchor points (use first K points — deterministic for reproducibility)
+        K = min(self.n_anchors, N)
+        # Use farthest point sampling approximation: random subset
+        anchor_idx = torch.randint(N, (B, K), device=device)
+        anchor_pos = torch.gather(pos, 1, anchor_idx.unsqueeze(-1).expand(-1, -1, 3))  # [B, K, 3]
+        anchor_feats = torch.gather(point_feats, 1, anchor_idx.unsqueeze(-1).expand(-1, -1, point_feats.shape[-1]))  # [B, K, 19]
+
+        # Encode anchor features
+        anchor_encoded = self.anchor_encoder(anchor_feats)  # [B, K, hidden]
+
+        # RBF attention: each point attends to anchors based on distance
+        # Compute squared distances: [B, N, K]
+        # Chunked to avoid OOM with N=100k, K=256
+        spatial_context = torch.zeros(B, N, anchor_encoded.shape[-1], device=device)
+
+        chunk_size = 20000
+        for start in range(0, N, chunk_size):
+            end = min(start + chunk_size, N)
+            pos_chunk = pos[:, start:end, :]  # [B, chunk, 3]
+
+            sq_dist = torch.cdist(pos_chunk, anchor_pos).pow(2)  # [B, chunk, K]
+            weights = torch.exp(-sq_dist / (2 * self.sigma ** 2))  # [B, chunk, K]
+            weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-8)  # normalize
+
+            # Weighted aggregation of anchor features
+            spatial_context[:, start:end, :] = torch.bmm(weights, anchor_encoded)  # [B, chunk, hidden]
+
+        # Concatenate per-point features + spatial context
+        x = torch.cat([point_feats, spatial_context], dim=-1)  # [B, N, 19+hidden]
 
         x = self.proj_in(x)
         x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        out = out.reshape(B, T_OUT, N, 3)
+        delta = self.proj_out(x)  # [B, N, 15]
+        delta = delta.reshape(B, T_OUT, N, 3)
 
-        # Denormalize output back to velocity space
-        pred = out * self.vel_std + self.vel_mean
+        # Residual: add last input timestep
+        pred = velocity_in[:, -1:, :, :] + delta
 
         # No-slip BC
         for i in range(B):
@@ -147,6 +191,40 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
+# Point subsampling
+# ---------------------------------------------------------------------------
+
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=20000, surface_weight=3.0):
+    B, T, N, C = v_in.shape
+    device = v_in.device
+
+    new_v_in, new_v_out, new_pos, new_idcs = [], [], [], []
+
+    for i in range(B):
+        weights = torch.ones(N, device=device)
+        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+            surface_idx = idcs_airfoil[i].to(device)
+            weights[surface_idx] = surface_weight
+
+        idx = torch.multinomial(weights, n_points, replacement=False)
+        idx_sorted = idx.sort().values
+
+        new_v_in.append(v_in[i, :, idx_sorted, :])
+        new_v_out.append(v_out[i, :, idx_sorted, :])
+        new_pos.append(pos[i, idx_sorted, :])
+
+        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+            mask = torch.zeros(N, dtype=torch.bool, device=device)
+            mask[surface_idx] = True
+            sub_mask = mask[idx_sorted]
+            new_idcs.append(sub_mask.nonzero(as_tuple=True)[0].cpu())
+        else:
+            new_idcs.append(torch.tensor([], dtype=torch.long))
+
+    return torch.stack(new_v_in), torch.stack(new_v_out), torch.stack(new_pos), new_idcs
+
+
+# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
@@ -164,8 +242,11 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    hidden: int = 512
-    n_blocks: int = 8
+    hidden: int = 256
+    n_blocks: int = 6
+    n_anchors: int = 256
+    sigma: float = 0.1
+    n_subsample: int = 10000
 
 
 if __name__ == "__main__":
@@ -185,12 +266,9 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    vel_mean = stats["vel_mean"].to(device)
-    vel_std = stats["vel_std"].to(device)
-
-    model = AirflowMLP(
+    model = AnchorSpatialMLP(
         hidden=cfg.hidden, n_blocks=cfg.n_blocks,
-        vel_mean=vel_mean, vel_std=vel_std,
+        n_anchors=cfg.n_anchors, sigma=cfg.sigma,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -227,10 +305,6 @@ if __name__ == "__main__":
     global_step = 0
     train_start = time.time()
 
-    # Compute normalized targets for training loss
-    vel_mean_t = vel_mean.reshape(1, 1, 1, 3)
-    vel_std_t = vel_std.reshape(1, 1, 1, 3)
-
     for epoch in range(MAX_EPOCHS):
         if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
             print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
@@ -247,12 +321,14 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
+            # Subsample for speed
+            v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
+                v_in, v_out, pos, idcs, n_points=cfg.n_subsample
+            )
+
             with torch.amp.autocast("cuda"):
-                pred = model(v_in, pos, t, idcs)
-                # Compute loss in normalized space for balanced gradients
-                pred_norm = (pred - vel_mean_t) / vel_std_t
-                target_norm = (v_out - vel_mean_t) / vel_std_t
-                loss = (pred_norm - target_norm).pow(2).mean()
+                pred = model(v_in_s, pos_s, t, idcs_s)
+                loss = (pred - v_out_s).pow(2).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
