@@ -81,6 +81,9 @@ class VoxelUNet(nn.Module):
         self.dec1 = ConvBlock3D(base_ch*2, base_ch)    # concat with enc1
 
         self.head = nn.Conv3d(base_ch, out_ch, 1)
+        # Zero-init head so model starts from copy baseline
+        nn.init.zeros_(self.head.weight)
+        nn.init.zeros_(self.head.bias)
 
         # Domain bounds
         self.register_buffer("domain_min", torch.tensor([0.0, -0.45, 0.0]))
@@ -95,6 +98,9 @@ class VoxelUNet(nn.Module):
             nn.GELU(),
             nn.Linear(128, out_ch),
         )
+        # Zero-init last layer of refinement MLP too
+        nn.init.zeros_(self.refine[-1].weight)
+        nn.init.zeros_(self.refine[-1].bias)
 
     def points_to_grid(self, pos, features):
         """Scatter-mean points into voxel grid."""
@@ -249,7 +255,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 2
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
