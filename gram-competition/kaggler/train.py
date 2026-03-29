@@ -39,60 +39,49 @@ class ResBlock(nn.Module):
 
 
 class AirflowMLP(nn.Module):
-    """Per-point MLP with residual prediction and velocity normalization.
+    """Per-point MLP with residual prediction.
 
-    Improvements over baseline:
-    - Normalizes velocity inputs using dataset statistics
+    Key design choices:
     - Residual prediction (predicts delta from last input timestep)
-    - No-slip boundary enforcement
-    - Wider MLP blocks (4x expansion instead of 2x)
-    - Position normalization
+    - Binary airfoil indicator feature (tells model which points are on surface)
+    - No-slip boundary enforcement (hard constraint)
+    - Works on raw velocity values (no normalization tricks that cause instability)
     """
 
-    def __init__(self, hidden=384, n_blocks=10, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=384, n_blocks=10):
         super().__init__()
-        # pos(3) + normalized velocity_in(5*3=15) = 18
-        in_dim = 3 + T_IN * 3
+        # pos(3) + velocity_in(5*3=15) + airfoil_indicator(1) = 19
+        in_dim = 3 + T_IN * 3 + 1
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        if vel_mean is not None:
-            self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
-            self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
-        else:
-            self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
-            self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
-
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
-        # Normalize velocity input
-        v_norm = (velocity_in - self.vel_mean) / (self.vel_std + 1e-8)
-        v_flat = v_norm.reshape(B, N, T * C)  # [B, N, 15]
+        v_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
 
-        # Normalize positions (per-batch)
-        pos_mean = pos.mean(dim=1, keepdim=True)
-        pos_std = pos.std(dim=1, keepdim=True) + 1e-8
-        pos_norm = (pos - pos_mean) / pos_std
+        # Binary indicator: is this point on the airfoil surface?
+        airfoil_mask = torch.zeros(B, N, 1, device=pos.device)
+        for i in range(B):
+            if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+                idx = idcs_airfoil[i].to(pos.device)
+                airfoil_mask[i, idx, 0] = 1.0
 
-        x = torch.cat([pos_norm, v_flat], dim=-1)  # [B, N, 18]
+        x = torch.cat([pos, v_flat, airfoil_mask], dim=-1)  # [B, N, 19]
 
         x = self.proj_in(x)
         x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
+        delta = self.proj_out(x)  # [B, N, 15]
+        delta = delta.reshape(B, T_OUT, N, 3)
 
-        # Denormalize: output is predicted delta in normalized space,
-        # convert back to velocity space
-        delta = out.reshape(B, T_OUT, N, 3) * self.vel_std.squeeze(1)  # scale delta
-
-        # Residual prediction: add last input timestep
+        # Residual: add last input timestep
         last_v = velocity_in[:, -1:, :, :]  # [B, 1, N, 3]
         pred = last_v + delta
 
-        # No-slip BC
+        # No-slip BC: zero velocity on airfoil surface
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 idx = idcs_airfoil[i].to(pred.device)
@@ -191,19 +180,21 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    vel_mean = stats["vel_mean"].to(device)
-    vel_std = stats["vel_std"].to(device)
-
-    model = AirflowMLP(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
-        vel_mean=vel_mean, vel_std=vel_std,
-    ).to(device)
+    model = AirflowMLP(hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+    # Warmup + cosine decay
+    warmup_epochs = 3
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs
+        return 0.5 * (1 + torch.cos(torch.tensor((epoch - warmup_epochs) / (MAX_EPOCHS - warmup_epochs) * 3.14159)).item())
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     scaler = torch.amp.GradScaler("cuda")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -251,7 +242,8 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in, pos, t, idcs)
-                loss = (pred - v_out).pow(2).mean()
+                # L2 loss — directly optimizes the competition metric
+                loss = (pred - v_out).norm(dim=3).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
