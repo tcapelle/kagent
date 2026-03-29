@@ -9,4 +9,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 3 | frieren | `b2c8c55` | 40.81 | 40.81 | 0.00 | 0.00 | 0.00 |
 | 4 | fern | `7087c6e` | 64.92 | 69.55 | 89.23 | 37.61 | 63.30 |
 
-*Last updated: 2026-03-29 08:53 UTC*
+*Last updated: 2026-03-29 08:58 UTC*
