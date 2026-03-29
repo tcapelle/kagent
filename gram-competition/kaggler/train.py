@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
-from model import GNNModel
+from model import ResidualMLP
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +25,6 @@ from model import GNNModel
 # ---------------------------------------------------------------------------
 
 def validate(model, val_loaders, device, global_step):
-    """Run validation, log to W&B. Returns mean val metric (L2 velocity error)."""
     model.eval()
     val_metrics: dict[str, dict] = {}
 
@@ -75,7 +74,6 @@ def validate(model, val_loaders, device, global_step):
 # ---------------------------------------------------------------------------
 
 def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
-    """Subsample points during training, preserving airfoil indices."""
     B, T, N, C = v_in.shape
     if n_points >= N:
         return v_in, v_out, pos, idcs_airfoil
@@ -86,22 +84,26 @@ def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
     new_idcs = []
 
     for i in range(B):
-        airfoil = idcs_airfoil[i]
+        airfoil = idcs_airfoil[i].to(v_in.device)
         n_airfoil = len(airfoil)
+
+        # Cap airfoil to half budget
+        max_airfoil = n_points // 2
+        if n_airfoil > max_airfoil:
+            perm_a = torch.randperm(n_airfoil, device=v_in.device)[:max_airfoil]
+            airfoil_sel = airfoil[perm_a]
+            n_airfoil = max_airfoil
+        else:
+            airfoil_sel = airfoil
 
         all_idx = torch.arange(N, device=v_in.device)
         mask = torch.ones(N, dtype=torch.bool, device=v_in.device)
-        mask[airfoil] = False
+        mask[idcs_airfoil[i].to(v_in.device)] = False
         non_airfoil = all_idx[mask]
 
         n_random = min(n_points - n_airfoil, len(non_airfoil))
-        if n_random > 0:
-            perm = torch.randperm(len(non_airfoil), device=v_in.device)[:n_random]
-            selected_non_airfoil = non_airfoil[perm]
-        else:
-            selected_non_airfoil = non_airfoil[:0]
-
-        selected = torch.cat([airfoil.to(v_in.device), selected_non_airfoil])
+        perm = torch.randperm(len(non_airfoil), device=v_in.device)[:n_random]
+        selected = torch.cat([airfoil_sel, non_airfoil[perm]])
 
         new_v_in.append(v_in[i, :, selected, :])
         new_v_out.append(v_out[i, :, selected, :])
@@ -112,7 +114,7 @@ def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
 
 
 # ---------------------------------------------------------------------------
-# Config + main
+# Config
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
@@ -120,15 +122,13 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 1e-3
     weight_decay: float = 1e-4
-    batch_size: int = 1
-    epochs: int = 40
-    subsample_train: int = 8000
-    hidden: int = 256
-    n_mlp_blocks: int = 4
-    n_gnn_blocks: int = 4
-    k_neighbors: int = 16
+    batch_size: int = 4
+    epochs: int = 100
+    subsample_train: int = 30000
+    hidden: int = 512
+    n_blocks: int = 10
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -152,9 +152,8 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = GNNModel(
-    hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks, n_gnn_blocks=cfg.n_gnn_blocks,
-    n_freqs=64, k_neighbors=cfg.k_neighbors,
+model = ResidualMLP(
+    hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_freqs=128,
     vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
 ).to(device)
 
@@ -163,12 +162,12 @@ print(f"Model params: {n_params:,}")
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-# Warmup + cosine decay
-warmup_epochs = 5
+warmup_epochs = 3
 def lr_lambda(epoch):
     if epoch < warmup_epochs:
         return (epoch + 1) / warmup_epochs
-    return 0.5 * (1 + torch.cos(torch.tensor((epoch - warmup_epochs) / (MAX_EPOCHS - warmup_epochs) * 3.14159)).item())
+    progress = (epoch - warmup_epochs) / max(MAX_EPOCHS - warmup_epochs, 1)
+    return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)).item())
 
 scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 scaler = torch.amp.GradScaler("cuda")
@@ -201,7 +200,7 @@ model_path = model_dir / "checkpoint.pt"
 
 
 # ---------------------------------------------------------------------------
-# Training loop
+# Training loop — metric-aligned loss
 # ---------------------------------------------------------------------------
 
 best_val = float("inf")
@@ -231,7 +230,16 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.amp.autocast("cuda"):
             pred = model(v_in_sub, pos_sub, t, idcs_sub)
-            loss = (pred - v_out_sub).pow(2).mean()
+
+            # Metric-aligned loss: smooth L2 norm (matches competition metric)
+            # Competition metric: (pred - gt).norm(dim=3).mean(dim=(1,2))
+            err = pred - v_out_sub
+            l2_norm = (err.pow(2).sum(dim=3) + 1e-6).sqrt()  # [B, 5, N]
+            metric_loss = l2_norm.mean()
+
+            # Add small MSE for gradient stability
+            mse_loss = err.pow(2).mean()
+            loss = 0.7 * metric_loss + 0.3 * mse_loss
 
         optimizer.zero_grad()
         scaler.scale(loss).backward()
@@ -241,7 +249,8 @@ for epoch in range(MAX_EPOCHS):
         scaler.update()
 
         global_step += 1
-        wandb.log({"train/loss": loss.item(), "global_step": global_step})
+        wandb.log({"train/loss": loss.item(), "train/metric_loss": metric_loss.item(),
+                    "train/mse_loss": mse_loss.item(), "global_step": global_step})
 
         epoch_loss += loss.item()
         n_batches += 1
