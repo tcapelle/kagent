@@ -13,7 +13,6 @@ import simple_parsing as sp
 import torch
 import torch.nn as nn
 import wandb
-import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -21,7 +20,7 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model
+# Model: Per-point MLP with local neighbor aggregation
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -38,15 +37,81 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
+def knn_graph(pos, k=16):
+    """Build k-NN graph. pos: [B, N, 3]. Returns indices [B, N, k]."""
+    # Use chunked distance computation to save memory
+    B, N, _ = pos.shape
+    idx_list = []
+    chunk_size = 4096
+    for b in range(B):
+        indices_b = []
+        for i in range(0, N, chunk_size):
+            end = min(i + chunk_size, N)
+            # Distances from chunk to all points
+            diff = pos[b, i:end].unsqueeze(1) - pos[b].unsqueeze(0)  # [chunk, N, 3]
+            dist = diff.pow(2).sum(-1)  # [chunk, N]
+            _, knn_idx = dist.topk(k, dim=-1, largest=False)  # [chunk, k]
+            indices_b.append(knn_idx)
+        idx_list.append(torch.cat(indices_b, dim=0))
+    return torch.stack(idx_list)  # [B, N, k]
+
+
+class NeighborAggBlock(nn.Module):
+    """Aggregate features from k nearest neighbors."""
+    def __init__(self, dim, k=16):
+        super().__init__()
+        self.k = k
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(dim * 2 + 3, dim),  # [feat_i, feat_j, rel_pos] -> dim
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        )
+        self.norm = nn.LayerNorm(dim)
+        self.gate = nn.Linear(dim, dim)
+
+    def forward(self, x, pos, knn_idx):
+        """x: [B, N, D], pos: [B, N, 3], knn_idx: [B, N, k]"""
+        B, N, D = x.shape
+        k = knn_idx.shape[-1]
+
+        # Gather neighbor features
+        idx_expanded = knn_idx.unsqueeze(-1).expand(B, N, k, D)
+        x_neighbors = torch.gather(x.unsqueeze(2).expand(B, N, k, D).contiguous().view(B, N*k, D),
+                                    1,
+                                    knn_idx.view(B, N*k, 1).expand(B, N*k, D)).view(B, N, k, D)
+
+        # Relative positions
+        pos_expanded = knn_idx.unsqueeze(-1).expand(B, N, k, 3)
+        pos_neighbors = torch.gather(pos.unsqueeze(2).expand(B, N, k, 3).contiguous().view(B, N*k, 3),
+                                      1,
+                                      knn_idx.view(B, N*k, 1).expand(B, N*k, 3)).view(B, N, k, 3)
+        rel_pos = pos_neighbors - pos.unsqueeze(2)  # [B, N, k, 3]
+
+        # Edge features
+        x_i = x.unsqueeze(2).expand(B, N, k, D)
+        edge_feat = torch.cat([x_i, x_neighbors, rel_pos], dim=-1)  # [B, N, k, 2D+3]
+        edge_out = self.edge_mlp(edge_feat)  # [B, N, k, D]
+
+        # Aggregate (mean pooling over neighbors)
+        agg = edge_out.mean(dim=2)  # [B, N, D]
+
+        # Gated residual
+        gate = torch.sigmoid(self.gate(agg))
+        x = self.norm(x + gate * agg)
+        return x
+
+
 class AirflowModel(nn.Module):
     """
-    Residual prediction with velocity normalization and no-slip BC.
+    Residual prediction model with local neighbor aggregation.
     Predicts normalized delta from last input timestep.
     """
 
-    def __init__(self, hidden=512, n_blocks=8, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=384, n_mlp_blocks=6, n_gnn_blocks=2, k_neighbors=16,
+                 vel_mean=None, vel_std=None):
         super().__init__()
-        # Store normalization stats as buffers
+        self.k_neighbors = k_neighbors
+
         if vel_mean is not None:
             self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
             self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
@@ -54,50 +119,72 @@ class AirflowModel(nn.Module):
             self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
             self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
 
-        # Input: pos(3) + normalized_velocity_in(5*3=15) + time_features(10)
-        in_dim = 3 + T_IN * 3 + 10
+        # Input: pos(3) + velocity_in(5*3=15) = 18
+        in_dim = 3 + T_IN * 3
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+
+        # Mix of MLP blocks and GNN blocks
+        layers = []
+        for i in range(n_mlp_blocks):
+            layers.append(ResBlock(hidden))
+            if i > 0 and i % (n_mlp_blocks // max(n_gnn_blocks, 1)) == 0 and n_gnn_blocks > 0:
+                layers.append(("gnn", NeighborAggBlock(hidden, k=k_neighbors)))
+                n_gnn_blocks -= 1
+
+        self.mlp_blocks = nn.ModuleList()
+        self.gnn_blocks = nn.ModuleList()
+        self.gnn_positions = []  # which position in the forward gets a GNN block
+
+        idx = 0
+        gnn_idx = 0
+        for layer in layers:
+            if isinstance(layer, tuple):
+                self.gnn_blocks.append(layer[1])
+                self.gnn_positions.append(idx)
+                gnn_idx += 1
+            else:
+                self.mlp_blocks.append(layer)
+                idx += 1
+
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # Initialize output to near-zero for residual prediction
+        # Zero-init output for residual learning
         nn.init.zeros_(self.proj_out[-1].weight)
         nn.init.zeros_(self.proj_out[-1].bias)
 
-    def normalize_vel(self, v):
-        return (v - self.vel_mean) / (self.vel_std + 1e-8)
-
-    def denormalize_vel(self, v):
-        return v * (self.vel_std + 1e-8) + self.vel_mean
-
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
+    def forward(self, velocity_in, pos, t, idcs_airfoil, knn_idx=None):
         B, T, N, C = velocity_in.shape
 
         # Normalize velocity
-        vel_norm = self.normalize_vel(velocity_in)  # [B, 5, N, 3]
+        vel_norm = (velocity_in - self.vel_mean) / (self.vel_std + 1e-8)
         vel_flat = vel_norm.reshape(B, N, T * C)  # [B, N, 15]
 
-        # Time features broadcast to all points
-        t_feat = t.unsqueeze(1).expand(B, N, 10)  # [B, N, 10]
-
-        # Concatenate: pos + normalized_vel + time
-        x = torch.cat([pos, vel_flat, t_feat], dim=-1)  # [B, N, 28]
-
+        x = torch.cat([pos, vel_flat], dim=-1)  # [B, N, 18]
         x = self.proj_in(x)
-        x = self.blocks(x)
-        delta_norm = self.proj_out(x)  # [B, N, 15]
-        delta_norm = delta_norm.reshape(B, T_OUT, N, 3)
 
-        # Residual: predicted normalized delta + last normalized input
-        last_norm = vel_norm[:, -1:, :, :]  # [B, 1, N, 3]
-        out_norm = delta_norm + last_norm  # [B, 5, N, 3]
+        # Build kNN graph if needed and if we have GNN blocks
+        if knn_idx is None and len(self.gnn_blocks) > 0:
+            knn_idx = knn_graph(pos, k=self.k_neighbors)
+
+        gnn_i = 0
+        for mlp_i, block in enumerate(self.mlp_blocks):
+            x = block(x)
+            if mlp_i in self.gnn_positions and gnn_i < len(self.gnn_blocks):
+                x = self.gnn_blocks[gnn_i](x, pos, knn_idx)
+                gnn_i += 1
+
+        delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
+
+        # Residual in normalized space
+        last_norm = vel_norm[:, -1:, :, :]
+        out_norm = delta_norm + last_norm
 
         # Denormalize
-        out = self.denormalize_vel(out_norm)
+        out = out_norm * (self.vel_std + 1e-8) + self.vel_mean
 
-        # No-slip boundary condition: zero velocity on airfoil surface
+        # No-slip boundary condition
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 out[i, :, idcs_airfoil[i].to(out.device), :] = 0.0
@@ -157,18 +244,14 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
-# Point subsampling for training efficiency
+# Point subsampling
 # ---------------------------------------------------------------------------
 
-def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=30000):
-    """Subsample points during training. Importance-weight near airfoil."""
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=20000):
     B, T, N, C = v_in.shape
     device = v_in.device
 
-    v_in_sub = []
-    v_out_sub = []
-    pos_sub = []
-    idcs_sub = []
+    v_in_sub, v_out_sub, pos_sub, idcs_sub = [], [], [], []
 
     for i in range(B):
         weights = torch.ones(N, device=device)
@@ -176,8 +259,7 @@ def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=30000):
         if airfoil_idx is not None and len(airfoil_idx) > 0:
             weights[airfoil_idx.to(device)] = 3.0
 
-        idx = torch.multinomial(weights, n_points, replacement=False)
-        idx = idx.sort().values
+        idx = torch.multinomial(weights, n_points, replacement=False).sort().values
 
         v_in_sub.append(v_in[i, :, idx, :])
         v_out_sub.append(v_out[i, :, idx, :])
@@ -185,8 +267,7 @@ def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=30000):
 
         if airfoil_idx is not None and len(airfoil_idx) > 0:
             mask = torch.isin(idx, airfoil_idx.to(device))
-            new_idcs = torch.where(mask)[0]
-            idcs_sub.append(new_idcs)
+            idcs_sub.append(torch.where(mask)[0])
         else:
             idcs_sub.append(torch.tensor([], dtype=torch.long, device=device))
 
@@ -194,7 +275,7 @@ def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=30000):
 
 
 # ---------------------------------------------------------------------------
-# Main training
+# Config + main
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
@@ -202,7 +283,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 3e-4
+    lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 2
     epochs: int = 50
@@ -211,9 +292,11 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    subsample_train: int = 30000
-    hidden: int = 512
-    n_blocks: int = 8
+    subsample_train: int = 20000
+    hidden: int = 384
+    n_mlp_blocks: int = 6
+    n_gnn_blocks: int = 0
+    k_neighbors: int = 16
 
 
 def main():
@@ -236,7 +319,8 @@ def main():
     vel_std = stats["vel_std"].to(device)
 
     model = AirflowModel(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
+        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
+        n_gnn_blocks=cfg.n_gnn_blocks, k_neighbors=cfg.k_neighbors,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
 
@@ -244,7 +328,11 @@ def main():
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=cfg.lr,
+        steps_per_epoch=len(train_loader), epochs=MAX_EPOCHS,
+        pct_start=0.1, anneal_strategy='cos',
+    )
     scaler = torch.cuda.amp.GradScaler()
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -301,13 +389,17 @@ def main():
 
             with torch.cuda.amp.autocast():
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean()
+                # Normalized MSE: compute loss in normalized space
+                vel_std_bcast = model.vel_std.squeeze(0).squeeze(0)  # [1, 3]
+                diff = (pred - v_out_s) / (vel_std_bcast + 1e-8)
+                loss = diff.pow(2).mean()
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -315,13 +407,12 @@ def main():
             epoch_loss += loss.item()
             n_batches += 1
 
-        scheduler.step()
         epoch_loss /= n_batches
 
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
         dt = time.time() - t0
 
-        wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
+        wandb.log({"train/epoch_loss": epoch_loss, "lr": optimizer.param_groups[0]['lr'],
                    "epoch_time_s": dt, "global_step": global_step})
 
         tag = ""
