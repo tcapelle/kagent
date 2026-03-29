@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from torch.utils.data import DataLoader
 
-from data import GRAMDataset, collate_fn
+from data import GRAMDataset, T_IN, collate_fn
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -37,16 +37,15 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-# Load stats for model init
 with open(splits_dir / "stats.json") as f:
     stats_raw = json.load(f)
 vel_mean = torch.tensor(stats_raw["vel_mean"], dtype=torch.float32).to(device)
 vel_std = torch.tensor(stats_raw["vel_std"], dtype=torch.float32).to(device)
 
-from train import AirflowMLP
-model = AirflowMLP(
-    hidden=512, n_blocks=10, n_fourier_freqs=64,
-    vel_mean=vel_mean, vel_std=vel_std, dropout=0.0,
+from train import AutoregressivePredictor
+model = AutoregressivePredictor(
+    hidden=768, n_blocks=12, n_fourier_freqs=128,
+    vel_mean=vel_mean, vel_std=vel_std, window=T_IN,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 

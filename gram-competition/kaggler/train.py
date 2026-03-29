@@ -5,6 +5,7 @@ Run:
 """
 
 import os
+import math
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -16,11 +17,11 @@ from data import T_IN, T_OUT
 
 
 # ---------------------------------------------------------------------------
-# Model
+# Model: Autoregressive single-step predictor
 # ---------------------------------------------------------------------------
 
 class FourierFeatures(nn.Module):
-    def __init__(self, in_dim=3, n_freqs=64):
+    def __init__(self, in_dim=3, n_freqs=128):
         super().__init__()
         self.register_buffer("B", torch.randn(in_dim, n_freqs) * 10.0)
 
@@ -30,85 +31,105 @@ class FourierFeatures(nn.Module):
 
 
 class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.0):
+    def __init__(self, dim):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
+            nn.Linear(dim, dim * 4),
             nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim * 2, dim),
+            nn.Linear(dim * 4, dim),
         )
 
     def forward(self, x):
         return x + self.net(x)
 
 
-class AirflowMLP(nn.Module):
-    """MLP with input normalization, residual prediction, temporal features, no-slip."""
+class AutoregressivePredictor(nn.Module):
+    """Predicts one timestep at a time, autoregressively.
 
-    def __init__(self, hidden=512, n_blocks=10, n_fourier_freqs=64,
-                 vel_mean=None, vel_std=None, dropout=0.0):
+    Given a window of K input timesteps, predicts the next timestep.
+    For multi-step prediction, rolls the window forward using own predictions.
+    """
+
+    def __init__(self, hidden=768, n_blocks=12, n_fourier_freqs=128,
+                 vel_mean=None, vel_std=None, window=5):
         super().__init__()
+        self.window = window
         self.fourier = FourierFeatures(in_dim=3, n_freqs=n_fourier_freqs)
 
-        # Register normalization stats
         self.register_buffer("vel_mean", vel_mean if vel_mean is not None else torch.zeros(3))
         self.register_buffer("vel_std", vel_std if vel_std is not None else torch.ones(3))
 
-        # Input features per point:
+        # Input per point:
         # - Fourier pos: 2*n_fourier_freqs
         # - Normalized pos: 3
-        # - Normalized velocity_in (5 timesteps): 5*3 = 15
-        # - Velocity temporal diffs (4 diffs between consecutive timesteps): 4*3 = 12
-        # - Per-point velocity mean and std: 3+3 = 6
+        # - Normalized velocities (window timesteps): window*3
+        # - Velocity temporal diffs: (window-1)*3
         # - Airfoil indicator: 1
-        in_dim = 2 * n_fourier_freqs + 3 + T_IN * 3 + 4 * 3 + 6 + 1
-        out_dim = T_OUT * 3
+        in_dim = 2 * n_fourier_freqs + 3 + window * 3 + (window - 1) * 3 + 1
+        out_dim = 3  # predict single next timestep velocity (normalized delta)
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks)])
+        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+
+    def predict_single_step(self, vel_window_norm, pos, pos_feat, airfoil_feat):
+        """Predict next timestep given a window of normalized velocities.
+
+        Args:
+            vel_window_norm: [B, window, N, 3] normalized velocities
+            pos: [B, N, 3]
+            pos_feat: [B, N, 2*n_freqs] precomputed Fourier features
+            airfoil_feat: [B, N, 1]
+
+        Returns:
+            next_vel_norm: [B, N, 3] predicted normalized velocity for next timestep
+        """
+        B, W, N, C = vel_window_norm.shape
+
+        # Temporal diffs
+        diffs = vel_window_norm[:, 1:] - vel_window_norm[:, :-1]  # [B, W-1, N, 3]
+        diffs_flat = diffs.permute(0, 2, 1, 3).reshape(B, N, (W - 1) * C)
+
+        # Flatten window velocities
+        vel_flat = vel_window_norm.permute(0, 2, 1, 3).reshape(B, N, W * C)
+
+        x = torch.cat([pos_feat, pos, vel_flat, diffs_flat, airfoil_feat], dim=-1)
+        x = self.proj_in(x)
+        x = self.blocks(x)
+        delta_norm = self.proj_out(x)  # [B, N, 3]
+
+        # Predict delta from last timestep in window
+        return vel_window_norm[:, -1] + delta_norm
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
-        # Normalize velocities
-        vel_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
+        # Normalize
+        vel_norm = (velocity_in - self.vel_mean) / self.vel_std
 
-        # Fourier position features
-        pos_feat = self.fourier(pos)  # [B, N, 2*n_freqs]
+        # Precompute static features
+        pos_feat = self.fourier(pos)
 
-        # Temporal differences (acceleration-like features)
-        vel_diffs = vel_norm[:, 1:] - vel_norm[:, :-1]  # [B, T-1, N, 3]
-        vel_diffs_flat = vel_diffs.permute(0, 2, 1, 3).reshape(B, N, (T - 1) * C)  # [B, N, 12]
-
-        # Per-point statistics
-        vel_pt_mean = vel_norm.mean(dim=1)  # [B, N, 3]
-        vel_pt_std = vel_norm.std(dim=1)    # [B, N, 3]
-
-        # Flatten normalized velocities
-        vel_flat = vel_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
-
-        # Airfoil indicator feature
         airfoil_feat = torch.zeros(B, N, 1, device=velocity_in.device)
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 airfoil_feat[i, idcs_airfoil[i].to(velocity_in.device), 0] = 1.0
 
-        # Concatenate all features
-        x = torch.cat([pos_feat, pos, vel_flat, vel_diffs_flat, vel_pt_mean, vel_pt_std, airfoil_feat], dim=-1)
+        # Autoregressive prediction
+        preds_norm = []
+        window = vel_norm  # [B, 5, N, 3]
 
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        for step in range(T_OUT):
+            next_norm = self.predict_single_step(window, pos, pos_feat, airfoil_feat)
+            preds_norm.append(next_norm)
+            # Roll window: drop oldest, append prediction
+            window = torch.cat([window[:, 1:], next_norm.unsqueeze(1)], dim=1)
 
-        # Predict delta in normalized space, then denormalize
-        # Output = last_input + delta (in raw space)
-        # delta_raw = delta_norm * vel_std
-        delta_raw = delta_norm * self.vel_std
+        preds_norm = torch.stack(preds_norm, dim=1)  # [B, T_OUT, N, 3]
 
-        pred = velocity_in[:, -1:, :, :] + delta_raw
+        # Denormalize
+        pred = preds_norm * self.vel_std + self.vel_mean
 
         # No-slip boundary condition
         for i in range(B):
@@ -185,11 +206,11 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
+        lr: float = 3e-4
         weight_decay: float = 1e-4
         batch_size: int = 1
-        epochs: int = 80
-        subsample_train: int = 40000
+        epochs: int = 100
+        subsample_train: int = 30000
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -214,9 +235,9 @@ if __name__ == "__main__":
     vel_mean = stats["vel_mean"].to(device)
     vel_std = stats["vel_std"].to(device)
 
-    model = AirflowMLP(
-        hidden=512, n_blocks=10, n_fourier_freqs=64,
-        vel_mean=vel_mean, vel_std=vel_std, dropout=0.05,
+    model = AutoregressivePredictor(
+        hidden=768, n_blocks=12, n_fourier_freqs=128,
+        vel_mean=vel_mean, vel_std=vel_std, window=T_IN,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -224,13 +245,13 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-    # Warmup + cosine decay
-    warmup_epochs = 5
-    def lr_lambda(epoch):
-        if epoch < warmup_epochs:
-            return (epoch + 1) / warmup_epochs
-        progress = (epoch - warmup_epochs) / max(MAX_EPOCHS - warmup_epochs, 1)
-        return 0.5 * (1 + __import__('math').cos(__import__('math').pi * progress))
+    warmup_steps = 500
+    total_steps = MAX_EPOCHS * len(train_ds)
+    def lr_lambda(step):
+        if step < warmup_steps:
+            return (step + 1) / warmup_steps
+        progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
+        return 0.5 * (1 + math.cos(math.pi * progress))
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     scaler = torch.amp.GradScaler("cuda")
@@ -258,6 +279,7 @@ if __name__ == "__main__":
     model_path = model_dir / "checkpoint.pt"
 
     # --- Training loop ---
+    # Use teacher forcing: train each output timestep with ground truth history
     best_val = float("inf")
     best_metrics: dict = {}
     global_step = 0
@@ -281,7 +303,7 @@ if __name__ == "__main__":
 
             B, T_i, N, C = v_in.shape
 
-            # Subsample points during training
+            # Subsample points
             if cfg.subsample_train and cfg.subsample_train < N:
                 idx = torch.randperm(N, device=device)[:cfg.subsample_train]
                 idx = idx.sort().values
@@ -303,9 +325,26 @@ if __name__ == "__main__":
                 v_in_s, v_out_s, pos_s, idcs_s = v_in, v_out, pos, idcs
 
             with torch.amp.autocast("cuda"):
-                pred = model(v_in_s, pos_s, t, idcs_s)
-                # Smooth L1 (Huber) loss — more robust than MSE, better for L2 metric
-                loss = nn.functional.smooth_l1_loss(pred, v_out_s)
+                # Teacher forcing: use ground truth for window during training
+                vel_norm = (v_in_s - model.vel_mean) / model.vel_std
+                out_norm = (v_out_s - model.vel_mean) / model.vel_std
+                pos_feat = model.fourier(pos_s)
+
+                airfoil_feat = torch.zeros(B, v_in_s.shape[2], 1, device=device)
+                for i in range(B):
+                    if idcs_s[i] is not None and len(idcs_s[i]) > 0:
+                        airfoil_feat[i, idcs_s[i].to(device), 0] = 1.0
+
+                total_loss = torch.tensor(0.0, device=device)
+                all_vel = torch.cat([vel_norm, out_norm], dim=1)  # [B, 10, N, 3]
+
+                for step in range(T_OUT):
+                    window = all_vel[:, step:step + T_IN]  # [B, 5, N, 3]
+                    target = all_vel[:, step + T_IN]        # [B, N, 3]
+                    pred_norm = model.predict_single_step(window, pos_s, pos_feat, airfoil_feat)
+                    total_loss = total_loss + (pred_norm - target).pow(2).mean()
+
+                loss = total_loss / T_OUT
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
@@ -313,13 +352,13 @@ if __name__ == "__main__":
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
             epoch_loss += loss.item()
             n_batches += 1
 
-        scheduler.step()
         epoch_loss /= max(n_batches, 1)
 
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
