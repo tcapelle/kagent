@@ -16,7 +16,8 @@ from tqdm import tqdm
 
 from torch.utils.data import DataLoader
 
-from data import GRAMDataset, collate_fn
+from data import GRAMDataset, collate_fn, load_data
+from model import ResidualMLP
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -32,14 +33,21 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
+    hidden: int = 512
+    n_blocks: int = 10
 
 
 cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import ResidualMLP
-model = ResidualMLP(hidden=512, n_blocks=8, n_freqs=64, dropout=0.05).to(device)
+# Load stats for model initialization
+_, _, stats = load_data(splits_dir)
+
+model = ResidualMLP(
+    hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_freqs=128, dropout=0.0,
+    vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
+).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
@@ -61,13 +69,13 @@ for split in TEST_SPLITS:
     print(f"{split}: {len(ds)} samples")
 
     predictions = []
-    with torch.no_grad(), torch.cuda.amp.autocast():
+    with torch.no_grad(), torch.amp.autocast("cuda"):
         for v_in, v_out, pos, t, idcs in tqdm(loader, desc=split, leave=False):
             v_in = v_in.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            pred = model(v_in, pos, t, idcs)
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
