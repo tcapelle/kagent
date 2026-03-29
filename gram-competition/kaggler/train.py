@@ -286,12 +286,13 @@ if __name__ == "__main__":
             epoch_loss += loss.item() * cfg.grad_accum
             n_batches += 1
 
-        # Flush remaining gradients
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        scaler.step(optimizer)
-        scaler.update()
-        optimizer.zero_grad()
+        # Flush remaining gradients if last batch didn't complete accumulation
+        if n_batches % cfg.grad_accum != 0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
 
         scheduler.step()
         epoch_loss /= max(n_batches, 1)
