@@ -1,8 +1,5 @@
 """Train a 3D airflow velocity predictor.
 
-Template — fill in your model architecture.
-The training loop, loss, validation, and W&B logging are provided.
-
 Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
@@ -24,24 +21,18 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Baseline MLP — replace with your own architecture
-#
-# Model contract:
-#   Input:  velocity_in [B, 5, N, 3], pos [B, N, 3], t [B, 10], idcs_airfoil list[tensor]
-#   Output: velocity_out [B, 5, N, 3]  (predicted future velocity field)
-#
-# Note: the real competition uses model(t, pos, idcs_airfoil, velocity_in) —
-#       different arg order. If you submit to the real comp, wrap accordingly.
+# Model: Enhanced Residual MLP with time embedding and no-slip enforcement
 # ---------------------------------------------------------------------------
 
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 2, dim),
         )
 
@@ -49,24 +40,85 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class BaselineMLP(nn.Module):
-    """Concat pos + velocity_in per point, predict velocity_out through ResMLP."""
-
-    def __init__(self, hidden=256, n_blocks=6):
+class TimeEmbedding(nn.Module):
+    """Sinusoidal time embedding."""
+    def __init__(self, dim):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
+        self.dim = dim
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, dim * 2),
+            nn.GELU(),
+            nn.Linear(dim * 2, dim),
+        )
+
+    def forward(self, t):
+        # t: [B, 10]
+        half = self.dim // 2
+        freqs = torch.exp(-torch.arange(half, device=t.device).float() * (torch.log(torch.tensor(10000.0)) / half))
+        # Use mean of input times and output times
+        t_in_mean = t[:, :5].mean(dim=1, keepdim=True)  # [B, 1]
+        t_out_mean = t[:, 5:].mean(dim=1, keepdim=True)  # [B, 1]
+        dt = t_out_mean - t_in_mean  # [B, 1]
+        args = dt * freqs[None, :]  # [B, half]
+        emb = torch.cat([torch.sin(args), torch.cos(args)], dim=-1)  # [B, dim]
+        return self.mlp(emb)
+
+
+class FrierenModel(nn.Module):
+    """Residual prediction MLP with normalization, time embedding, and no-slip BC."""
+
+    def __init__(self, hidden=512, n_blocks=8, dropout=0.05, n_fourier=32):
+        super().__init__()
+        self.n_fourier = n_fourier
+        # Input: pos(3) + fourier_pos(n_fourier*6) + velocity_in(5*3=15) + velocity_stats(3: mean of last step)
+        pos_dim = 3 + n_fourier * 6  # raw pos + fourier features
+        vel_dim = T_IN * 3  # 15
+        in_dim = pos_dim + vel_dim
+
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        self.time_emb = TimeEmbedding(hidden)
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks)])
+        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, T_OUT * 3))
+
+        # Learnable Fourier frequency matrix for positional encoding
+        self.register_buffer('fourier_freqs', torch.randn(3, n_fourier) * 10.0)
+
+    def _fourier_pos(self, pos):
+        # pos: [B, N, 3]
+        proj = pos @ self.fourier_freqs  # [B, N, n_fourier]
+        return torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)  # [B, N, n_fourier*2]
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
-        x = self.proj_in(x)
+
+        # Fourier position encoding
+        pos_feat = torch.cat([pos, self._fourier_pos(pos)], dim=-1)  # [B, N, 3+n_fourier*2]
+
+        # Flatten velocity input
+        vel_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
+
+        # Concatenate all features
+        x = torch.cat([pos_feat, vel_flat], dim=-1)  # [B, N, in_dim]
+        x = self.proj_in(x)  # [B, N, hidden]
+
+        # Add time embedding (broadcast to all points)
+        t_emb = self.time_emb(t)  # [B, hidden]
+        x = x + t_emb.unsqueeze(1)  # [B, N, hidden]
+
         x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        return out.reshape(B, T_OUT, N, 3)
+        delta = self.proj_out(x)  # [B, N, T_OUT*3]
+        delta = delta.reshape(B, T_OUT, N, 3)
+
+        # Residual prediction: add last input timestep
+        last_vel = velocity_in[:, -1:, :, :]  # [B, 1, N, 3]
+        out = last_vel + delta  # [B, T_OUT, N, 3]
+
+        # No-slip boundary condition: zero velocity at airfoil surface
+        for i in range(B):
+            if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+                out[i, :, idcs_airfoil[i], :] = 0.0
+
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -90,8 +142,10 @@ def validate(model, val_loaders, device, global_step):
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                with torch.cuda.amp.autocast():
+                    pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
 
+                pred = pred.float()
                 # L2 velocity error (competition hint metric)
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))  # [B]
                 total_l2 += l2_err.sum().item()
@@ -130,15 +184,17 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 3e-4
     weight_decay: float = 1e-4
-    batch_size: int = 1
+    batch_size: int = 2
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    subsample_train: int = 20000  # subsample points during training
+    grad_accum: int = 1
 
 
 cfg = sp.parse(Config)
@@ -153,15 +209,17 @@ loader_kwargs = dict(collate_fn=collate_fn, num_workers=2, pin_memory=True)
 
 train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **loader_kwargs)
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=1, shuffle=False, **loader_kwargs)
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+model = FrierenModel(hidden=512, n_blocks=8, dropout=0.05, n_fourier=32).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
+print(f"Model params: {n_params:,}")
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+scaler = torch.amp.GradScaler("cuda")
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
@@ -191,7 +249,7 @@ model_path = model_dir / "checkpoint.pt"
 
 
 # ---------------------------------------------------------------------------
-# Training loop
+# Training loop with AMP and point subsampling
 # ---------------------------------------------------------------------------
 
 best_val = float("inf")
@@ -209,23 +267,63 @@ for epoch in range(MAX_EPOCHS):
     epoch_loss = 0.0
     n_batches = 0
 
-    for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+    for batch_idx, (v_in, v_out, pos, t, idcs) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False)):
         v_in = v_in.to(device, non_blocking=True)
         v_out = v_out.to(device, non_blocking=True)
         pos = pos.to(device, non_blocking=True)
         t = t.to(device, non_blocking=True)
 
-        pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-        loss = (pred - v_out).pow(2).mean()
+        B = v_in.shape[0]
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        # Subsample points during training for speed/memory
+        if cfg.subsample_train > 0 and cfg.subsample_train < N_POINTS:
+            idx = torch.randperm(N_POINTS, device=device)[:cfg.subsample_train]
+            v_in_sub = v_in[:, :, idx, :]
+            v_out_sub = v_out[:, :, idx, :]
+            pos_sub = pos[:, idx, :]
+            # Remap airfoil indices
+            idx_set = set(idx.cpu().tolist())
+            new_idcs = []
+            for i in range(B):
+                if idcs[i] is not None:
+                    old_idcs = idcs[i].tolist()
+                    # Find which airfoil indices are in our subsample
+                    idx_list = idx.cpu().tolist()
+                    idx_to_new = {old: new for new, old in enumerate(idx_list)}
+                    mapped = [idx_to_new[o] for o in old_idcs if o in idx_to_new]
+                    new_idcs.append(torch.tensor(mapped, dtype=torch.long))
+                else:
+                    new_idcs.append(torch.tensor([], dtype=torch.long))
+        else:
+            v_in_sub, v_out_sub, pos_sub, new_idcs = v_in, v_out, pos, idcs
+
+        with torch.cuda.amp.autocast():
+            pred = model(v_in_sub, pos_sub, t, new_idcs)
+            loss = (pred - v_out_sub).pow(2).mean()
+            loss = loss / cfg.grad_accum
+
+        scaler.scale(loss).backward()
+
+        if (batch_idx + 1) % cfg.grad_accum == 0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
+
         global_step += 1
-        wandb.log({"train/loss": loss.item(), "global_step": global_step})
+        wandb.log({"train/loss": loss.item() * cfg.grad_accum, "global_step": global_step})
 
-        epoch_loss += loss.item()
+        epoch_loss += loss.item() * cfg.grad_accum
         n_batches += 1
+
+    # Handle remaining gradients
+    if n_batches % cfg.grad_accum != 0:
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad()
 
     scheduler.step()
     epoch_loss /= n_batches
