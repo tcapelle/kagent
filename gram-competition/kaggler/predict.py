@@ -38,8 +38,8 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+from train import AirflowModel
+model = AirflowModel(hidden=512, n_blocks=8).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
@@ -67,7 +67,10 @@ for split in TEST_SPLITS:
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            with torch.cuda.amp.autocast():
+                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+
+            pred = pred.float()
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
