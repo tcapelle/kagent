@@ -7,36 +7,38 @@ set -o pipefail
 REPO_DIR="/workspace/kagent"
 WORKDIR="${ORGANIZER_WORKDIR:-$REPO_DIR/$COMPETITION_DIR/organizer}"
 POLL_INTERVAL=300  # 5 minutes
-LEADERBOARD_BRANCH="${RESEARCH_TAG}-leaderboard"
 LEADERBOARD_PVC="/mnt/new-pvc/predictions/${RESEARCH_TAG}/leaderboard.md"
+LEADERBOARD_BRANCH="${RESEARCH_TAG}-leaderboard"
 
 echo "=== kagent Organizer ==="
 echo "Tag: $RESEARCH_TAG"
 echo "Competition: $COMPETITION_DIR"
-echo "Leaderboard branch: $LEADERBOARD_BRANCH"
 echo "Polling every ${POLL_INTERVAL}s"
 
 cd "$REPO_DIR"
 uv pip install --system -e .
-
-# Git setup
 git config user.name "kagent-organizer"
 git config user.email "kagent-organizer@kagent"
-git fetch origin
-if git rev-parse --verify "origin/$LEADERBOARD_BRANCH" >/dev/null 2>&1; then
-    git checkout -B "$LEADERBOARD_BRANCH" "origin/$LEADERBOARD_BRANCH"
-else
-    git checkout -B "$LEADERBOARD_BRANCH" "origin/main"
-    git push -u origin "$LEADERBOARD_BRANCH"
-fi
 
 push_leaderboard() {
     [ -f "$LEADERBOARD_PVC" ] || return 0
-    cp "$LEADERBOARD_PVC" leaderboard.md
-    git add leaderboard.md
-    git diff --cached --quiet && return 0
-    git commit -m "Update leaderboard"
-    git push origin "$LEADERBOARD_BRANCH" || echo "  Leaderboard push failed"
+    # Create or update the leaderboard branch without leaving the current branch.
+    # We use a detached worktree-style approach: commit directly to the branch ref.
+    cp "$LEADERBOARD_PVC" /tmp/leaderboard.md
+    TREE=$(git hash-object -w /tmp/leaderboard.md)
+    NEW_TREE=$(printf "100644 blob %s\tleaderboard.md\n" "$TREE" | git mktree)
+
+    if git rev-parse --verify "refs/heads/$LEADERBOARD_BRANCH" >/dev/null 2>&1; then
+        PARENT=$(git rev-parse "refs/heads/$LEADERBOARD_BRANCH")
+        OLD_TREE=$(git rev-parse "$PARENT^{tree}")
+        [ "$NEW_TREE" = "$OLD_TREE" ] && return 0
+        COMMIT=$(echo "Update leaderboard" | git commit-tree "$NEW_TREE" -p "$PARENT")
+    else
+        COMMIT=$(echo "Update leaderboard" | git commit-tree "$NEW_TREE")
+    fi
+
+    git update-ref "refs/heads/$LEADERBOARD_BRANCH" "$COMMIT"
+    git push origin "$LEADERBOARD_BRANCH" 2>/dev/null || echo "  Leaderboard push failed"
 }
 
 echo "=== Organizer ready ==="
