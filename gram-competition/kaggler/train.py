@@ -253,7 +253,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 1e-3
+    lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 2
     epochs: int = 200
@@ -361,7 +361,7 @@ def main():
 
             with torch.cuda.amp.autocast():
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = weighted_mse_loss(pred, v_out_s, v_in_s)
+                loss = (pred - v_out_s).pow(2).mean()
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
