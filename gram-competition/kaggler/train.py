@@ -101,6 +101,27 @@ class AutoregressivePredictor(nn.Module):
 
         return pred
 
+    def forward_teacher_forcing(self, velocity_in, velocity_out, pos, t, idcs_airfoil):
+        """Teacher forcing: each step uses GT input window. Returns normalized MSE loss."""
+        B, T, N, C = velocity_in.shape
+        vel_norm = (velocity_in - self.vel_mean) / self.vel_std
+        out_norm = (velocity_out - self.vel_mean) / self.vel_std
+        pos_feat = self.fourier(pos)
+
+        airfoil_feat = torch.zeros(B, N, 1, device=velocity_in.device)
+        for i in range(B):
+            if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+                airfoil_feat[i, idcs_airfoil[i].to(velocity_in.device), 0] = 1.0
+
+        all_vel = torch.cat([vel_norm, out_norm], dim=1)
+        total_loss = torch.tensor(0.0, device=velocity_in.device)
+        for step in range(T_OUT):
+            window = all_vel[:, step:step + T_IN]
+            target = all_vel[:, step + T_IN]
+            pred_norm = self.predict_single_step(window, pos, pos_feat, airfoil_feat)
+            total_loss = total_loss + (pred_norm - target).pow(2).mean()
+        return total_loss / T_OUT
+
 
 # ---------------------------------------------------------------------------
 # Validation
@@ -286,12 +307,13 @@ if __name__ == "__main__":
                 v_in_s, v_out_s, pos_s, idcs_s = v_in, v_out, pos, idcs
 
             with torch.amp.autocast("cuda"):
-                pred = model(v_in_s, pos_s, t, idcs_s)
-                # Warmup with MSE (smoother gradients), then switch to L2
                 elapsed_frac = (time.time() - train_start) / (MAX_TIMEOUT * 60)
-                if elapsed_frac < 0.15:
-                    loss = (pred - v_out_s).pow(2).mean()
+                if elapsed_frac < 0.25:
+                    # Phase 1: teacher forcing with MSE (fast convergence)
+                    loss = model.forward_teacher_forcing(v_in_s, v_out_s, pos_s, t, idcs_s)
                 else:
+                    # Phase 2: end-to-end autoregressive with L2 loss
+                    pred = model(v_in_s, pos_s, t, idcs_s)
                     loss = (pred - v_out_s).norm(dim=3).mean()
 
             optimizer.zero_grad()
