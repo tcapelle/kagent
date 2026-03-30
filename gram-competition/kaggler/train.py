@@ -101,11 +101,14 @@ class VelocityPredictor(nn.Module):
             pred = self.proj_outs[step](h_cond)  # [B, N, 3]
             outputs.append(pred)
 
-        out = torch.stack(outputs, dim=1)  # [B, 5, N, 3]
+        delta = torch.stack(outputs, dim=1)  # [B, 5, N, 3]
 
-        # Add residual from input mean (strong prior for steady-state regions)
+        # Smart residual: use last input velocity + per-point input mean blend
+        last_vel = velocity_in[:, -1:]  # [B, 1, N, 3]
         input_mean = velocity_in.mean(dim=1, keepdim=True)  # [B, 1, N, 3]
-        out = out + input_mean
+        # Blend: weight last velocity more (it's the most recent)
+        base = 0.7 * last_vel + 0.3 * input_mean
+        out = delta + base
 
         # No-slip BC
         for i in range(B):
