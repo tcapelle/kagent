@@ -51,8 +51,8 @@ class MessagePassingBlock(nn.Module):
             nn.GELU(),
             nn.Linear(dim, dim),
         )
+        self.update_norm = nn.LayerNorm(dim * 2)
         self.update_mlp = nn.Sequential(
-            nn.LayerNorm(dim),
             nn.Linear(dim * 2, dim * 2),
             nn.GELU(),
             nn.Linear(dim * 2, dim),
@@ -89,7 +89,7 @@ class MessagePassingBlock(nn.Module):
         agg = messages.mean(dim=2)  # [B, N, D]
 
         # Update: combine with self features
-        update = self.update_mlp(torch.cat([x, agg], dim=-1))  # [B, N, D]
+        update = self.update_mlp(self.update_norm(torch.cat([x, agg], dim=-1)))  # [B, N, D]
         return x + update  # residual
 
 
