@@ -210,10 +210,10 @@ if __name__ == "__main__":
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 512
-        n_blocks: int = 14
+        hidden: int = 384
+        n_blocks: int = 12
         dropout: float = 0.05
-        n_subsample: int = 30000
+        n_subsample: int = 20000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
