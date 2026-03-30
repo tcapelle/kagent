@@ -96,8 +96,8 @@ class EdgeConvBlock(nn.Module):
 
 
 class AirflowPredictor(nn.Module):
-    def __init__(self, hidden=512, n_blocks=8, n_fourier=64, dropout=0.05,
-                 k_neighbors=20, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=9, n_fourier=64, dropout=0.05,
+                 k_neighbors=16, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_fourier = n_fourier
         self.k_neighbors = k_neighbors
@@ -116,10 +116,12 @@ class AirflowPredictor(nn.Module):
 
         self.proj_in = nn.Linear(in_dim, hidden)
 
-        half = n_blocks // 2
-        self.blocks_1 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(half)])
-        self.edge_conv = EdgeConvBlock(hidden, k=k_neighbors)
-        self.blocks_2 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks - half)])
+        third = n_blocks // 3
+        self.blocks_1 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(third)])
+        self.edge_conv_1 = EdgeConvBlock(hidden, k=k_neighbors)
+        self.blocks_2 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(third)])
+        self.edge_conv_2 = EdgeConvBlock(hidden, k=k_neighbors)
+        self.blocks_3 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks - 2 * third)])
 
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
@@ -166,8 +168,10 @@ class AirflowPredictor(nn.Module):
 
         x = self.proj_in(x)
         x = self.blocks_1(x)
-        x = self.edge_conv(x, pos, knn_idx)
+        x = self.edge_conv_1(x, pos, knn_idx)
         x = self.blocks_2(x)
+        x = self.edge_conv_2(x, pos, knn_idx)
+        x = self.blocks_3(x)
         delta_norm = self.proj_out(x)
         delta_norm = delta_norm.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
 
@@ -194,9 +198,9 @@ class Config:
     agent: str | None = None
     batch_size: int = 1
     hidden: int = 512
-    n_blocks: int = 8
+    n_blocks: int = 9
     n_fourier: int = 64
-    k_neighbors: int = 20
+    k_neighbors: int = 16
 
 
 cfg = sp.parse(Config)

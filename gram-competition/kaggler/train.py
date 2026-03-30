@@ -102,8 +102,8 @@ class EdgeConvBlock(nn.Module):
 class AirflowPredictor(nn.Module):
     """Residual MLP + EdgeConv with physics-informed design and Fourier features."""
 
-    def __init__(self, hidden=512, n_blocks=8, n_fourier=64, dropout=0.05,
-                 k_neighbors=20, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=9, n_fourier=64, dropout=0.05,
+                 k_neighbors=16, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_fourier = n_fourier
         self.k_neighbors = k_neighbors
@@ -125,13 +125,13 @@ class AirflowPredictor(nn.Module):
 
         self.proj_in = nn.Linear(in_dim, hidden)
 
-        # First half of ResBlocks
-        half = n_blocks // 2
-        self.blocks_1 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(half)])
-        # EdgeConv for spatial interaction
-        self.edge_conv = EdgeConvBlock(hidden, k=k_neighbors)
-        # Second half of ResBlocks
-        self.blocks_2 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks - half)])
+        # Split ResBlocks into 3 groups with EdgeConv between them
+        third = n_blocks // 3
+        self.blocks_1 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(third)])
+        self.edge_conv_1 = EdgeConvBlock(hidden, k=k_neighbors)
+        self.blocks_2 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(third)])
+        self.edge_conv_2 = EdgeConvBlock(hidden, k=k_neighbors)
+        self.blocks_3 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks - 2 * third)])
 
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
@@ -189,8 +189,10 @@ class AirflowPredictor(nn.Module):
 
         x = self.proj_in(x)
         x = self.blocks_1(x)
-        x = self.edge_conv(x, pos, knn_idx)
+        x = self.edge_conv_1(x, pos, knn_idx)
         x = self.blocks_2(x)
+        x = self.edge_conv_2(x, pos, knn_idx)
+        x = self.blocks_3(x)
         delta_norm = self.proj_out(x)
         delta_norm = delta_norm.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
 
@@ -269,15 +271,15 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 3e-4
+    lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 2
-    epochs: int = 50
-    subsample_points: int = 30000
+    epochs: int = 60
+    subsample_points: int = 20000
     hidden: int = 512
-    n_blocks: int = 8
+    n_blocks: int = 9
     n_fourier: int = 64
-    k_neighbors: int = 20
+    k_neighbors: int = 16
     dropout: float = 0.05
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
@@ -313,15 +315,12 @@ print(f"Model params: {n_params:,}")
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-# Warmup + cosine annealing
-warmup_epochs = 3
-def lr_lambda(epoch):
-    if epoch < warmup_epochs:
-        return (epoch + 1) / warmup_epochs
-    progress = (epoch - warmup_epochs) / max(1, MAX_EPOCHS - warmup_epochs)
-    return 0.5 * (1 + math.cos(math.pi * progress))
-
-scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+# OneCycleLR for faster convergence
+steps_per_epoch = len(train_loader)
+scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
+    pct_start=0.1, anneal_strategy='cos',
+)
 scaler = torch.amp.GradScaler("cuda")
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -412,19 +411,18 @@ for epoch in range(MAX_EPOCHS):
         scaler.step(optimizer)
         scaler.update()
 
+        scheduler.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
         epoch_loss += loss.item()
         n_batches += 1
-
-    scheduler.step()
     epoch_loss /= n_batches
 
     mean_val, split_metrics = validate(model, val_loaders, device, global_step)
     dt = time.time() - t0
 
-    wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
+    wandb.log({"train/epoch_loss": epoch_loss, "lr": optimizer.param_groups[0]['lr'],
                "epoch_time_s": dt, "global_step": global_step})
 
     tag = ""
