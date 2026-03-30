@@ -201,8 +201,8 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 1e-3
-        weight_decay: float = 1e-3
+        lr: float = 5e-4
+        weight_decay: float = 0.01
         batch_size: int = 1
         epochs: int = 200
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
@@ -212,8 +212,8 @@ if __name__ == "__main__":
         debug: bool = False
         hidden: int = 384
         n_blocks: int = 12
-        dropout: float = 0.05
-        n_subsample: int = 15000
+        dropout: float = 0.2
+        n_subsample: int = 20000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -291,8 +291,10 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            # Data augmentation
+            # Data augmentation: flip + noise
             v_in, v_out, pos = augment_flip(v_in, v_out, pos)
+            # Add small noise to input velocities for regularization
+            v_in = v_in + torch.randn_like(v_in) * 0.1
 
             # Subsample for training efficiency + regularization
             v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
