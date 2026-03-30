@@ -12,8 +12,8 @@ from pathlib import Path
 import simple_parsing as sp
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import wandb
+from flash_attn import flash_attn_func
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -21,81 +21,50 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Fourier Neural Operator layer
+# Model: Transformer with mean-residual prediction
 # ---------------------------------------------------------------------------
 
-class SpectralConv3d(nn.Module):
-    """3D spectral convolution: learn weights in Fourier space."""
-    def __init__(self, in_channels, out_channels, modes1, modes2, modes3):
+class TransformerBlock(nn.Module):
+    def __init__(self, dim, n_heads=8, mlp_ratio=4, dropout=0.0):
         super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.modes1 = modes1
-        self.modes2 = modes2
-        self.modes3 = modes3
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
 
-        scale = 1.0 / (in_channels * out_channels)
-        self.weights = nn.ParameterList([
-            nn.Parameter(scale * torch.randn(in_channels, out_channels, modes1, modes2, modes3, 2))
-            for _ in range(4)  # 4 corners of the Fourier modes
-        ])
+        self.norm1 = nn.LayerNorm(dim)
+        self.qkv = nn.Linear(dim, 3 * dim)
+        self.proj = nn.Linear(dim, dim)
+        self.drop1 = nn.Dropout(dropout)
 
-    def complex_mul(self, a, b):
-        # a: [..., 2], b: [..., 2] → [..., 2]
-        return torch.stack([
-            a[..., 0] * b[..., 0] - a[..., 1] * b[..., 1],
-            a[..., 0] * b[..., 1] + a[..., 1] * b[..., 0],
-        ], dim=-1)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, dim * mlp_ratio),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim * mlp_ratio, dim),
+            nn.Dropout(dropout),
+        )
 
     def forward(self, x):
-        # x: [B, C, X, Y, Z]
-        B = x.shape[0]
-        x_ft = torch.fft.rfftn(x, dim=[-3, -2, -1])  # [B, C, X, Y, Z//2+1] complex
-        x_ft = torch.view_as_real(x_ft)  # [B, C, X, Y, Z//2+1, 2]
+        B, N, D = x.shape
+        h = self.norm1(x)
+        qkv = self.qkv(h).reshape(B, N, 3, self.n_heads, self.head_dim)
+        q, k, v = qkv.unbind(dim=2)
+        attn_out = flash_attn_func(q, k, v).reshape(B, N, D)
+        x = x + self.drop1(self.proj(attn_out))
+        x = x + self.mlp(self.norm2(x))
+        return x
 
-        m1, m2, m3 = self.modes1, self.modes2, self.modes3
-        out_ft = torch.zeros(B, self.out_channels, x.size(2), x.size(3), x.size(4) // 2 + 1, 2,
-                            device=x.device, dtype=x.dtype)
-
-        # 4 corners of the mode space
-        out_ft[:, :, :m1, :m2, :m3] = torch.einsum(
-            "bcxyz,coxyz->boxyz", x_ft[:, :, :m1, :m2, :m3], self.weights[0])
-        out_ft[:, :, -m1:, :m2, :m3] = torch.einsum(
-            "bcxyz,coxyz->boxyz", x_ft[:, :, -m1:, :m2, :m3], self.weights[1])
-        out_ft[:, :, :m1, -m2:, :m3] = torch.einsum(
-            "bcxyz,coxyz->boxyz", x_ft[:, :, :m1, -m2:, :m3], self.weights[2])
-        out_ft[:, :, -m1:, -m2:, :m3] = torch.einsum(
-            "bcxyz,coxyz->boxyz", x_ft[:, :, -m1:, -m2:, :m3], self.weights[3])
-
-        out_ft = torch.view_as_complex(out_ft.contiguous())
-        return torch.fft.irfftn(out_ft, s=[x.size(2), x.size(3), x.size(4)])
-
-
-class FNOBlock(nn.Module):
-    """FNO block: spectral conv + local conv + residual."""
-    def __init__(self, channels, modes1, modes2, modes3):
-        super().__init__()
-        self.spectral = SpectralConv3d(channels, channels, modes1, modes2, modes3)
-        self.local_conv = nn.Conv3d(channels, channels, 1)
-        self.norm = nn.InstanceNorm3d(channels)
-        self.act = nn.GELU()
-
-    def forward(self, x):
-        return x + self.act(self.norm(self.spectral(x) + self.local_conv(x)))
-
-
-# ---------------------------------------------------------------------------
-# Model: MLP per point + FNO on voxel grid
-# ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 4),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 4, dim),
+            nn.Dropout(dropout),
         )
 
     def forward(self, x):
@@ -103,20 +72,11 @@ class ResBlock(nn.Module):
 
 
 class AirflowModel(nn.Module):
-    """
-    Hybrid MLP + FNO model:
-    1. Per-point MLP encodes features
-    2. Voxelize to 3D grid
-    3. FNO learns spatial interactions in Fourier space
-    4. Interpolate back to points
-    5. Combine with per-point features for prediction
-    """
+    """Transformer predicting residual from temporal mean."""
 
-    def __init__(self, hidden=256, n_mlp_blocks=6, fno_channels=32,
-                 grid_size=(48, 12, 24), n_fno_blocks=4, fno_modes=(12, 4, 8),
-                 vel_mean=None, vel_std=None):
+    def __init__(self, hidden=384, n_heads=8, n_transformer_blocks=6, n_pre_mlp=2, n_post_mlp=2,
+                 dropout=0.05, vel_mean=None, vel_std=None):
         super().__init__()
-        self.grid_size = grid_size
 
         if vel_mean is not None:
             self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
@@ -125,73 +85,20 @@ class AirflowModel(nn.Module):
             self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
             self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
 
-        self.register_buffer("pos_min", torch.tensor([0.0, -0.41, 0.0]))
-        self.register_buffer("pos_max", torch.tensor([2.1, 0.41, 1.22]))
-
-        # Per-point input: pos(3) + vel_norm(15) + vel_dev(15) = 33
+        # pos(3) + vel_norm(15) + vel_dev(15) = 33
         in_dim = 3 + T_IN * 3 + T_IN * 3
         out_dim = T_OUT * 3
 
-        # MLP feature encoder
-        self.point_encoder = nn.Linear(in_dim, hidden)
-        self.point_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks // 2)])
-
-        # Point-to-voxel projection
-        self.to_voxel = nn.Linear(hidden, fno_channels)
-
-        # FNO on voxel grid
-        self.fno_blocks = nn.Sequential(
-            *[FNOBlock(fno_channels, *fno_modes) for _ in range(n_fno_blocks)]
+        self.proj_in = nn.Linear(in_dim, hidden)
+        self.pre_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_pre_mlp)])
+        self.transformer = nn.Sequential(
+            *[TransformerBlock(hidden, n_heads, dropout=dropout) for _ in range(n_transformer_blocks)]
         )
-
-        # Voxel-to-point interpolation already gives fno_channels features
-        # Combine per-point features + FNO features
-        self.combiner = nn.Linear(hidden + fno_channels, hidden)
-        self.post_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks - n_mlp_blocks // 2)])
+        self.post_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_post_mlp)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
         nn.init.zeros_(self.proj_out[-1].weight)
         nn.init.zeros_(self.proj_out[-1].bias)
-
-    def voxelize_and_fno(self, features, pos):
-        """Voxelize features, apply FNO, interpolate back."""
-        B, N, D = features.shape
-        Gx, Gy, Gz = self.grid_size
-        device = features.device
-
-        # Normalize positions to [0, 1]
-        pos_range = (self.pos_max - self.pos_min).clamp(min=1e-6)
-        pos_norm = (pos - self.pos_min.view(1, 1, 3)) / pos_range.view(1, 1, 3)
-        pos_norm = pos_norm.clamp(0, 1 - 1e-6)
-
-        # Voxel indices
-        vx = (pos_norm[:, :, 0] * Gx).long().clamp(0, Gx - 1)
-        vy = (pos_norm[:, :, 1] * Gy).long().clamp(0, Gy - 1)
-        vz = (pos_norm[:, :, 2] * Gz).long().clamp(0, Gz - 1)
-        voxel_idx = vx * (Gy * Gz) + vy * Gz + vz
-
-        # Scatter into grid
-        grid_flat = torch.zeros(B, Gx * Gy * Gz, D, device=device, dtype=features.dtype)
-        count = torch.zeros(B, Gx * Gy * Gz, 1, device=device, dtype=features.dtype)
-        idx_exp = voxel_idx.unsqueeze(-1).expand(B, N, D)
-        grid_flat.scatter_add_(1, idx_exp, features)
-        count.scatter_add_(1, voxel_idx.unsqueeze(-1), torch.ones(B, N, 1, device=device, dtype=features.dtype))
-        grid_flat = grid_flat / count.clamp(min=1)
-
-        # Reshape to 3D: [B, D, Gx, Gy, Gz]
-        grid_3d = grid_flat.permute(0, 2, 1).reshape(B, D, Gx, Gy, Gz)
-
-        # Apply FNO
-        grid_3d = self.fno_blocks(grid_3d)
-
-        # Interpolate back to points
-        grid_coords = pos_norm * 2 - 1
-        grid_coords = grid_coords.view(B, 1, 1, N, 3)
-        spatial_feats = F.grid_sample(
-            grid_3d, grid_coords, mode='bilinear', padding_mode='border', align_corners=True,
-        ).squeeze(2).squeeze(2).permute(0, 2, 1)
-
-        return spatial_feats
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
@@ -203,21 +110,13 @@ class AirflowModel(nn.Module):
         vel_flat = vel_norm.reshape(B, N, T * C)
         dev_flat = vel_dev.reshape(B, N, T * C)
 
-        point_input = torch.cat([pos, vel_flat, dev_flat], dim=-1)
-
-        # Per-point encoding
-        x = self.point_encoder(point_input)
-        x = self.point_blocks(x)
-
-        # FNO spatial processing
-        voxel_feats = self.to_voxel(x)
-        spatial_feats = self.voxelize_and_fno(voxel_feats, pos)
-
-        # Combine
-        x = self.combiner(torch.cat([x, spatial_feats], dim=-1))
+        x = torch.cat([pos, vel_flat, dev_flat], dim=-1)
+        x = self.proj_in(x)
+        x = self.pre_blocks(x)
+        x = self.transformer(x)
         x = self.post_blocks(x)
-        delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
 
+        delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
         out_norm = delta_norm + vel_mean_t
         out = out_norm * (self.vel_std + 1e-8) + self.vel_mean
 
@@ -261,7 +160,6 @@ def validate(model, val_loaders, device, global_step):
 
         mean_l2 = total_l2 / max(n_samples, 1)
         mean_mae = total_mae / max(n_samples, 1)
-
         val_metrics[split_name] = {
             f"{split_name}/l2_error": mean_l2,
             f"{split_name}/mae_Ux": mean_mae[0].item(),
@@ -278,6 +176,35 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
+# Point subsampling
+# ---------------------------------------------------------------------------
+
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
+    B, T, N, C = v_in.shape
+    device = v_in.device
+    v_in_sub, v_out_sub, pos_sub, idcs_sub = [], [], [], []
+
+    for i in range(B):
+        weights = torch.ones(N, device=device)
+        airfoil_idx = idcs_airfoil[i]
+        if airfoil_idx is not None and len(airfoil_idx) > 0:
+            weights[airfoil_idx.to(device)] = 5.0
+
+        idx = torch.multinomial(weights, n_points, replacement=False).sort().values
+        v_in_sub.append(v_in[i, :, idx, :])
+        v_out_sub.append(v_out[i, :, idx, :])
+        pos_sub.append(pos[i, idx, :])
+
+        if airfoil_idx is not None and len(airfoil_idx) > 0:
+            mask = torch.isin(idx, airfoil_idx.to(device))
+            idcs_sub.append(torch.where(mask)[0])
+        else:
+            idcs_sub.append(torch.tensor([], dtype=torch.long, device=device))
+
+    return torch.stack(v_in_sub), torch.stack(v_out_sub), torch.stack(pos_sub), idcs_sub
+
+
+# ---------------------------------------------------------------------------
 # Config + main
 # ---------------------------------------------------------------------------
 
@@ -288,17 +215,20 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 1
-    epochs: int = 200
+    batch_size: int = 2
+    epochs: int = 300
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    hidden: int = 256
-    n_mlp_blocks: int = 6
-    fno_channels: int = 32
-    n_fno_blocks: int = 4
+    subsample_train: int = 12000
+    hidden: int = 384
+    n_heads: int = 8
+    n_transformer_blocks: int = 6
+    n_pre_mlp: int = 2
+    n_post_mlp: int = 2
+    dropout: float = 0.05
 
 
 def main():
@@ -321,8 +251,10 @@ def main():
     vel_std = stats["vel_std"].to(device)
 
     model = AirflowModel(
-        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
-        fno_channels=cfg.fno_channels, n_fno_blocks=cfg.n_fno_blocks,
+        hidden=cfg.hidden, n_heads=cfg.n_heads,
+        n_transformer_blocks=cfg.n_transformer_blocks,
+        n_pre_mlp=cfg.n_pre_mlp, n_post_mlp=cfg.n_post_mlp,
+        dropout=cfg.dropout,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
 
@@ -380,11 +312,18 @@ def main():
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
+            if cfg.subsample_train and cfg.subsample_train < N_POINTS:
+                v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
+                    v_in, v_out, pos, idcs, n_points=cfg.subsample_train
+                )
+            else:
+                v_in_s, v_out_s, pos_s, idcs_s = v_in, v_out, pos, idcs
+
             optimizer.zero_grad()
 
             with torch.cuda.amp.autocast():
-                pred = model(v_in, pos, t, idcs)
-                loss = (pred - v_out).pow(2).mean()
+                pred = model(v_in_s, pos_s, t, idcs_s)
+                loss = (pred - v_out_s).pow(2).mean()
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)

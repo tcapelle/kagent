@@ -10,7 +10,6 @@ import simple_parsing as sp
 import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-
 from data import GRAMDataset, collate_fn
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -24,11 +23,12 @@ class PredictConfig:
     checkpoint: str
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
-    batch_size: int = 1
-    hidden: int = 256
-    n_mlp_blocks: int = 6
-    fno_channels: int = 32
-    n_fno_blocks: int = 4
+    hidden: int = 384
+    n_heads: int = 8
+    n_transformer_blocks: int = 6
+    n_pre_mlp: int = 2
+    n_post_mlp: int = 2
+    dropout: float = 0.0  # no dropout at inference
 
 
 def main():
@@ -44,8 +44,10 @@ def main():
 
     from train import AirflowModel
     model = AirflowModel(
-        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
-        fno_channels=cfg.fno_channels, n_fno_blocks=cfg.n_fno_blocks,
+        hidden=cfg.hidden, n_heads=cfg.n_heads,
+        n_transformer_blocks=cfg.n_transformer_blocks,
+        n_pre_mlp=cfg.n_pre_mlp, n_post_mlp=cfg.n_post_mlp,
+        dropout=cfg.dropout,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
     model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
