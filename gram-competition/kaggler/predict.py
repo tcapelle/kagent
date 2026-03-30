@@ -27,6 +27,25 @@ TEST_SPLITS = ["val"]
 
 
 # ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+def chunked_knn(pos, k, chunk_size=5000):
+    """Compute k-NN indices for point cloud. pos: [B, N, 3] -> [B, N, k]"""
+    B, N, _ = pos.shape
+    device = pos.device
+    knn_idx = torch.empty(B, N, k, dtype=torch.long, device=device)
+    pos_f = pos.float()
+    for start in range(0, N, chunk_size):
+        end = min(start + chunk_size, N)
+        dists = torch.cdist(pos_f[:, start:end], pos_f)
+        local_idx = torch.arange(end - start, device=device)
+        dists[:, local_idx, local_idx + start] = float('inf')
+        knn_idx[:, start:end] = dists.topk(k, dim=-1, largest=False).indices
+    return knn_idx
+
+
+# ---------------------------------------------------------------------------
 # Model (must match train.py)
 # ---------------------------------------------------------------------------
 
@@ -45,11 +64,43 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
+class EdgeConvBlock(nn.Module):
+    """DGCNN-style edge convolution for spatial interaction."""
+
+    def __init__(self, dim, k=20):
+        super().__init__()
+        self.k = k
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(dim + 3, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        )
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, x, pos, knn_idx):
+        B, N, D = x.shape
+        k = knn_idx.shape[-1]
+
+        batch_idx = torch.arange(B, device=x.device).view(B, 1, 1).expand(B, N, k)
+        x_j = x[batch_idx, knn_idx]
+        pos_j = pos[batch_idx, knn_idx]
+
+        diff = x_j - x.unsqueeze(2)
+        rel_pos = pos_j - pos.unsqueeze(2)
+        edge_feat = torch.cat([diff, rel_pos], dim=-1)
+
+        edge_out = self.edge_mlp(edge_feat)
+        agg = edge_out.mean(dim=2)
+
+        return self.norm(x + agg)
+
+
 class AirflowPredictor(nn.Module):
-    def __init__(self, hidden=512, n_blocks=10, n_fourier=64, dropout=0.05,
-                 vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=8, n_fourier=64, dropout=0.05,
+                 k_neighbors=20, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_fourier = n_fourier
+        self.k_neighbors = k_neighbors
 
         pos_feat_dim = n_fourier * 2 * 3
         vel_feat_dim = T_IN * 3
@@ -64,7 +115,12 @@ class AirflowPredictor(nn.Module):
         self.register_buffer("fourier_freqs", freqs)
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks)])
+
+        half = n_blocks // 2
+        self.blocks_1 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(half)])
+        self.edge_conv = EdgeConvBlock(hidden, k=k_neighbors)
+        self.blocks_2 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks - half)])
+
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
         if vel_mean is not None:
@@ -105,8 +161,13 @@ class AirflowPredictor(nn.Module):
 
         x = torch.cat([pos_feat, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
 
+        with torch.amp.autocast("cuda", enabled=False):
+            knn_idx = chunked_knn(pos.float(), self.k_neighbors)
+
         x = self.proj_in(x)
-        x = self.blocks(x)
+        x = self.blocks_1(x)
+        x = self.edge_conv(x, pos, knn_idx)
+        x = self.blocks_2(x)
         delta_norm = self.proj_out(x)
         delta_norm = delta_norm.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
 
@@ -133,8 +194,9 @@ class Config:
     agent: str | None = None
     batch_size: int = 1
     hidden: int = 512
-    n_blocks: int = 10
+    n_blocks: int = 8
     n_fourier: int = 64
+    k_neighbors: int = 20
 
 
 cfg = sp.parse(Config)
@@ -148,6 +210,7 @@ vel_std = torch.tensor(stats_raw["vel_std"], dtype=torch.float32)
 
 model = AirflowPredictor(
     hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_fourier=cfg.n_fourier,
+    k_neighbors=cfg.k_neighbors,
     vel_mean=vel_mean, vel_std=vel_std,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))

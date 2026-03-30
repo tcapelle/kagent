@@ -1,7 +1,8 @@
 """Train a 3D airflow velocity predictor.
 
-Architecture: Residual MLP with Fourier position encoding, temporal derivatives,
-surface indicator, no-slip enforcement, velocity normalization, AMP.
+Architecture: Residual MLP with EdgeConv (k-NN message passing) for spatial
+interaction, Fourier position encoding, temporal derivatives, surface indicator,
+no-slip enforcement, velocity normalization, AMP.
 
 Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
@@ -24,6 +25,26 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+def chunked_knn(pos, k, chunk_size=5000):
+    """Compute k-NN indices for point cloud. pos: [B, N, 3] -> [B, N, k]"""
+    B, N, _ = pos.shape
+    device = pos.device
+    knn_idx = torch.empty(B, N, k, dtype=torch.long, device=device)
+    pos_f = pos.float()
+    for start in range(0, N, chunk_size):
+        end = min(start + chunk_size, N)
+        dists = torch.cdist(pos_f[:, start:end], pos_f)  # [B, chunk, N]
+        # Set self-distances to inf
+        local_idx = torch.arange(end - start, device=device)
+        dists[:, local_idx, local_idx + start] = float('inf')
+        knn_idx[:, start:end] = dists.topk(k, dim=-1, largest=False).indices
+    return knn_idx
+
+
+# ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
 
@@ -43,19 +64,55 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class AirflowPredictor(nn.Module):
-    """Residual MLP with physics-informed design and Fourier features."""
+class EdgeConvBlock(nn.Module):
+    """DGCNN-style edge convolution for spatial interaction."""
 
-    def __init__(self, hidden=512, n_blocks=10, n_fourier=64, dropout=0.05,
-                 vel_mean=None, vel_std=None):
+    def __init__(self, dim, k=20):
+        super().__init__()
+        self.k = k
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(dim + 3, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        )
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, x, pos, knn_idx):
+        """x: [B,N,D], pos: [B,N,3], knn_idx: [B,N,k]"""
+        B, N, D = x.shape
+        k = knn_idx.shape[-1]
+
+        # Gather neighbor features and positions
+        batch_idx = torch.arange(B, device=x.device).view(B, 1, 1).expand(B, N, k)
+        x_j = x[batch_idx, knn_idx]          # [B, N, k, D]
+        pos_j = pos[batch_idx, knn_idx]       # [B, N, k, 3]
+
+        # Edge features: feature difference + relative position
+        diff = x_j - x.unsqueeze(2)           # [B, N, k, D]
+        rel_pos = pos_j - pos.unsqueeze(2)    # [B, N, k, 3]
+        edge_feat = torch.cat([diff, rel_pos], dim=-1)  # [B, N, k, D+3]
+
+        # Process edges and aggregate
+        edge_out = self.edge_mlp(edge_feat)   # [B, N, k, D]
+        agg = edge_out.mean(dim=2)            # [B, N, D]
+
+        return self.norm(x + agg)
+
+
+class AirflowPredictor(nn.Module):
+    """Residual MLP + EdgeConv with physics-informed design and Fourier features."""
+
+    def __init__(self, hidden=512, n_blocks=8, n_fourier=64, dropout=0.05,
+                 k_neighbors=20, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_fourier = n_fourier
+        self.k_neighbors = k_neighbors
 
         # Input features:
         # fourier_pos(n_fourier*2*3=384) + vel_in_norm(15) + vel_derivatives(4*3=12) + time(5) + surface_flag(1) = 417
-        pos_feat_dim = n_fourier * 2 * 3  # sin + cos for each of 3 coords
-        vel_feat_dim = T_IN * 3  # flattened velocity
-        deriv_feat_dim = (T_IN - 1) * 3  # temporal derivatives
+        pos_feat_dim = n_fourier * 2 * 3
+        vel_feat_dim = T_IN * 3
+        deriv_feat_dim = (T_IN - 1) * 3
         time_feat_dim = T_IN
         surface_dim = 1
         in_dim = pos_feat_dim + vel_feat_dim + deriv_feat_dim + time_feat_dim + surface_dim
@@ -63,12 +120,19 @@ class AirflowPredictor(nn.Module):
         out_dim = T_OUT * 3
 
         # Random Fourier feature frequencies (fixed, not learned)
-        # Multiple scales for multi-resolution spatial encoding
-        freqs = torch.randn(3, n_fourier) * 2.0  # scale factor
-        self.register_buffer("fourier_freqs", freqs)  # [3, n_fourier]
+        freqs = torch.randn(3, n_fourier) * 2.0
+        self.register_buffer("fourier_freqs", freqs)
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks)])
+
+        # First half of ResBlocks
+        half = n_blocks // 2
+        self.blocks_1 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(half)])
+        # EdgeConv for spatial interaction
+        self.edge_conv = EdgeConvBlock(hidden, k=k_neighbors)
+        # Second half of ResBlocks
+        self.blocks_2 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks - half)])
+
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
         if vel_mean is not None:
@@ -80,18 +144,13 @@ class AirflowPredictor(nn.Module):
 
     def _fourier_encode(self, pos):
         """Random Fourier features for position. pos: [B, N, 3]"""
-        # pos @ freqs: [B, N, n_fourier] for each coord
-        proj = pos @ self.fourier_freqs  # [B, N, n_fourier] (broadcasting over 3 coords summed)
-        # Actually we want per-coord Fourier features
-        # pos: [B, N, 3], freqs: [3, n_fourier]
-        # For each coord, compute sin/cos
         B, N, _ = pos.shape
         feats = []
         for i in range(3):
-            p = pos[:, :, i:i+1] * self.fourier_freqs[i:i+1, :]  # [B, N, n_fourier]
+            p = pos[:, :, i:i+1] * self.fourier_freqs[i:i+1, :]
             feats.append(torch.sin(p))
             feats.append(torch.cos(p))
-        return torch.cat(feats, dim=-1)  # [B, N, n_fourier*6]
+        return torch.cat(feats, dim=-1)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
@@ -100,20 +159,20 @@ class AirflowPredictor(nn.Module):
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
 
         # Fourier position encoding
-        pos_feat = self._fourier_encode(pos)  # [B, N, n_fourier*6]
+        pos_feat = self._fourier_encode(pos)
 
         # Flattened velocity features
-        v_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
+        v_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
 
-        # Temporal derivatives: differences between consecutive timesteps
-        v_deriv = v_in_norm[:, 1:] - v_in_norm[:, :-1]  # [B, 4, N, 3]
-        v_deriv_flat = v_deriv.permute(0, 2, 1, 3).reshape(B, N, (T-1) * C)  # [B, N, 12]
+        # Temporal derivatives
+        v_deriv = v_in_norm[:, 1:] - v_in_norm[:, :-1]
+        v_deriv_flat = v_deriv.permute(0, 2, 1, 3).reshape(B, N, (T-1) * C)
 
         # Time features
         t_in = t[:, :T_IN]
         t_range = t_in[:, -1:] - t_in[:, :1] + 1e-6
         t_features = (t_in - t_in[:, :1]) / t_range
-        t_features = t_features.unsqueeze(1).expand(B, N, T_IN)  # [B, N, 5]
+        t_features = t_features.unsqueeze(1).expand(B, N, T_IN)
 
         # Surface indicator
         surface_flag = torch.zeros(B, N, 1, device=pos.device, dtype=pos.dtype)
@@ -124,8 +183,14 @@ class AirflowPredictor(nn.Module):
         # Concatenate all features
         x = torch.cat([pos_feat, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
 
+        # Compute k-NN graph (outside autocast for float32 precision)
+        with torch.amp.autocast("cuda", enabled=False):
+            knn_idx = chunked_knn(pos.float(), self.k_neighbors)
+
         x = self.proj_in(x)
-        x = self.blocks(x)
+        x = self.blocks_1(x)
+        x = self.edge_conv(x, pos, knn_idx)
+        x = self.blocks_2(x)
         delta_norm = self.proj_out(x)
         delta_norm = delta_norm.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
 
@@ -208,10 +273,11 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 2
     epochs: int = 50
-    subsample_points: int = 25000
+    subsample_points: int = 30000
     hidden: int = 512
-    n_blocks: int = 10
+    n_blocks: int = 8
     n_fourier: int = 64
+    k_neighbors: int = 20
     dropout: float = 0.05
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
@@ -238,7 +304,7 @@ val_loaders = {
 
 model = AirflowPredictor(
     hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_fourier=cfg.n_fourier,
-    dropout=cfg.dropout,
+    dropout=cfg.dropout, k_neighbors=cfg.k_neighbors,
     vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
 ).to(device)
 
@@ -336,7 +402,8 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.amp.autocast("cuda"):
             pred = model(v_in_sub, pos_sub, t, idcs_sub)
-            loss = (pred - v_out_sub).pow(2).mean()
+            # L2 loss: directly optimizes the competition metric
+            loss = (pred - v_out_sub).norm(dim=3).mean()
 
         optimizer.zero_grad()
         scaler.scale(loss).backward()
