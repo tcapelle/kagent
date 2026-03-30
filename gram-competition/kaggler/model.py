@@ -64,7 +64,11 @@ class ResidualMLP(nn.Module):
         self.blocks1 = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks // 2)])
         self.mid_norm = nn.LayerNorm(hidden)
         self.blocks2 = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks - n_blocks // 2)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, T_OUT * 3))
+        # Per-timestep output heads for better gradient flow
+        self.proj_out = nn.ModuleList([
+            nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, 3))
+            for _ in range(T_OUT)
+        ])
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
@@ -74,11 +78,11 @@ class ResidualMLP(nn.Module):
         pos_feat = self.pos_ff(pos)
         vel_flat = v_norm.reshape(B, N, T * C)
         last_vel = v_norm[:, -1]
-        vel_mean = v_norm.mean(dim=1)
+        vel_mean_t = v_norm.mean(dim=1)
         vel_std_t = v_norm.std(dim=1)
         vel_delta = v_norm[:, -1] - v_norm[:, 0]
 
-        x = torch.cat([pos, pos_feat, vel_flat, last_vel, vel_mean, vel_std_t, vel_delta], dim=-1)
+        x = torch.cat([pos, pos_feat, vel_flat, last_vel, vel_mean_t, vel_std_t, vel_delta], dim=-1)
         x = self.proj_in(x)
 
         t_feat = self.time_ff(t.unsqueeze(-1)).reshape(B, -1)
@@ -89,11 +93,15 @@ class ResidualMLP(nn.Module):
         x = self.mid_norm(x)
         x = self.blocks2(x)
 
-        delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        # Per-timestep heads predict raw delta
+        last_vel_raw = velocity_in[:, -1]  # [B, N, 3]
+        preds = []
+        for head in self.proj_out:
+            delta = head(x)  # [B, N, 3]
+            pred = last_vel_raw + delta
+            preds.append(pred)
 
-        # Residual prediction
-        last_vel_raw = velocity_in[:, -1:]
-        pred = last_vel_raw + delta * (self.vel_std.squeeze(1) + 1e-8)
+        pred = torch.stack(preds, dim=1)  # [B, T_OUT, N, 3]
 
         # No-slip BC
         for i, idcs in enumerate(idcs_airfoil):

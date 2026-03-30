@@ -230,16 +230,7 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.amp.autocast("cuda"):
             pred = model(v_in_sub, pos_sub, t, idcs_sub)
-
-            # Metric-aligned loss: smooth L2 norm (matches competition metric)
-            # Competition metric: (pred - gt).norm(dim=3).mean(dim=(1,2))
-            err = pred - v_out_sub
-            l2_norm = (err.pow(2).sum(dim=3) + 1e-6).sqrt()  # [B, 5, N]
-            metric_loss = l2_norm.mean()
-
-            # Add small MSE for gradient stability
-            mse_loss = err.pow(2).mean()
-            loss = 0.7 * metric_loss + 0.3 * mse_loss
+            loss = (pred - v_out_sub).pow(2).mean()
 
         optimizer.zero_grad()
         scaler.scale(loss).backward()
@@ -249,8 +240,7 @@ for epoch in range(MAX_EPOCHS):
         scaler.update()
 
         global_step += 1
-        wandb.log({"train/loss": loss.item(), "train/metric_loss": metric_loss.item(),
-                    "train/mse_loss": mse_loss.item(), "global_step": global_step})
+        wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
         epoch_loss += loss.item()
         n_batches += 1
