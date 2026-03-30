@@ -241,8 +241,8 @@ class Config:
     hidden: int = 128
     n_gat_layers: int = 3
     n_mlp_blocks: int = 3
-    k: int = 16
-    n_subsample: int = 10000
+    k: int = 20
+    n_subsample: int = 12000
     val_every: int = 3
 
 
