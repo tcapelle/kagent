@@ -276,10 +276,10 @@ if __name__ == "__main__":
 
             with torch.amp.autocast('cuda'):
                 pred = model(v_in, pos, t, idcs)
-                # L1 + L2 mixed loss (Huber-like but separate)
-                l2_loss = (pred - v_out).pow(2).mean()
-                l1_loss = (pred - v_out).abs().mean()
-                loss = (0.5 * l2_loss + 0.5 * l1_loss) / cfg.grad_accum
+                # Mixed loss: MSE + L2-norm (competition metric proxy)
+                mse_loss = (pred - v_out).pow(2).mean()
+                l2_norm_loss = (pred - v_out).norm(dim=3).mean()  # L2 norm per point
+                loss = (0.5 * mse_loss + 0.5 * l2_norm_loss) / cfg.grad_accum
 
             scaler.scale(loss).backward()
 
