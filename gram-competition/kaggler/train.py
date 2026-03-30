@@ -223,9 +223,9 @@ if __name__ == "__main__":
         agent: str | None = None
         debug: bool = False
         hidden: int = 384
-        n_blocks: int = 12
+        n_blocks: int = 10
         dropout: float = 0.05
-        n_subsample: int = 8000
+        n_subsample: int = 20000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -313,7 +313,7 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = F.smooth_l1_loss(pred, v_out_s)
+                loss = F.mse_loss(pred, v_out_s)
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
