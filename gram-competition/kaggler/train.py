@@ -308,8 +308,8 @@ class Config:
     hidden: int = 512
     n_blocks: int = 8
     n_fourier: int = 64
-    k_neighbors: int = 8
-    n_edge_conv: int = 4
+    k_neighbors: int = 6
+    n_edge_conv: int = 6
     dropout: float = 0.05
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
