@@ -37,40 +37,56 @@ class ResBlock(nn.Module):
 
 
 class VelocityPredictor(nn.Module):
-    """Deep residual MLP for velocity prediction.
+    """Per-timestep conditioned MLP.
 
-    Uses residual prediction (delta from last timestep) + no-slip BC.
-    Rich per-point features including temporal statistics.
+    Instead of predicting all 5 output timesteps at once,
+    predict each output timestep conditioned on its time offset.
+    This gives 5x the training signal and allows specialization per timestep.
     """
 
     def __init__(self, hidden=384, n_blocks=12, dropout=0.05):
         super().__init__()
-        # pos(3) + vel_in(15) + vel_diff(12) + vel_mean(3) + vel_std(3) + vel_trend(3) = 39
+        # Input: pos(3) + vel_in(15) + vel_diff(12) + vel_stats(9) + timestep_embed(hidden) = 39 + hidden
         in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + 9
-        out_dim = T_OUT * 3
+        self.in_dim = in_dim
+
+        # Timestep embedding for the 5 output steps
+        self.time_embed = nn.Embedding(T_OUT, hidden)
 
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
         self.norm_out = nn.LayerNorm(hidden)
-        self.proj_out = nn.Linear(hidden, out_dim)
+        self.proj_out = nn.Linear(hidden, 3)  # predict 3 velocity components per timestep
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
+    def _build_features(self, velocity_in, pos):
         B, T, N, C = velocity_in.shape
-        last_vel = velocity_in[:, -1]
-
-        # Rich per-point temporal features
         vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
         vel_flat = velocity_in.reshape(B, N, T * C)
         diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
         vel_mean = velocity_in.mean(dim=1)
         vel_std = velocity_in.std(dim=1)
         vel_trend = velocity_in[:, -1] - velocity_in[:, 0]
+        return torch.cat([pos, vel_flat, diff_flat, vel_mean, vel_std, vel_trend], dim=-1)
 
-        x = torch.cat([pos, vel_flat, diff_flat, vel_mean, vel_std, vel_trend], dim=-1)
+    def forward(self, velocity_in, pos, t, idcs_airfoil):
+        B, T, N, C = velocity_in.shape
 
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        out = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
+        features = self._build_features(velocity_in, pos)  # [B, N, in_dim]
+        h = self.proj_in(features)  # [B, N, hidden]
+
+        # Process through shared backbone
+        h = self.blocks(h)
+        h = self.norm_out(h)  # [B, N, hidden]
+
+        # Predict each output timestep with timestep conditioning
+        outputs = []
+        for step in range(T_OUT):
+            t_emb = self.time_embed(torch.tensor(step, device=h.device))  # [hidden]
+            h_cond = h + t_emb.unsqueeze(0).unsqueeze(0)  # [B, N, hidden]
+            pred = self.proj_out(h_cond)  # [B, N, 3]
+            outputs.append(pred)
+
+        out = torch.stack(outputs, dim=1)  # [B, 5, N, 3]
 
         # No-slip BC
         for i in range(B):
@@ -80,11 +96,10 @@ class VelocityPredictor(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# EMA model
+# EMA
 # ---------------------------------------------------------------------------
 
 class EMA:
-    """Exponential Moving Average of model parameters."""
     def __init__(self, model, decay=0.999):
         self.decay = decay
         self.shadow = {k: v.clone().detach() for k, v in model.state_dict().items()}
@@ -95,13 +110,11 @@ class EMA:
             self.shadow[k].mul_(self.decay).add_(v, alpha=1 - self.decay)
 
     def apply(self, model):
-        """Apply EMA weights to model (for evaluation)."""
         backup = {k: v.clone() for k, v in model.state_dict().items()}
         model.load_state_dict(self.shadow)
         return backup
 
     def restore(self, model, backup):
-        """Restore original weights."""
         model.load_state_dict(backup)
 
 
@@ -110,7 +123,6 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 def augment_flip(v_in, v_out, pos):
-    """Random Y/Z flip augmentation."""
     if torch.rand(1).item() < 0.5:
         pos = pos.clone()
         pos[..., 1] = -pos[..., 1]
@@ -291,10 +303,10 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            # Data augmentation
+            # Augmentation
             v_in, v_out, pos = augment_flip(v_in, v_out, pos)
 
-            # Subsample for training efficiency + regularization
+            # Subsample
             v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
                 v_in, v_out, pos, idcs, cfg.n_subsample
             )
@@ -319,7 +331,7 @@ if __name__ == "__main__":
         scheduler.step()
         epoch_loss /= n_batches
 
-        # Validate with EMA weights
+        # Validate with EMA
         backup = ema.apply(model)
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
         ema.restore(model, backup)
@@ -334,7 +346,7 @@ if __name__ == "__main__":
             best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(ema.shadow, model_path)  # Save EMA weights
+            torch.save(ema.shadow, model_path)
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
