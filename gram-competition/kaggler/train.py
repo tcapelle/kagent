@@ -18,76 +18,8 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Spatial mixing via chunked local attention
+# Model
 # ---------------------------------------------------------------------------
-
-class LocalAttention(nn.Module):
-    """Self-attention within spatial chunks.
-    Points are sorted by a space-filling curve (z-order) and grouped into chunks.
-    Attention within each chunk provides local spatial interaction.
-    """
-    def __init__(self, dim, n_heads=4, chunk_size=512):
-        super().__init__()
-        self.chunk_size = chunk_size
-        self.n_heads = n_heads
-        self.head_dim = dim // n_heads
-
-        self.qkv = nn.Linear(dim, dim * 3)
-        self.proj = nn.Linear(dim, dim)
-        self.norm = nn.LayerNorm(dim)
-
-    def _z_order_sort(self, pos):
-        """Sort points by z-order (Morton code) for spatial locality."""
-        # Normalize positions to [0, 1023] for 10-bit Morton code
-        pos_min = pos.min(dim=1, keepdim=True).values
-        pos_max = pos.max(dim=1, keepdim=True).values
-        pos_norm = ((pos - pos_min) / (pos_max - pos_min + 1e-6) * 1023).long().clamp(0, 1023)
-
-        # Simple z-order: interleave bits (approximate with weighted sum for speed)
-        morton = pos_norm[..., 0] * 1048576 + pos_norm[..., 1] * 1024 + pos_norm[..., 2]
-        return morton.argsort(dim=1)
-
-    def forward(self, x, pos):
-        """x: [B, N, D], pos: [B, N, 3]"""
-        B, N, D = x.shape
-
-        # Sort by spatial locality
-        sort_idx = self._z_order_sort(pos)  # [B, N]
-        # Gather to sorted order
-        x_sorted = torch.gather(x, 1, sort_idx.unsqueeze(-1).expand(-1, -1, D))
-
-        # Pad to multiple of chunk_size
-        cs = self.chunk_size
-        pad_n = (cs - N % cs) % cs
-        if pad_n > 0:
-            x_sorted = F.pad(x_sorted, (0, 0, 0, pad_n))
-
-        N_padded = x_sorted.shape[1]
-        n_chunks = N_padded // cs
-
-        # Reshape into chunks
-        x_chunks = x_sorted.reshape(B * n_chunks, cs, D)
-
-        # Multi-head self-attention with SDPA (numerically stable)
-        qkv = self.qkv(x_chunks).reshape(B * n_chunks, cs, 3, self.n_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B*nc, nh, cs, hd]
-        q, k, v = qkv.unbind(0)
-
-        out = F.scaled_dot_product_attention(q, k, v)
-        out = out.transpose(1, 2).reshape(B * n_chunks, cs, D)
-        out = self.proj(out)
-
-        # Reshape back
-        out = out.reshape(B, N_padded, D)
-        if pad_n > 0:
-            out = out[:, :N, :]
-
-        # Unsort: scatter back to original order
-        unsort_idx = sort_idx.argsort(dim=1)
-        out = torch.gather(out, 1, unsort_idx.unsqueeze(-1).expand(-1, -1, D))
-
-        return self.norm(out)
-
 
 class ResBlock(nn.Module):
     def __init__(self, dim, dropout=0.0):
@@ -104,46 +36,21 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class SpatialMixBlock(nn.Module):
-    """MLP block + local attention for spatial mixing."""
-    def __init__(self, dim, n_heads=4, chunk_size=512, dropout=0.0):
-        super().__init__()
-        self.attn = LocalAttention(dim, n_heads, chunk_size)
-        self.mlp = ResBlock(dim, dropout)
-
-    def forward(self, x, pos):
-        x = x + self.attn(x, pos)
-        x = self.mlp(x)
-        return x
-
-
 class VelocityPredictor(nn.Module):
-    """MLP with local spatial attention for velocity prediction.
+    """Big residual MLP with no-slip BC. Simple but with maximum capacity.
 
-    1. Encode per-point features
-    2. Apply alternating MLP blocks and spatial attention blocks
-    3. Residual prediction from last timestep
-    4. No-slip BC
+    Keep it simple: the model processes each point independently but with
+    a very large network to maximize per-point prediction quality.
     """
 
-    def __init__(self, hidden=256, n_mlp_blocks=4, n_spatial_blocks=3,
-                 n_heads=4, chunk_size=512, dropout=0.1):
+    def __init__(self, hidden=512, n_blocks=12, dropout=0.05):
         super().__init__()
-        self.hidden = hidden
-        self.n_spatial_blocks = n_spatial_blocks
-        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3  # 30
-        out_dim = T_OUT * 3  # 15
+        # Features: pos(3) + vel_in(15) + vel_diff(12) + vel_stats(9) = 39
+        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + 9
+        out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
-
-        # Alternating MLP and spatial attention blocks
-        self.blocks = nn.ModuleList()
-        for i in range(n_mlp_blocks + n_spatial_blocks):
-            if i % 2 == 0 and i // 2 < n_spatial_blocks:
-                self.blocks.append(SpatialMixBlock(hidden, n_heads, chunk_size, dropout))
-            else:
-                self.blocks.append(ResBlock(hidden, dropout))
-
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
         self.norm_out = nn.LayerNorm(hidden)
         self.proj_out = nn.Linear(hidden, out_dim)
 
@@ -151,20 +58,23 @@ class VelocityPredictor(nn.Module):
         B, T, N, C = velocity_in.shape
         last_vel = velocity_in[:, -1]
 
-        vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
+        # Rich per-point features
+        vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]  # [B, 4, N, 3]
         vel_flat = velocity_in.reshape(B, N, T * C)
         diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
-        x = torch.cat([pos, vel_flat, diff_flat], dim=-1)
+
+        # Per-point temporal statistics
+        vel_mean = velocity_in.mean(dim=1)  # [B, N, 3]
+        vel_std = velocity_in.std(dim=1)     # [B, N, 3]
+        vel_trend = velocity_in[:, -1] - velocity_in[:, 0]  # [B, N, 3]
+
+        x = torch.cat([pos, vel_flat, diff_flat, vel_mean, vel_std, vel_trend], dim=-1)
 
         x = self.proj_in(x)
-
-        for block in self.blocks:
-            if isinstance(block, SpatialMixBlock):
-                x = block(x, pos)
-            else:
-                x = block(x)
-
+        x = self.blocks(x)
         delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
+
+        # Residual prediction
         out = delta + last_vel.unsqueeze(1)
 
         # No-slip BC
@@ -222,39 +132,6 @@ def validate(model, val_loaders, device, global_step):
     return mean_val, val_metrics
 
 
-def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
-    B, T, N, C = v_in.shape
-    if n_points >= N:
-        return v_in, v_out, pos, idcs_airfoil
-    idx = torch.randperm(N, device=v_in.device)[:n_points].sort().values
-    v_in_sub = v_in[:, :, idx]
-    v_out_sub = v_out[:, :, idx]
-    pos_sub = pos[:, idx]
-    new_idcs = []
-    for i in range(B):
-        mask = torch.isin(idx, idcs_airfoil[i].to(v_in.device))
-        new_idcs.append(mask.nonzero(as_tuple=True)[0])
-    return v_in_sub, v_out_sub, pos_sub, new_idcs
-
-
-def augment_batch(v_in, v_out, pos):
-    if torch.rand(1).item() < 0.5:
-        pos = pos.clone()
-        pos[..., 1] = -pos[..., 1]
-        v_in = v_in.clone()
-        v_in[..., 1] = -v_in[..., 1]
-        v_out = v_out.clone()
-        v_out[..., 1] = -v_out[..., 1]
-    if torch.rand(1).item() < 0.5:
-        pos = pos.clone()
-        pos[..., 2] = -pos[..., 2]
-        v_in = v_in.clone()
-        v_in[..., 2] = -v_in[..., 2]
-        v_out = v_out.clone()
-        v_out[..., 2] = -v_out[..., 2]
-    return v_in, v_out, pos
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -270,22 +147,17 @@ if __name__ == "__main__":
     @dataclass
     class Config:
         lr: float = 5e-4
-        weight_decay: float = 0.01
+        weight_decay: float = 1e-4
         batch_size: int = 1
-        epochs: int = 60
+        epochs: int = 100
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 256
-        n_mlp_blocks: int = 4
-        n_spatial_blocks: int = 3
-        n_heads: int = 8
-        chunk_size: int = 512
-        dropout: float = 0.1
-        augment: bool = True
-        subsample_train: int = 20000
+        hidden: int = 512
+        n_blocks: int = 12
+        dropout: float = 0.05
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -303,22 +175,14 @@ if __name__ == "__main__":
     }
 
     model = VelocityPredictor(
-        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
-        n_spatial_blocks=cfg.n_spatial_blocks, n_heads=cfg.n_heads,
-        chunk_size=cfg.chunk_size, dropout=cfg.dropout,
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks, dropout=cfg.dropout,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    warmup_epochs = 3
-    def lr_lambda(epoch):
-        if epoch < warmup_epochs:
-            return (epoch + 1) / warmup_epochs
-        progress = (epoch - warmup_epochs) / max(1, MAX_EPOCHS - warmup_epochs)
-        return 0.5 * (1 + math.cos(math.pi * progress))
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
     scaler = torch.amp.GradScaler("cuda")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -344,9 +208,7 @@ if __name__ == "__main__":
     model_path = model_dir / "checkpoint.pt"
 
     model_cfg_dict = {
-        "hidden": cfg.hidden, "n_mlp_blocks": cfg.n_mlp_blocks,
-        "n_spatial_blocks": cfg.n_spatial_blocks, "n_heads": cfg.n_heads,
-        "chunk_size": cfg.chunk_size, "dropout": cfg.dropout,
+        "hidden": cfg.hidden, "n_blocks": cfg.n_blocks, "dropout": cfg.dropout,
     }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
@@ -371,17 +233,9 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            if cfg.augment:
-                v_in, v_out, pos = augment_batch(v_in, v_out, pos)
-
-            # Subsample for training speed
-            v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
-                v_in, v_out, pos, idcs, cfg.subsample_train
-            )
-
             with torch.amp.autocast("cuda"):
-                pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean()
+                pred = model(v_in, pos, t, idcs)
+                loss = (pred - v_out).pow(2).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
@@ -401,7 +255,7 @@ if __name__ == "__main__":
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
         dt = time.time() - t0
 
-        wandb.log({"train/epoch_loss": epoch_loss, "lr": optimizer.param_groups[0]['lr'],
+        wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
                    "epoch_time_s": dt, "global_step": global_step})
 
         tag = ""
