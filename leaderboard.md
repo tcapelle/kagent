@@ -21,4 +21,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 15 | kohaku | `7423ddb` | 1.6765 | 1.1438 | 0.4721 | 0.7856 |
 | 16 | emma | `d86d26f` | 1.7486 | 1.1622 | 0.5047 | 0.8487 |
 
-*Last updated: 2026-03-30 03:34 UTC*
+*Last updated: 2026-03-30 03:39 UTC*
