@@ -15,13 +15,39 @@ import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from torch.utils.data import DataLoader
+from torch_geometric.nn import GATConv
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model: Anchor-based Spatial MLP
+# k-NN graph construction
+# ---------------------------------------------------------------------------
+
+def build_knn_graph(pos, k=8, chunk_size=10000):
+    """Build k-NN graph using chunked cdist. Returns edge_index [2, N*k]."""
+    N = pos.shape[0]
+    device = pos.device
+
+    knn_idx = torch.empty(N, k, dtype=torch.long, device=device)
+
+    for i in range(0, N, chunk_size):
+        end = min(i + chunk_size, N)
+        dist = torch.cdist(pos[i:end], pos)  # [chunk, N]
+        dist[torch.arange(end - i, device=device), torch.arange(i, end, device=device)] = float('inf')
+        _, idx = dist.topk(k, dim=1, largest=False)
+        knn_idx[i:end] = idx
+
+    # Convert to edge_index [2, N*k] (source -> target)
+    row = torch.arange(N, device=device).unsqueeze(1).expand(-1, k).reshape(-1)
+    col = knn_idx.reshape(-1)
+    edge_index = torch.stack([col, row])  # message flows from col to row
+    return edge_index
+
+
+# ---------------------------------------------------------------------------
+# Model: GNN with GAT message passing
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -29,114 +55,141 @@ class ResBlock(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 4),
+            nn.Linear(dim, dim * 2),
             nn.GELU(),
-            nn.Linear(dim * 4, dim),
+            nn.Linear(dim * 2, dim),
         )
 
     def forward(self, x):
         return x + self.net(x)
 
 
-class AnchorSpatialMLP(nn.Module):
-    """Per-point MLP with spatial context from anchor points.
+class GATBlock(nn.Module):
+    """GAT layer with residual connection."""
+    def __init__(self, dim, heads=4):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.gat = GATConv(dim, dim, heads=heads, concat=False, add_self_loops=True)
+
+    def forward(self, x, edge_index):
+        return x + self.gat(self.norm(x), edge_index)
+
+
+class AirflowGNN(nn.Module):
+    """GNN for airflow velocity prediction.
 
     Architecture:
-    1. Sample K anchor points from each sample
-    2. Compute per-point features at all N points and K anchors
-    3. RBF-weighted aggregation: each point gets spatial context from anchors
-    4. Concatenate per-point features + spatial context
-    5. MLP → predict velocity delta
-    6. Add to last input (residual)
-    7. No-slip BC
-
-    The anchor approach gives O(N*K) spatial interaction instead of O(N²).
+    1. Encode per-point features (pos + velocity + airfoil indicator)
+    2. k-NN graph construction
+    3. GAT message passing layers
+    4. Per-point MLP head
+    5. Residual prediction + no-slip BC
     """
 
-    def __init__(self, hidden=256, n_blocks=6, n_anchors=256, sigma=0.1):
+    def __init__(self, hidden=128, n_gat_layers=3, n_mlp_blocks=3, k=8, gat_heads=4):
         super().__init__()
-        self.n_anchors = n_anchors
-        self.sigma = sigma
+        self.k = k
+        in_dim = 3 + T_IN * 3 + 1  # pos(3) + velocity(15) + airfoil(1) = 19
+        out_dim = T_OUT * 3
 
-        # Per-point features: pos(3) + velocity_in(5*3=15) + airfoil(1) = 19
-        point_feat_dim = 3 + T_IN * 3 + 1
-
-        # Anchor feature encoder: point features → anchor features
-        self.anchor_encoder = nn.Sequential(
-            nn.Linear(point_feat_dim, hidden),
+        # Input encoder
+        self.encoder = nn.Sequential(
+            nn.Linear(in_dim, hidden),
             nn.GELU(),
             nn.Linear(hidden, hidden),
         )
 
-        # Main MLP: per-point features(19) + spatial context from anchors(hidden) = 19+hidden
-        in_dim = point_feat_dim + hidden
-        out_dim = T_OUT * 3
+        # GAT message passing
+        self.gat_layers = nn.ModuleList([
+            GATBlock(hidden, heads=gat_heads) for _ in range(n_gat_layers)
+        ])
 
-        self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        # Per-point MLP head
+        self.mlp_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks)])
+        self.head = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+
+    def _forward_single(self, v_in_i, pos_i, airfoil_mask_i):
+        """Forward pass for a single sample (needed since graph is per-sample)."""
+        N = pos_i.shape[0]
+        T, _, C = v_in_i.shape[0], v_in_i.shape[1], v_in_i.shape[2]
+
+        v_flat = v_in_i.permute(1, 0, 2).reshape(N, T * C)  # [N, 15]
+        x_in = torch.cat([pos_i, v_flat, airfoil_mask_i], dim=-1)  # [N, 19]
+
+        # Encode
+        x = self.encoder(x_in)  # [N, hidden]
+
+        # Build k-NN graph
+        with torch.no_grad():
+            edge_index = build_knn_graph(pos_i, k=self.k)
+
+        # Message passing
+        for gat in self.gat_layers:
+            x = gat(x, edge_index)
+
+        # MLP head
+        x = self.mlp_blocks(x)
+        delta = self.head(x)  # [N, 15]
+        return delta.reshape(N, T_OUT, 3).permute(1, 0, 2)  # [5, N, 3]
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         device = pos.device
 
-        v_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
-
-        # Airfoil indicator
-        airfoil_mask = torch.zeros(B, N, 1, device=device)
+        results = []
         for i in range(B):
+            # Airfoil mask for this sample
+            mask = torch.zeros(N, 1, device=device)
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 idx = idcs_airfoil[i].to(device)
-                airfoil_mask[i, idx, 0] = 1.0
+                mask[idx, 0] = 1.0
 
-        # Per-point features
-        point_feats = torch.cat([pos, v_flat, airfoil_mask], dim=-1)  # [B, N, 19]
+            delta = self._forward_single(velocity_in[i], pos[i], mask)  # [5, N, 3]
 
-        # Sample anchor points (use first K points — deterministic for reproducibility)
-        K = min(self.n_anchors, N)
-        # Use farthest point sampling approximation: random subset
-        anchor_idx = torch.randint(N, (B, K), device=device)
-        anchor_pos = torch.gather(pos, 1, anchor_idx.unsqueeze(-1).expand(-1, -1, 3))  # [B, K, 3]
-        anchor_feats = torch.gather(point_feats, 1, anchor_idx.unsqueeze(-1).expand(-1, -1, point_feats.shape[-1]))  # [B, K, 19]
+            # Residual prediction
+            pred = velocity_in[i, -1:, :, :] + delta
 
-        # Encode anchor features
-        anchor_encoded = self.anchor_encoder(anchor_feats)  # [B, K, hidden]
-
-        # RBF attention: each point attends to anchors based on distance
-        # Compute squared distances: [B, N, K]
-        # Chunked to avoid OOM with N=100k, K=256
-        spatial_context = torch.zeros(B, N, anchor_encoded.shape[-1], device=device)
-
-        chunk_size = 20000
-        for start in range(0, N, chunk_size):
-            end = min(start + chunk_size, N)
-            pos_chunk = pos[:, start:end, :]  # [B, chunk, 3]
-
-            sq_dist = torch.cdist(pos_chunk, anchor_pos).pow(2)  # [B, chunk, K]
-            weights = torch.exp(-sq_dist / (2 * self.sigma ** 2))  # [B, chunk, K]
-            weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-8)  # normalize
-
-            # Weighted aggregation of anchor features
-            spatial_context[:, start:end, :] = torch.bmm(weights, anchor_encoded)  # [B, chunk, hidden]
-
-        # Concatenate per-point features + spatial context
-        x = torch.cat([point_feats, spatial_context], dim=-1)  # [B, N, 19+hidden]
-
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        delta = self.proj_out(x)  # [B, N, 15]
-        delta = delta.reshape(B, T_OUT, N, 3)
-
-        # Residual: add last input timestep
-        pred = velocity_in[:, -1:, :, :] + delta
-
-        # No-slip BC
-        for i in range(B):
+            # No-slip BC
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
-                idx = idcs_airfoil[i].to(pred.device)
-                pred[i, :, idx, :] = 0.0
+                pred[:, idx, :] = 0.0
 
-        return pred
+            results.append(pred)
+
+        return torch.stack(results)  # [B, 5, N, 3]
+
+
+# ---------------------------------------------------------------------------
+# Point subsampling
+# ---------------------------------------------------------------------------
+
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=10000, surface_weight=3.0):
+    B, T, N, C = v_in.shape
+    device = v_in.device
+
+    new_v_in, new_v_out, new_pos, new_idcs = [], [], [], []
+
+    for i in range(B):
+        weights = torch.ones(N, device=device)
+        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+            surface_idx = idcs_airfoil[i].to(device)
+            weights[surface_idx] = surface_weight
+
+        idx = torch.multinomial(weights, n_points, replacement=False)
+        idx_sorted = idx.sort().values
+
+        new_v_in.append(v_in[i, :, idx_sorted, :])
+        new_v_out.append(v_out[i, :, idx_sorted, :])
+        new_pos.append(pos[i, idx_sorted, :])
+
+        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
+            mask = torch.zeros(N, dtype=torch.bool, device=device)
+            mask[surface_idx] = True
+            sub_mask = mask[idx_sorted]
+            new_idcs.append(sub_mask.nonzero(as_tuple=True)[0].cpu())
+        else:
+            new_idcs.append(torch.tensor([], dtype=torch.long))
+
+    return torch.stack(new_v_in), torch.stack(new_v_out), torch.stack(new_pos), new_idcs
 
 
 # ---------------------------------------------------------------------------
@@ -191,40 +244,6 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
-# Point subsampling
-# ---------------------------------------------------------------------------
-
-def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=20000, surface_weight=3.0):
-    B, T, N, C = v_in.shape
-    device = v_in.device
-
-    new_v_in, new_v_out, new_pos, new_idcs = [], [], [], []
-
-    for i in range(B):
-        weights = torch.ones(N, device=device)
-        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
-            surface_idx = idcs_airfoil[i].to(device)
-            weights[surface_idx] = surface_weight
-
-        idx = torch.multinomial(weights, n_points, replacement=False)
-        idx_sorted = idx.sort().values
-
-        new_v_in.append(v_in[i, :, idx_sorted, :])
-        new_v_out.append(v_out[i, :, idx_sorted, :])
-        new_pos.append(pos[i, idx_sorted, :])
-
-        if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
-            mask = torch.zeros(N, dtype=torch.bool, device=device)
-            mask[surface_idx] = True
-            sub_mask = mask[idx_sorted]
-            new_idcs.append(sub_mask.nonzero(as_tuple=True)[0].cpu())
-        else:
-            new_idcs.append(torch.tensor([], dtype=torch.long))
-
-    return torch.stack(new_v_in), torch.stack(new_v_out), torch.stack(new_pos), new_idcs
-
-
-# ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
@@ -233,19 +252,19 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 3e-4
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 1
     epochs: int = 200
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    hidden: int = 256
-    n_blocks: int = 6
-    n_anchors: int = 256
-    sigma: float = 0.1
+    hidden: int = 128
+    n_gat_layers: int = 3
+    n_mlp_blocks: int = 3
+    k: int = 8
     n_subsample: int = 10000
 
 
@@ -266,9 +285,9 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = AnchorSpatialMLP(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
-        n_anchors=cfg.n_anchors, sigma=cfg.sigma,
+    model = AirflowGNN(
+        hidden=cfg.hidden, n_gat_layers=cfg.n_gat_layers,
+        n_mlp_blocks=cfg.n_mlp_blocks, k=cfg.k,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
