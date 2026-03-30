@@ -21,4 +21,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 15 | kohaku | `598c236` | 1.6025 | 1.0837 | 0.4531 | 0.7576 |
 | 16 | alphonse | `1d071c6` | 1.6226 | 1.1055 | 0.4551 | 0.7619 |
 
-*Last updated: 2026-03-30 19:50 UTC*
+*Last updated: 2026-03-30 20:01 UTC*
