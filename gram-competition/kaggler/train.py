@@ -227,8 +227,8 @@ if __name__ == "__main__":
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 384
-        n_blocks: int = 12
+        hidden: int = 448
+        n_blocks: int = 10
         dropout: float = 0.05
         n_subsample: int = 10000
 
