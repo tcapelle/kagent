@@ -169,12 +169,12 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 3e-4
+        lr: float = 5e-4
         weight_decay: float = 1e-4
         batch_size: int = 1
         epochs: int = 200
         subsample_train: int = 15000
-        val_every: int = 2  # validate every N epochs
+        val_every: int = 3  # validate every N epochs
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
@@ -288,7 +288,8 @@ if __name__ == "__main__":
             with torch.amp.autocast("cuda"):
                 # End-to-end autoregressive: backprop through all 5 prediction steps
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean()
+                # Use competition L2 metric as loss (mean L2 norm per point per timestep)
+                loss = (pred - v_out_s).norm(dim=3).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
