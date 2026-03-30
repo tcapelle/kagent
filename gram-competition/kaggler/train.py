@@ -118,19 +118,25 @@ class AirflowPredictor(nn.Module):
         temporal_feat_dim = 32
 
         # Input features:
-        # fourier_pos(384) + temporal_conv(32) + vel_in_flat(15) + vel_derivatives(12) + time(5) + surface_flag(1) = 449
+        # fourier_pos(384) + temporal_conv(32) + vel_in_flat(15) + vel_mag(5)
+        # + vel_derivatives(12) + time(5) + surface_flag(1) = 454
         pos_feat_dim = n_fourier * 2 * 3
         vel_feat_dim = T_IN * 3
+        vel_mag_dim = T_IN  # velocity magnitude per timestep
         deriv_feat_dim = (T_IN - 1) * 3
         time_feat_dim = T_IN
         surface_dim = 1
-        in_dim = pos_feat_dim + temporal_feat_dim + vel_feat_dim + deriv_feat_dim + time_feat_dim + surface_dim
+        in_dim = pos_feat_dim + temporal_feat_dim + vel_feat_dim + vel_mag_dim + deriv_feat_dim + time_feat_dim + surface_dim
 
         out_dim = T_OUT * 3
 
-        # Random Fourier feature frequencies (fixed, not learned)
-        freqs = torch.randn(3, n_fourier) * 2.0
-        self.register_buffer("fourier_freqs", freqs)
+        # Learnable Fourier feature frequencies (multi-scale initialization)
+        freqs = torch.cat([
+            torch.randn(3, n_fourier // 4) * 0.5,   # low frequency
+            torch.randn(3, n_fourier // 2) * 2.0,    # medium frequency
+            torch.randn(3, n_fourier - n_fourier // 4 - n_fourier // 2) * 8.0,  # high frequency
+        ], dim=1)
+        self.fourier_freqs = nn.Parameter(freqs)
 
         self.proj_in = nn.Linear(in_dim, hidden)
 
@@ -178,6 +184,10 @@ class AirflowPredictor(nn.Module):
         # Flattened velocity features (keep for explicit access)
         v_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
 
+        # Velocity magnitude per timestep
+        v_mag = v_in_norm.norm(dim=3)  # [B, T, N]
+        v_mag = v_mag.permute(0, 2, 1)  # [B, N, T]
+
         # Temporal derivatives
         v_deriv = v_in_norm[:, 1:] - v_in_norm[:, :-1]
         v_deriv_flat = v_deriv.permute(0, 2, 1, 3).reshape(B, N, (T-1) * C)
@@ -195,7 +205,7 @@ class AirflowPredictor(nn.Module):
                 surface_flag[i, idcs_airfoil[i], 0] = 1.0
 
         # Concatenate all features
-        x = torch.cat([pos_feat, v_temp, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
+        x = torch.cat([pos_feat, v_temp, v_flat, v_mag, v_deriv_flat, t_features, surface_flag], dim=-1)
 
         # Compute k-NN graph (outside autocast for float32 precision)
         with torch.amp.autocast("cuda", enabled=False):
@@ -285,7 +295,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 8e-4
     weight_decay: float = 1e-4
     batch_size: int = 2
     epochs: int = 80
