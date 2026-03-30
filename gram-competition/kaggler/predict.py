@@ -1,8 +1,4 @@
-"""Generate predictions on hidden test samples.
-
-Run:
-  python predict.py --checkpoint models/model-<id>/checkpoint.pt --config models/model-<id>/config.pt --agent <your-name>
-"""
+"""Generate predictions on hidden test samples."""
 
 import os
 import subprocess
@@ -37,17 +33,17 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-# Load model config
 if cfg.config and Path(cfg.config).exists():
     model_cfg = torch.load(cfg.config, map_location="cpu", weights_only=True)
 else:
     model_cfg = {}
 
 model = VelocityPredictor(
-    grid_size=(64, 32, 48),
-    base_ch=model_cfg.get("base_ch", 96),
-    point_hidden=model_cfg.get("point_hidden", 256),
-    n_point_blocks=model_cfg.get("n_point_blocks", 4),
+    hidden=model_cfg.get("hidden", 256),
+    n_mlp_blocks=model_cfg.get("n_mlp_blocks", 4),
+    n_spatial_blocks=model_cfg.get("n_spatial_blocks", 3),
+    n_heads=model_cfg.get("n_heads", 8),
+    chunk_size=model_cfg.get("chunk_size", 1024),
     dropout=model_cfg.get("dropout", 0.1),
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))

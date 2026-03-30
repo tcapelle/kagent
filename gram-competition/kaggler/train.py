@@ -18,117 +18,78 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Grid operations
+# Spatial mixing via chunked local attention
 # ---------------------------------------------------------------------------
 
-def splat_to_grid(features, pos, grid_size):
-    """Trilinear splatting of point features onto a 3D grid.
-    features: [B, N, C], pos: [B, N, 3]
-    Returns: grid [B, C, Gx, Gy, Gz], pos_min [B,1,3], pos_max [B,1,3]
+class LocalAttention(nn.Module):
+    """Self-attention within spatial chunks.
+    Points are sorted by a space-filling curve (z-order) and grouped into chunks.
+    Attention within each chunk provides local spatial interaction.
     """
-    B, N, C = features.shape
-    Gx, Gy, Gz = grid_size
-
-    pos_min = pos.min(dim=1, keepdim=True).values
-    pos_max = pos.max(dim=1, keepdim=True).values
-    pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)
-
-    gcoords = [
-        (pos_norm[..., i] * (g - 1)).clamp(0, g - 1) for i, g in enumerate([Gx, Gy, Gz])
-    ]
-    g0 = [gc.long().clamp(0, g - 2) for gc, g in zip(gcoords, [Gx, Gy, Gz])]
-    g1 = [gc + 1 for gc in g0]
-
-    weights = [(gc - gc0.float()).unsqueeze(-1) for gc, gc0 in zip(gcoords, g0)]
-
-    feat_f32 = features.float()
-    grid = torch.zeros(B, Gx, Gy, Gz, C, device=features.device, dtype=torch.float32)
-    count = torch.zeros(B, Gx, Gy, Gz, 1, device=features.device, dtype=torch.float32)
-
-    for ix, (dx, dwx) in enumerate([(g0[0], 1 - weights[0]), (g1[0], weights[0])]):
-        for iy, (dy, dwy) in enumerate([(g0[1], 1 - weights[1]), (g1[1], weights[1])]):
-            for iz, (dz, dwz) in enumerate([(g0[2], 1 - weights[2]), (g1[2], weights[2])]):
-                w = (dwx * dwy * dwz).float()
-                idx = (dx * Gy * Gz + dy * Gz + dz).unsqueeze(-1).expand(-1, -1, C)
-                grid.view(B, -1, C).scatter_add_(1, idx, feat_f32 * w)
-                count.view(B, -1, 1).scatter_add_(1, idx[..., :1], w)
-
-    grid = grid / count.clamp(min=1e-6)
-    return grid.permute(0, 4, 1, 2, 3), pos_min, pos_max
-
-
-def sample_from_grid(grid, pos, pos_min, pos_max):
-    """Sample grid features at point positions using trilinear interpolation.
-    grid: [B, C, Gx, Gy, Gz], pos: [B, N, 3]
-    Returns: [B, N, C]
-    """
-    pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)
-    pos_grid = (pos_norm * 2 - 1).float()
-    sample_pts = pos_grid.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, N, 3]
-    sampled = F.grid_sample(grid.float(), sample_pts, mode='bilinear',
-                            padding_mode='border', align_corners=True)
-    return sampled.squeeze(2).squeeze(2).permute(0, 2, 1)  # [B, N, C]
-
-
-# ---------------------------------------------------------------------------
-# 3D U-Net
-# ---------------------------------------------------------------------------
-
-class ConvBlock3D(nn.Module):
-    def __init__(self, in_ch, out_ch):
+    def __init__(self, dim, n_heads=4, chunk_size=512):
         super().__init__()
-        self.conv1 = nn.Conv3d(in_ch, out_ch, 3, padding=1)
-        self.gn1 = nn.GroupNorm(min(8, out_ch), out_ch)
-        self.conv2 = nn.Conv3d(out_ch, out_ch, 3, padding=1)
-        self.gn2 = nn.GroupNorm(min(8, out_ch), out_ch)
-        self.skip = nn.Conv3d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
+        self.chunk_size = chunk_size
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
+        self.scale = self.head_dim ** -0.5
 
-    def forward(self, x):
-        h = F.gelu(self.gn1(self.conv1(x)))
-        h = F.gelu(self.gn2(self.conv2(h)))
-        return h + self.skip(x)
+        self.qkv = nn.Linear(dim, dim * 3)
+        self.proj = nn.Linear(dim, dim)
+        self.norm = nn.LayerNorm(dim)
 
+    def _z_order_sort(self, pos):
+        """Sort points by z-order (Morton code) for spatial locality."""
+        # Normalize positions to [0, 1023] for 10-bit Morton code
+        pos_min = pos.min(dim=1, keepdim=True).values
+        pos_max = pos.max(dim=1, keepdim=True).values
+        pos_norm = ((pos - pos_min) / (pos_max - pos_min + 1e-6) * 1023).long().clamp(0, 1023)
 
-class UNet3D(nn.Module):
-    """3-level U-Net for 3D grid processing."""
+        # Simple z-order: interleave bits (approximate with weighted sum for speed)
+        morton = pos_norm[..., 0] * 1048576 + pos_norm[..., 1] * 1024 + pos_norm[..., 2]
+        return morton.argsort(dim=1)
 
-    def __init__(self, in_ch, out_ch, base_ch=64):
-        super().__init__()
-        c1, c2, c3 = base_ch, base_ch * 2, base_ch * 4
+    def forward(self, x, pos):
+        """x: [B, N, D], pos: [B, N, 3]"""
+        B, N, D = x.shape
 
-        self.enc1 = ConvBlock3D(in_ch, c1)
-        self.enc2 = ConvBlock3D(c1, c2)
-        self.bottleneck = ConvBlock3D(c2, c3)
+        # Sort by spatial locality
+        sort_idx = self._z_order_sort(pos)  # [B, N]
+        # Gather to sorted order
+        x_sorted = torch.gather(x, 1, sort_idx.unsqueeze(-1).expand(-1, -1, D))
 
-        self.up2 = nn.ConvTranspose3d(c3, c2, 2, stride=2)
-        self.dec2 = ConvBlock3D(c2 * 2, c2)
-        self.up1 = nn.ConvTranspose3d(c2, c1, 2, stride=2)
-        self.dec1 = ConvBlock3D(c1 * 2, c1)
+        # Pad to multiple of chunk_size
+        cs = self.chunk_size
+        pad_n = (cs - N % cs) % cs
+        if pad_n > 0:
+            x_sorted = F.pad(x_sorted, (0, 0, 0, pad_n))
 
-        self.out_conv = nn.Conv3d(c1, out_ch, 1)
-        # Zero-init output so residual starts at 0
-        nn.init.zeros_(self.out_conv.weight)
-        nn.init.zeros_(self.out_conv.bias)
+        N_padded = x_sorted.shape[1]
+        n_chunks = N_padded // cs
 
-    def forward(self, x):
-        e1 = self.enc1(x)
-        e2 = self.enc2(F.avg_pool3d(e1, 2))
-        bn = self.bottleneck(F.avg_pool3d(e2, 2))
+        # Reshape into chunks
+        x_chunks = x_sorted.reshape(B * n_chunks, cs, D)
 
-        d2 = self.up2(bn)
-        d2 = F.interpolate(d2, size=e2.shape[2:], mode='trilinear', align_corners=False)
-        d2 = self.dec2(torch.cat([d2, e2], dim=1))
+        # Multi-head self-attention
+        qkv = self.qkv(x_chunks).reshape(B * n_chunks, cs, 3, self.n_heads, self.head_dim)
+        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B*nc, nh, cs, hd]
+        q, k, v = qkv.unbind(0)
 
-        d1 = self.up1(d2)
-        d1 = F.interpolate(d1, size=e1.shape[2:], mode='trilinear', align_corners=False)
-        d1 = self.dec1(torch.cat([d1, e1], dim=1))
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        out = (attn @ v).transpose(1, 2).reshape(B * n_chunks, cs, D)
+        out = self.proj(out)
 
-        return self.out_conv(d1)
+        # Reshape back
+        out = out.reshape(B, N_padded, D)
+        if pad_n > 0:
+            out = out[:, :N, :]
 
+        # Unsort: scatter back to original order
+        unsort_idx = sort_idx.argsort(dim=1)
+        out = torch.gather(out, 1, unsort_idx.unsqueeze(-1).expand(-1, -1, D))
 
-# ---------------------------------------------------------------------------
-# Main model
-# ---------------------------------------------------------------------------
+        return self.norm(out)
+
 
 class ResBlock(nn.Module):
     def __init__(self, dim, dropout=0.0):
@@ -145,58 +106,67 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class VelocityPredictor(nn.Module):
-    """Pure grid-based velocity field prediction.
+class SpatialMixBlock(nn.Module):
+    """MLP block + local attention for spatial mixing."""
+    def __init__(self, dim, n_heads=4, chunk_size=512, dropout=0.0):
+        super().__init__()
+        self.attn = LocalAttention(dim, n_heads, chunk_size)
+        self.mlp = ResBlock(dim, dropout)
 
-    1. Splat velocity features onto 3D grid
-    2. Process with 3D U-Net for spatial mixing
-    3. Sample back to original point positions
-    4. Combine with point-level MLP for fine details
-    5. Residual prediction from last timestep
+    def forward(self, x, pos):
+        x = x + self.attn(x, pos)
+        x = self.mlp(x)
+        return x
+
+
+class VelocityPredictor(nn.Module):
+    """MLP with local spatial attention for velocity prediction.
+
+    1. Encode per-point features
+    2. Apply alternating MLP blocks and spatial attention blocks
+    3. Residual prediction from last timestep
+    4. No-slip BC
     """
 
-    def __init__(self, grid_size=(64, 32, 48), base_ch=96,
-                 point_hidden=256, n_point_blocks=4, dropout=0.1):
+    def __init__(self, hidden=256, n_mlp_blocks=4, n_spatial_blocks=3,
+                 n_heads=4, chunk_size=512, dropout=0.1):
         super().__init__()
-        self.grid_size = grid_size
-        in_ch = T_IN * 3 + (T_IN - 1) * 3  # velocity(15) + diffs(12) = 27
-        out_ch = T_OUT * 3  # 15
+        self.hidden = hidden
+        self.n_spatial_blocks = n_spatial_blocks
+        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3  # 30
+        out_dim = T_OUT * 3  # 15
 
-        # Grid U-Net: spatial mixing on the velocity field
-        self.grid_unet = UNet3D(in_ch, out_ch, base_ch=base_ch)
+        self.proj_in = nn.Linear(in_dim, hidden)
 
-        # Pointwise refinement MLP
-        point_in = 3 + in_ch + out_ch  # pos(3) + input_features(27) + grid_output(15) = 45
-        self.point_mlp = nn.Sequential(
-            nn.Linear(point_in, point_hidden),
-            *[ResBlock(point_hidden, dropout) for _ in range(n_point_blocks)],
-            nn.LayerNorm(point_hidden),
-        )
-        self.point_out = nn.Linear(point_hidden, out_ch)
-        nn.init.zeros_(self.point_out.weight)
-        nn.init.zeros_(self.point_out.bias)
+        # Alternating MLP and spatial attention blocks
+        self.blocks = nn.ModuleList()
+        for i in range(n_mlp_blocks + n_spatial_blocks):
+            if i % 2 == 0 and i // 2 < n_spatial_blocks:
+                self.blocks.append(SpatialMixBlock(hidden, n_heads, chunk_size, dropout))
+            else:
+                self.blocks.append(ResBlock(hidden, dropout))
+
+        self.norm_out = nn.LayerNorm(hidden)
+        self.proj_out = nn.Linear(hidden, out_dim)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         last_vel = velocity_in[:, -1]
 
         vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
-        vel_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
-        diff_flat = vel_diff.reshape(B, N, (T - 1) * C)  # [B, N, 12]
-        features = torch.cat([vel_flat, diff_flat], dim=-1)  # [B, N, 27]
+        vel_flat = velocity_in.reshape(B, N, T * C)
+        diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
+        x = torch.cat([pos, vel_flat, diff_flat], dim=-1)
 
-        # Grid processing
-        grid, pos_min, pos_max = splat_to_grid(features, pos, self.grid_size)
-        grid_delta = self.grid_unet(grid)  # [B, 15, Gx, Gy, Gz]
-        grid_output = sample_from_grid(grid_delta, pos, pos_min, pos_max)  # [B, N, 15]
+        x = self.proj_in(x)
 
-        # Pointwise refinement
-        point_input = torch.cat([pos, features, grid_output], dim=-1)
-        point_feat = self.point_mlp(point_input)
-        point_delta = self.point_out(point_feat).reshape(B, T_OUT, N, 3)
+        for block in self.blocks:
+            if isinstance(block, SpatialMixBlock):
+                x = block(x, pos)
+            else:
+                x = block(x)
 
-        # Combine: grid prediction + point refinement + residual
-        delta = grid_output.reshape(B, T_OUT, N, 3) + point_delta
+        delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
         out = delta + last_vel.unsqueeze(1)
 
         # No-slip BC
@@ -255,7 +225,6 @@ def validate(model, val_loaders, device, global_step):
 
 
 def augment_batch(v_in, v_out, pos):
-    """Random spatial flipping."""
     if torch.rand(1).item() < 0.5:
         pos = pos.clone()
         pos[..., 1] = -pos[..., 1]
@@ -296,9 +265,11 @@ if __name__ == "__main__":
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        base_ch: int = 96
-        point_hidden: int = 256
-        n_point_blocks: int = 4
+        hidden: int = 256
+        n_mlp_blocks: int = 4
+        n_spatial_blocks: int = 3
+        n_heads: int = 8
+        chunk_size: int = 1024
         dropout: float = 0.1
         augment: bool = True
 
@@ -318,9 +289,9 @@ if __name__ == "__main__":
     }
 
     model = VelocityPredictor(
-        grid_size=(64, 32, 48), base_ch=cfg.base_ch,
-        point_hidden=cfg.point_hidden, n_point_blocks=cfg.n_point_blocks,
-        dropout=cfg.dropout,
+        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
+        n_spatial_blocks=cfg.n_spatial_blocks, n_heads=cfg.n_heads,
+        chunk_size=cfg.chunk_size, dropout=cfg.dropout,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -359,8 +330,9 @@ if __name__ == "__main__":
     model_path = model_dir / "checkpoint.pt"
 
     model_cfg_dict = {
-        "base_ch": cfg.base_ch, "point_hidden": cfg.point_hidden,
-        "n_point_blocks": cfg.n_point_blocks, "dropout": cfg.dropout,
+        "hidden": cfg.hidden, "n_mlp_blocks": cfg.n_mlp_blocks,
+        "n_spatial_blocks": cfg.n_spatial_blocks, "n_heads": cfg.n_heads,
+        "chunk_size": cfg.chunk_size, "dropout": cfg.dropout,
     }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
