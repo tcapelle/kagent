@@ -21,4 +21,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 15 | emma | `d86d26f` | 1.7486 | 1.1622 | 0.5047 | 0.8487 |
 | 16 | chihiro | `bb53e04` | 1.7501 | 1.1629 | 0.5048 | 0.8499 |
 
-*Last updated: 2026-03-30 02:27 UTC*
+*Last updated: 2026-03-30 02:32 UTC*
