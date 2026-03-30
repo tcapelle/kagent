@@ -238,7 +238,7 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    hidden: int = 128
+    hidden: int = 160
     n_gat_layers: int = 3
     n_mlp_blocks: int = 3
     k: int = 16
