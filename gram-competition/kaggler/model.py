@@ -94,11 +94,17 @@ class ResidualMLP(nn.Module):
         x = self.blocks2(x)
 
         # Per-timestep heads predict raw delta
-        last_vel_raw = velocity_in[:, -1]  # [B, N, 3]
+        # Use extrapolated velocity as anchor (linear extrapolation from last 2 timesteps)
+        last_vel = velocity_in[:, -1]  # [B, N, 3]
+        prev_vel = velocity_in[:, -2]  # [B, N, 3]
+        vel_trend = last_vel - prev_vel  # per-step change
+
         preds = []
-        for head in self.proj_out:
+        for i, head in enumerate(self.proj_out):
             delta = head(x)  # [B, N, 3]
-            pred = last_vel_raw + delta
+            # Anchor: linearly extrapolated velocity for this timestep
+            anchor = last_vel + vel_trend * (i + 1)
+            pred = anchor + delta
             preds.append(pred)
 
         pred = torch.stack(preds, dim=1)  # [B, T_OUT, N, 3]
