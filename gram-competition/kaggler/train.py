@@ -275,7 +275,7 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 2
     epochs: int = 80
-    subsample_points: int = 15000
+    subsample_points: int = 20000
     hidden: int = 512
     n_blocks: int = 9
     n_fourier: int = 64
@@ -316,9 +316,12 @@ print(f"Model params: {n_params:,}")
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
 # OneCycleLR for faster convergence
+# Estimate actual epochs we'll complete based on timeout
+# Each epoch takes ~30-40s train + occasional validation
+estimated_epochs = min(MAX_EPOCHS, int(MAX_TIMEOUT * 60 / 35))  # conservative
 steps_per_epoch = len(train_loader)
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
+    optimizer, max_lr=cfg.lr, epochs=estimated_epochs, steps_per_epoch=steps_per_epoch,
     pct_start=0.1, anneal_strategy='cos',
 )
 scaler = torch.amp.GradScaler("cuda")
@@ -418,15 +421,25 @@ for epoch in range(MAX_EPOCHS):
         epoch_loss += loss.item()
         n_batches += 1
     epoch_loss /= n_batches
-
-    mean_val, split_metrics = validate(model, val_loaders, device, global_step)
     dt = time.time() - t0
 
+    # Validate less frequently early on to save time
+    # First half: every 3 epochs. Second half: every epoch.
+    elapsed_frac = (time.time() - train_start) / (MAX_TIMEOUT * 60)
+    do_val = (elapsed_frac > 0.4) or (epoch % 3 == 0) or (epoch < 2)
+
+    if do_val:
+        mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+        dt_total = time.time() - t0
+    else:
+        mean_val = best_val + 1  # skip
+        dt_total = dt
+
     wandb.log({"train/epoch_loss": epoch_loss, "lr": optimizer.param_groups[0]['lr'],
-               "epoch_time_s": dt, "global_step": global_step})
+               "epoch_time_s": dt_total, "global_step": global_step})
 
     tag = ""
-    if mean_val < best_val:
+    if do_val and mean_val < best_val:
         best_val = mean_val
         best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
         for sm in split_metrics.values():
@@ -435,9 +448,10 @@ for epoch in range(MAX_EPOCHS):
         tag = " *"
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+    val_str = f"val/l2={mean_val:.4f}" if do_val else "val/l2=skip"
     print(
-        f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
-        f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+        f"Epoch {epoch+1:3d} ({dt_total:.0f}s) [{peak_gb:.1f}GB]  "
+        f"train={epoch_loss:.4f}  {val_str}{tag}"
     )
 
 # --- Final ---
