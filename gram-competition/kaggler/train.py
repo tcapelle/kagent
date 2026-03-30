@@ -22,14 +22,14 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.0):
+    def __init__(self, dim, dropout=0.0, ffn_mult=4):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 4),
+            nn.Linear(dim, dim * ffn_mult),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(dim * 4, dim),
+            nn.Linear(dim * ffn_mult, dim),
         )
 
     def forward(self, x):
@@ -226,7 +226,7 @@ if __name__ == "__main__":
         hidden: int = 384
         n_blocks: int = 12
         dropout: float = 0.05
-        n_subsample: int = 8000
+        n_subsample: int = 10000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
