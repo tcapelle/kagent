@@ -122,13 +122,13 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 1.5e-3
+    lr: float = 2e-3
     weight_decay: float = 1e-4
-    batch_size: int = 2
-    epochs: int = 100
-    subsample_train: int = 50000
-    hidden: int = 640
-    n_blocks: int = 12
+    batch_size: int = 4
+    epochs: int = 200
+    subsample_train: int = 30000
+    hidden: int = 512
+    n_blocks: int = 10
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -162,14 +162,11 @@ print(f"Model params: {n_params:,}")
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-warmup_epochs = 3
-def lr_lambda(epoch):
-    if epoch < warmup_epochs:
-        return (epoch + 1) / warmup_epochs
-    progress = (epoch - warmup_epochs) / max(MAX_EPOCHS - warmup_epochs, 1)
-    return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)).item())
-
-scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+steps_per_epoch = len(train_loader)
+scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
+    pct_start=0.1, div_factor=10, final_div_factor=100,
+)
 scaler = torch.amp.GradScaler("cuda")
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -240,12 +237,12 @@ for epoch in range(MAX_EPOCHS):
         scaler.update()
 
         global_step += 1
+        scheduler.step()
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
         epoch_loss += loss.item()
         n_batches += 1
 
-    scheduler.step()
     epoch_loss /= n_batches
 
     # --- Validate ---
