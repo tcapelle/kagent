@@ -201,19 +201,19 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 2e-3
+        lr: float = 1e-3
         weight_decay: float = 1e-3
         batch_size: int = 1
-        epochs: int = 200
+        epochs: int = 100
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 384
-        n_blocks: int = 12
+        hidden: int = 512
+        n_blocks: int = 10
         dropout: float = 0.05
-        n_subsample: int = 20000
+        n_subsample: int = 100000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -238,10 +238,7 @@ if __name__ == "__main__":
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    steps_per_epoch = len(train_loader)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
-    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
     scaler = torch.amp.GradScaler("cuda")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -314,13 +311,13 @@ if __name__ == "__main__":
             scaler.update()
 
             ema.update(model)
-            scheduler.step()
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
             epoch_loss += loss.item()
             n_batches += 1
 
+        scheduler.step()
         epoch_loss /= n_batches
 
         # Validate with EMA weights
