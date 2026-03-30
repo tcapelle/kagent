@@ -272,7 +272,9 @@ if __name__ == "__main__":
     print(f"Model params: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    # Estimate actual epochs we can fit (30 min / ~23s per epoch = ~78)
+    effective_epochs = min(MAX_EPOCHS, int(MAX_TIMEOUT * 60 / 23))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=effective_epochs)
     scaler = torch.amp.GradScaler("cuda")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
