@@ -31,8 +31,8 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
-    hidden: int = 512
-    n_blocks: int = 10
+    hidden: int = 640
+    n_blocks: int = 12
 
 
 cfg = sp.parse(Config)

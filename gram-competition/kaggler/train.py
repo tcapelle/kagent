@@ -124,11 +124,12 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 class Config:
     lr: float = 2e-3
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 2
+    grad_accum: int = 4  # effective batch = 8
     epochs: int = 200
-    subsample_train: int = 30000
-    hidden: int = 512
-    n_blocks: int = 10
+    subsample_train: int = 40000
+    hidden: int = 640
+    n_blocks: int = 12
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -162,7 +163,7 @@ print(f"Model params: {n_params:,}")
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-steps_per_epoch = len(train_loader)
+steps_per_epoch = (len(train_loader) + cfg.grad_accum - 1) // cfg.grad_accum
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer, max_lr=cfg.lr, epochs=MAX_EPOCHS, steps_per_epoch=steps_per_epoch,
     pct_start=0.1, div_factor=10, final_div_factor=100,
@@ -214,6 +215,7 @@ for epoch in range(MAX_EPOCHS):
     model.train()
     epoch_loss = 0.0
     n_batches = 0
+    optimizer.zero_grad()
 
     for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
         v_in = v_in.to(device, non_blocking=True)
@@ -227,20 +229,22 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.amp.autocast("cuda"):
             pred = model(v_in_sub, pos_sub, t, idcs_sub)
-            loss = (pred - v_out_sub).pow(2).mean()
+            loss = (pred - v_out_sub).pow(2).mean() / cfg.grad_accum
 
-        optimizer.zero_grad()
         scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        scaler.step(optimizer)
-        scaler.update()
 
-        global_step += 1
-        scheduler.step()
-        wandb.log({"train/loss": loss.item(), "global_step": global_step})
+        if (n_batches + 1) % cfg.grad_accum == 0 or (n_batches + 1) == len(train_loader):
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
+            global_step += 1
+            scheduler.step()
 
-        epoch_loss += loss.item()
+        wandb.log({"train/loss": loss.item() * cfg.grad_accum, "global_step": global_step})
+
+        epoch_loss += loss.item() * cfg.grad_accum
         n_batches += 1
 
     epoch_loss /= n_batches
