@@ -228,7 +228,7 @@ if __name__ == "__main__":
     # EMA model for stable validation/prediction
     import copy
     ema_model = copy.deepcopy(model)
-    ema_decay = 0.999
+    ema_decay = 0.998
 
     def update_ema(ema, model, decay):
         with torch.no_grad():
@@ -320,7 +320,7 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 elapsed_frac = (time.time() - train_start) / (MAX_TIMEOUT * 60)
-                if elapsed_frac < 0.25:
+                if elapsed_frac < 0.15:
                     # Phase 1: teacher forcing with MSE (fast convergence)
                     loss = model.forward_teacher_forcing(v_in_s, v_out_s, pos_s, t, idcs_s)
                 else:
