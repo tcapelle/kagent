@@ -218,8 +218,8 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
-    hidden: int = 512
-    n_blocks: int = 9
+    hidden: int = 768
+    n_blocks: int = 6
     n_fourier: int = 64
     k_neighbors: int = 12
 

@@ -299,9 +299,9 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 2
     epochs: int = 80
-    subsample_points: int = 20000
-    hidden: int = 512
-    n_blocks: int = 9
+    subsample_points: int = 15000
+    hidden: int = 768
+    n_blocks: int = 6
     n_fourier: int = 64
     k_neighbors: int = 12
     dropout: float = 0.05
