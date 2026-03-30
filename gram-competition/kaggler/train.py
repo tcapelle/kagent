@@ -32,7 +32,7 @@ class MessagePassLayer(nn.Module):
             nn.Linear(dim, dim),
         )
         self.update_mlp = nn.Sequential(
-            nn.LayerNorm(dim),
+            nn.LayerNorm(dim * 2),
             nn.Linear(dim * 2, dim),
             nn.GELU(),
             nn.Linear(dim, dim),
