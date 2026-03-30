@@ -239,9 +239,10 @@ class Config:
     agent: str | None = None
     debug: bool = False
     hidden: int = 128
-    n_gat_layers: int = 4
-    n_mlp_blocks: int = 2
+    n_gat_layers: int = 3
+    n_mlp_blocks: int = 3
     k: int = 16
+    gat_heads: int = 8
     n_subsample: int = 10000
     val_every: int = 3
 
@@ -265,7 +266,7 @@ if __name__ == "__main__":
 
     model = AirflowGNN(
         hidden=cfg.hidden, n_gat_layers=cfg.n_gat_layers,
-        n_mlp_blocks=cfg.n_mlp_blocks, k=cfg.k,
+        n_mlp_blocks=cfg.n_mlp_blocks, k=cfg.k, gat_heads=cfg.gat_heads,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
