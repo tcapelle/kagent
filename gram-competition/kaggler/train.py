@@ -44,9 +44,13 @@ class VelocityPredictor(nn.Module):
     This gives 5x the training signal and allows specialization per timestep.
     """
 
-    def __init__(self, hidden=384, n_blocks=12, dropout=0.05):
+    def __init__(self, hidden=384, n_blocks=12, dropout=0.05,
+                 vel_mean=None, vel_std=None):
         super().__init__()
-        # Input: pos(3) + vel_in(15) + vel_diff(12) + vel_stats(9) + timestep_embed(hidden) = 39 + hidden
+        self.register_buffer("vel_mean", vel_mean if vel_mean is not None else torch.zeros(3))
+        self.register_buffer("vel_std", vel_std if vel_std is not None else torch.ones(3))
+
+        # Input: pos(3) + norm_vel_in(15) + vel_diff(12) + vel_stats(9) = 39
         in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + 9
         self.in_dim = in_dim
 
@@ -60,13 +64,15 @@ class VelocityPredictor(nn.Module):
 
     def _build_features(self, velocity_in, pos):
         B, T, N, C = velocity_in.shape
-        vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
-        vel_flat = velocity_in.reshape(B, N, T * C)
+        # Normalize velocities
+        v_norm = (velocity_in - self.vel_mean) / self.vel_std
+        vel_diff = v_norm[:, 1:] - v_norm[:, :-1]
+        vel_flat = v_norm.reshape(B, N, T * C)
         diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
-        vel_mean = velocity_in.mean(dim=1)
-        vel_std = velocity_in.std(dim=1)
-        vel_trend = velocity_in[:, -1] - velocity_in[:, 0]
-        return torch.cat([pos, vel_flat, diff_flat, vel_mean, vel_std, vel_trend], dim=-1)
+        vel_mean = v_norm.mean(dim=1)
+        vel_std_feat = v_norm.std(dim=1)
+        vel_trend = v_norm[:, -1] - v_norm[:, 0]
+        return torch.cat([pos, vel_flat, diff_flat, vel_mean, vel_std_feat, vel_trend], dim=-1)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
@@ -242,8 +248,11 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
+    vel_mean = stats["vel_mean"].to(device)
+    vel_std = stats["vel_std"].to(device)
     model = VelocityPredictor(
         hidden=cfg.hidden, n_blocks=cfg.n_blocks, dropout=cfg.dropout,
+        vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -313,7 +322,7 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = F.smooth_l1_loss(pred, v_out_s, beta=0.5)
+                loss = F.smooth_l1_loss(pred, v_out_s)
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()

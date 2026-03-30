@@ -38,10 +38,16 @@ if cfg.config and Path(cfg.config).exists():
 else:
     model_cfg = {}
 
+from data import load_data
+_, _, _stats = load_data(splits_dir, debug=True)
+vel_mean = _stats["vel_mean"].to(device)
+vel_std = _stats["vel_std"].to(device)
+
 model = VelocityPredictor(
     hidden=model_cfg.get("hidden", 384),
     n_blocks=model_cfg.get("n_blocks", 12),
     dropout=model_cfg.get("dropout", 0.05),
+    vel_mean=vel_mean, vel_std=vel_std,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 model.eval()
