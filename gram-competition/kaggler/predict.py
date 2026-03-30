@@ -1,8 +1,4 @@
-"""Generate predictions on hidden test samples.
-
-Run:
-  python predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <your-name>
-"""
+"""Generate predictions on hidden test samples."""
 
 import json
 import os
@@ -13,7 +9,6 @@ from pathlib import Path
 import simple_parsing as sp
 import torch
 from tqdm import tqdm
-
 from torch.utils.data import DataLoader
 
 from data import GRAMDataset, collate_fn
@@ -21,13 +16,11 @@ from data import GRAMDataset, collate_fn
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 SPLITS_DIR = Path("/mnt/new-pvc/datasets/gram/splits")
-
 TEST_SPLITS = ["val"]
 
 
 @dataclass
 class PredictConfig:
-    """Generate test predictions from a trained checkpoint."""
     checkpoint: str
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
@@ -35,7 +28,8 @@ class PredictConfig:
     hidden: int = 256
     n_heads: int = 8
     n_transformer_blocks: int = 4
-    n_mlp_blocks: int = 4
+    n_pre_mlp: int = 2
+    n_post_mlp: int = 2
 
 
 def main():
@@ -53,18 +47,16 @@ def main():
     model = AirflowModel(
         hidden=cfg.hidden, n_heads=cfg.n_heads,
         n_transformer_blocks=cfg.n_transformer_blocks,
-        n_mlp_blocks=cfg.n_mlp_blocks,
+        n_pre_mlp=cfg.n_pre_mlp, n_post_mlp=cfg.n_post_mlp,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
     model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
-
     model.eval()
     print(f"Loaded model from {cfg.checkpoint}")
 
     agent_name = cfg.agent or "unknown"
     commit = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        capture_output=True, text=True,
+        ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
     ).stdout.strip() or "unknown"
     output_dir = PREDICTIONS_DIR / agent_name / commit
     output_dir.mkdir(parents=True, exist_ok=True)
