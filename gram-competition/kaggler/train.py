@@ -1,4 +1,4 @@
-"""Train a 3D airflow velocity predictor.
+"""Train a 3D airflow velocity predictor — GATConv GNN with Huber loss.
 
 Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
