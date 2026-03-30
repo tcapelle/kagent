@@ -13,45 +13,13 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import TransformerConv
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Multi-resolution Graph Transformer
+# Model
 # ---------------------------------------------------------------------------
-
-def build_knn_graph(pos, k=16):
-    """Build k-NN graph from positions. pos: [N, 3] -> edge_index: [2, N*k]"""
-    dist = torch.cdist(pos, pos)  # [N, N]
-    _, knn_idx = dist.topk(k, dim=1, largest=False)  # [N, k]
-    N = pos.shape[0]
-    src = torch.arange(N, device=pos.device).unsqueeze(1).expand(-1, k).reshape(-1)
-    dst = knn_idx.reshape(-1)
-    return torch.stack([src, dst])  # [2, N*k]
-
-
-class GraphTransformerBlock(nn.Module):
-    """Graph Transformer block using PyG's TransformerConv."""
-    def __init__(self, dim, n_heads=4, dropout=0.0):
-        super().__init__()
-        self.conv = TransformerConv(dim, dim // n_heads, heads=n_heads, concat=True,
-                                    dropout=dropout, edge_dim=3)
-        self.norm1 = nn.LayerNorm(dim)
-        self.ffn = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 4),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim * 4, dim),
-        )
-
-    def forward(self, x, edge_index, edge_attr):
-        x = x + self.conv(self.norm1(x), edge_index, edge_attr)
-        x = x + self.ffn(x)
-        return x
-
 
 class ResBlock(nn.Module):
     def __init__(self, dim, dropout=0.0):
@@ -69,86 +37,28 @@ class ResBlock(nn.Module):
 
 
 class VelocityPredictor(nn.Module):
-    """Multi-resolution Graph Transformer for velocity prediction.
+    """Deep residual MLP for velocity prediction.
 
-    Architecture:
-    1. Pointwise MLP encodes per-point features for all 100k points
-    2. Subsample to n_sub points
-    3. Build k-NN graph on subsampled points
-    4. Apply Graph Transformer layers for spatial mixing
-    5. IDW interpolation back to 100k points
-    6. Combine with pointwise features and predict residual
+    Uses residual prediction (delta from last timestep) + no-slip BC.
+    Rich per-point features including temporal statistics.
     """
 
-    def __init__(self, hidden=256, n_point_blocks=3, n_graph_blocks=4,
-                 n_refine_blocks=2, n_sub=5000, k=16, n_heads=4, dropout=0.05):
+    def __init__(self, hidden=384, n_blocks=12, dropout=0.05):
         super().__init__()
-        self.n_sub = n_sub
-        self.k = k
-        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + 9  # 39
-        out_dim = T_OUT * 3  # 15
+        # pos(3) + vel_in(15) + vel_diff(12) + vel_mean(3) + vel_std(3) + vel_trend(3) = 39
+        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + 9
+        out_dim = T_OUT * 3
 
-        # Pointwise encoder
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.point_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_point_blocks)])
-
-        # Graph Transformer on subsampled points
-        self.graph_blocks = nn.ModuleList([
-            GraphTransformerBlock(hidden, n_heads=n_heads, dropout=dropout)
-            for _ in range(n_graph_blocks)
-        ])
-
-        # Refinement after upsampling
-        self.refine = nn.Sequential(
-            nn.Linear(hidden * 2, hidden),
-            *[ResBlock(hidden, dropout) for _ in range(n_refine_blocks)],
-        )
-
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
         self.norm_out = nn.LayerNorm(hidden)
         self.proj_out = nn.Linear(hidden, out_dim)
-
-    def _subsample_gnn_upsample(self, point_feat, pos):
-        """Subsample, apply Graph Transformer, interpolate back."""
-        B, N, D = point_feat.shape
-        n_sub = min(self.n_sub, N)
-        k = min(self.k, n_sub)
-
-        all_gnn_feat = []
-        for b in range(B):
-            # Random subsample
-            idx = torch.randperm(N, device=pos.device)[:n_sub]
-            sub_feat = point_feat[b, idx]  # [n_sub, D]
-            sub_pos = pos[b, idx]  # [n_sub, 3]
-
-            # Build k-NN graph
-            edge_index = build_knn_graph(sub_pos, k)  # [2, n_sub*k]
-
-            # Edge attributes: relative positions
-            src, dst = edge_index
-            edge_attr = sub_pos[dst] - sub_pos[src]  # [n_sub*k, 3]
-
-            # Apply Graph Transformer
-            h = sub_feat
-            for block in self.graph_blocks:
-                h = block(h, edge_index, edge_attr)
-
-            # IDW interpolation back to all points
-            dist_all = torch.cdist(pos[b], sub_pos)  # [N, n_sub]
-            _, nn3 = dist_all.topk(3, dim=1, largest=False)  # [N, 3]
-            nn_dist = torch.gather(dist_all, 1, nn3)  # [N, 3]
-            w = 1.0 / (nn_dist + 1e-6)
-            w = w / w.sum(dim=1, keepdim=True)
-
-            nn_feat = h[nn3.reshape(-1)].reshape(N, 3, D)
-            gnn_feat = (nn_feat * w.unsqueeze(-1)).sum(dim=1)
-            all_gnn_feat.append(gnn_feat)
-
-        return torch.stack(all_gnn_feat)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         last_vel = velocity_in[:, -1]
 
+        # Rich per-point temporal features
         vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
         vel_flat = velocity_in.reshape(B, N, T * C)
         diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
@@ -158,20 +68,13 @@ class VelocityPredictor(nn.Module):
 
         x = torch.cat([pos, vel_flat, diff_flat, vel_mean, vel_std, vel_trend], dim=-1)
 
-        # Pointwise encoding
-        point_feat = self.proj_in(x)
-        point_feat = self.point_blocks(point_feat)
-
-        # Multi-resolution Graph Transformer
-        gnn_feat = self._subsample_gnn_upsample(point_feat, pos)
-
-        # Combine and refine
-        combined = torch.cat([point_feat, gnn_feat], dim=-1)
-        x = self.refine(combined)
-
+        x = self.proj_in(x)
+        x = self.blocks(x)
         delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
+
         out = delta + last_vel.unsqueeze(1)
 
+        # No-slip BC
         for i in range(B):
             out[i, :, idcs_airfoil[i], :] = 0.0
 
@@ -179,8 +82,23 @@ class VelocityPredictor(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Validation
+# Helpers
 # ---------------------------------------------------------------------------
+
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
+    B, T, N, C = v_in.shape
+    if n_points >= N:
+        return v_in, v_out, pos, idcs_airfoil
+    idx = torch.randperm(N, device=v_in.device)[:n_points].sort().values
+    v_in_sub = v_in[:, :, idx]
+    v_out_sub = v_out[:, :, idx]
+    pos_sub = pos[:, idx]
+    new_idcs = []
+    for i in range(B):
+        mask = torch.isin(idx, idcs_airfoil[i].to(v_in.device))
+        new_idcs.append(mask.nonzero(as_tuple=True)[0])
+    return v_in_sub, v_out_sub, pos_sub, new_idcs
+
 
 def validate(model, val_loaders, device, global_step):
     import wandb
@@ -199,7 +117,8 @@ def validate(model, val_loaders, device, global_step):
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)
+                with torch.amp.autocast("cuda"):
+                    pred = model(v_in, pos, t, idcs)
                 pred = pred.float()
 
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
@@ -240,22 +159,18 @@ if __name__ == "__main__":
     @dataclass
     class Config:
         lr: float = 5e-4
-        weight_decay: float = 1e-4
+        weight_decay: float = 1e-3
         batch_size: int = 1
-        epochs: int = 100
+        epochs: int = 50
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 256
-        n_point_blocks: int = 3
-        n_graph_blocks: int = 4
-        n_refine_blocks: int = 2
-        n_sub: int = 5000
-        k: int = 16
-        n_heads: int = 4
+        hidden: int = 384
+        n_blocks: int = 12
         dropout: float = 0.05
+        n_subsample: int = 30000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -273,9 +188,7 @@ if __name__ == "__main__":
     }
 
     model = VelocityPredictor(
-        hidden=cfg.hidden, n_point_blocks=cfg.n_point_blocks,
-        n_graph_blocks=cfg.n_graph_blocks, n_refine_blocks=cfg.n_refine_blocks,
-        n_sub=cfg.n_sub, k=cfg.k, n_heads=cfg.n_heads, dropout=cfg.dropout,
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks, dropout=cfg.dropout,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -308,9 +221,7 @@ if __name__ == "__main__":
     model_path = model_dir / "checkpoint.pt"
 
     model_cfg_dict = {
-        "hidden": cfg.hidden, "n_point_blocks": cfg.n_point_blocks,
-        "n_graph_blocks": cfg.n_graph_blocks, "n_refine_blocks": cfg.n_refine_blocks,
-        "n_sub": cfg.n_sub, "k": cfg.k, "n_heads": cfg.n_heads, "dropout": cfg.dropout,
+        "hidden": cfg.hidden, "n_blocks": cfg.n_blocks, "dropout": cfg.dropout,
     }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
@@ -335,9 +246,14 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
+            # Subsample for training efficiency + regularization
+            v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
+                v_in, v_out, pos, idcs, cfg.n_subsample
+            )
+
             with torch.amp.autocast("cuda"):
-                pred = model(v_in, pos, t, idcs)
-                loss = (pred - v_out).pow(2).mean()
+                pred = model(v_in_s, pos_s, t, idcs_s)
+                loss = (pred - v_out_s).pow(2).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
