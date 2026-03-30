@@ -108,14 +108,23 @@ class AirflowPredictor(nn.Module):
         self.n_fourier = n_fourier
         self.k_neighbors = k_neighbors
 
+        # Temporal 1D conv for velocity feature extraction
+        self.temporal_conv = nn.Sequential(
+            nn.Conv1d(3, 32, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv1d(32, 32, kernel_size=T_IN, padding=0),  # pool T_IN -> 1
+            nn.GELU(),
+        )
+        temporal_feat_dim = 32
+
         # Input features:
-        # fourier_pos(n_fourier*2*3=384) + vel_in_norm(15) + vel_derivatives(4*3=12) + time(5) + surface_flag(1) = 417
+        # fourier_pos(384) + temporal_conv(32) + vel_in_flat(15) + vel_derivatives(12) + time(5) + surface_flag(1) = 449
         pos_feat_dim = n_fourier * 2 * 3
         vel_feat_dim = T_IN * 3
         deriv_feat_dim = (T_IN - 1) * 3
         time_feat_dim = T_IN
         surface_dim = 1
-        in_dim = pos_feat_dim + vel_feat_dim + deriv_feat_dim + time_feat_dim + surface_dim
+        in_dim = pos_feat_dim + temporal_feat_dim + vel_feat_dim + deriv_feat_dim + time_feat_dim + surface_dim
 
         out_dim = T_OUT * 3
 
@@ -161,7 +170,12 @@ class AirflowPredictor(nn.Module):
         # Fourier position encoding
         pos_feat = self._fourier_encode(pos)
 
-        # Flattened velocity features
+        # Temporal conv features: [B, T, N, 3] -> [B*N, 3, T] -> [B*N, 32, 1] -> [B, N, 32]
+        v_temp = v_in_norm.permute(0, 2, 3, 1).reshape(B * N, C, T)  # [B*N, 3, 5]
+        v_temp = self.temporal_conv(v_temp).squeeze(-1)  # [B*N, 32]
+        v_temp = v_temp.reshape(B, N, -1)  # [B, N, 32]
+
+        # Flattened velocity features (keep for explicit access)
         v_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
 
         # Temporal derivatives
@@ -181,7 +195,7 @@ class AirflowPredictor(nn.Module):
                 surface_flag[i, idcs_airfoil[i], 0] = 1.0
 
         # Concatenate all features
-        x = torch.cat([pos_feat, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
+        x = torch.cat([pos_feat, v_temp, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
 
         # Compute k-NN graph (outside autocast for float32 precision)
         with torch.amp.autocast("cuda", enabled=False):
@@ -404,8 +418,12 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.amp.autocast("cuda"):
             pred = model(v_in_sub, pos_sub, t, idcs_sub)
-            # L2 loss: directly optimizes the competition metric
-            loss = (pred - v_out_sub).norm(dim=3).mean()
+            # Two-phase loss: MSE early for fast convergence, L2 later for metric
+            elapsed_frac = (time.time() - train_start) / (MAX_TIMEOUT * 60)
+            if elapsed_frac < 0.5:
+                loss = (pred - v_out_sub).pow(2).mean()
+            else:
+                loss = (pred - v_out_sub).norm(dim=3).mean()
 
         optimizer.zero_grad()
         scaler.scale(loss).backward()
@@ -424,9 +442,8 @@ for epoch in range(MAX_EPOCHS):
     dt = time.time() - t0
 
     # Validate less frequently early on to save time
-    # First half: every 3 epochs. Second half: every epoch.
     elapsed_frac = (time.time() - train_start) / (MAX_TIMEOUT * 60)
-    do_val = (elapsed_frac > 0.4) or (epoch % 3 == 0) or (epoch < 2)
+    do_val = (elapsed_frac > 0.6) or (epoch % 5 == 0) or (epoch < 2)
 
     if do_val:
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)

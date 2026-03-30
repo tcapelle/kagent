@@ -102,12 +102,20 @@ class AirflowPredictor(nn.Module):
         self.n_fourier = n_fourier
         self.k_neighbors = k_neighbors
 
+        self.temporal_conv = nn.Sequential(
+            nn.Conv1d(3, 32, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv1d(32, 32, kernel_size=T_IN, padding=0),
+            nn.GELU(),
+        )
+        temporal_feat_dim = 32
+
         pos_feat_dim = n_fourier * 2 * 3
         vel_feat_dim = T_IN * 3
         deriv_feat_dim = (T_IN - 1) * 3
         time_feat_dim = T_IN
         surface_dim = 1
-        in_dim = pos_feat_dim + vel_feat_dim + deriv_feat_dim + time_feat_dim + surface_dim
+        in_dim = pos_feat_dim + temporal_feat_dim + vel_feat_dim + deriv_feat_dim + time_feat_dim + surface_dim
 
         out_dim = T_OUT * 3
 
@@ -146,6 +154,11 @@ class AirflowPredictor(nn.Module):
 
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
         pos_feat = self._fourier_encode(pos)
+
+        v_temp = v_in_norm.permute(0, 2, 3, 1).reshape(B * N, C, T)
+        v_temp = self.temporal_conv(v_temp).squeeze(-1)
+        v_temp = v_temp.reshape(B, N, -1)
+
         v_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
 
         v_deriv = v_in_norm[:, 1:] - v_in_norm[:, :-1]
@@ -161,7 +174,7 @@ class AirflowPredictor(nn.Module):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 surface_flag[i, idcs_airfoil[i], 0] = 1.0
 
-        x = torch.cat([pos_feat, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
+        x = torch.cat([pos_feat, v_temp, v_flat, v_deriv_flat, t_features, surface_flag], dim=-1)
 
         with torch.amp.autocast("cuda", enabled=False):
             knn_idx = chunked_knn(pos.float(), self.k_neighbors)
