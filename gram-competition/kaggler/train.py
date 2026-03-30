@@ -253,7 +253,7 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean()
+                loss = F.smooth_l1_loss(pred, v_out_s)
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
