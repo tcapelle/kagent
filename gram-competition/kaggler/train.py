@@ -89,6 +89,10 @@ class VelocityPredictor(nn.Module):
 
         out = torch.stack(outputs, dim=1)  # [B, 5, N, 3]
 
+        # Add residual from input mean (strong prior for steady-state regions)
+        input_mean = velocity_in.mean(dim=1, keepdim=True)  # [B, 1, N, 3]
+        out = out + input_mean
+
         # No-slip BC
         for i in range(B):
             out[i, :, idcs_airfoil[i], :] = 0.0
