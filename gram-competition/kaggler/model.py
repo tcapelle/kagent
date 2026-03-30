@@ -57,8 +57,8 @@ class ResidualMLP(nn.Module):
             nn.Linear(256, hidden),
         )
 
-        # Input: pos_fourier + pos(3) + vel_in(5*3) + temporal_feats(12)
-        in_dim = pos_dim + 3 + T_IN * 3 + 12
+        # Input: pos_fourier + pos(3) + vel_in(5*3) + temporal_feats(12) + accel(3) + vel_mag(5)
+        in_dim = pos_dim + 3 + T_IN * 3 + 12 + 3 + T_IN
 
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks1 = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks // 2)])
@@ -82,7 +82,13 @@ class ResidualMLP(nn.Module):
         vel_std_t = v_norm.std(dim=1)
         vel_delta = v_norm[:, -1] - v_norm[:, 0]
 
-        x = torch.cat([pos, pos_feat, vel_flat, last_vel, vel_mean_t, vel_std_t, vel_delta], dim=-1)
+        # Additional features: acceleration and velocity magnitude
+        vel_accel = v_norm[:, -1] - 2 * v_norm[:, -2] + v_norm[:, -3]  # [B, N, 3]
+        vel_mag = v_norm.norm(dim=3)  # [B, 5, N] -> need [B, N, 5]
+        vel_mag = vel_mag.permute(0, 2, 1)  # [B, N, 5]
+
+        x = torch.cat([pos, pos_feat, vel_flat, last_vel, vel_mean_t, vel_std_t, vel_delta,
+                        vel_accel, vel_mag], dim=-1)
         x = self.proj_in(x)
 
         t_feat = self.time_ff(t.unsqueeze(-1)).reshape(B, -1)
@@ -93,18 +99,12 @@ class ResidualMLP(nn.Module):
         x = self.mid_norm(x)
         x = self.blocks2(x)
 
-        # Per-timestep heads predict raw delta
-        # Use extrapolated velocity as anchor (linear extrapolation from last 2 timesteps)
-        last_vel = velocity_in[:, -1]  # [B, N, 3]
-        prev_vel = velocity_in[:, -2]  # [B, N, 3]
-        vel_trend = last_vel - prev_vel  # per-step change
-
+        # Per-timestep heads predict raw delta from last input velocity
+        last_vel_raw = velocity_in[:, -1]  # [B, N, 3]
         preds = []
-        for i, head in enumerate(self.proj_out):
+        for head in self.proj_out:
             delta = head(x)  # [B, N, 3]
-            # Anchor: linearly extrapolated velocity for this timestep
-            anchor = last_vel + vel_trend * (i + 1)
-            pred = anchor + delta
+            pred = last_vel_raw + delta
             preds.append(pred)
 
         pred = torch.stack(preds, dim=1)  # [B, T_OUT, N, 3]
