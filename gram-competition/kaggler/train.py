@@ -300,7 +300,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 8e-4
+    lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 2
     epochs: int = 80
@@ -310,7 +310,7 @@ class Config:
     n_fourier: int = 64
     k_neighbors: int = 6
     n_edge_conv: int = 6
-    dropout: float = 0.05
+    dropout: float = 0.02
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -459,7 +459,7 @@ for epoch in range(MAX_EPOCHS):
 
     # Validate less frequently early on to save time
     elapsed_frac = (time.time() - train_start) / (MAX_TIMEOUT * 60)
-    do_val = (elapsed_frac > 0.6) or (epoch % 5 == 0) or (epoch < 2)
+    do_val = (elapsed_frac > 0.65) or (epoch % 7 == 0) or (epoch < 2)
 
     if do_val:
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
