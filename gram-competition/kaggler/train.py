@@ -70,9 +70,7 @@ class VelocityPredictor(nn.Module):
 
         x = self.proj_in(x)
         x = self.blocks(x)
-        delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
-
-        out = delta + last_vel.unsqueeze(1)
+        out = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
 
         # No-slip BC
         for i in range(B):
@@ -203,7 +201,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
+        lr: float = 1e-3
         weight_decay: float = 1e-3
         batch_size: int = 1
         epochs: int = 100
