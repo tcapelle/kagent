@@ -216,16 +216,16 @@ if __name__ == "__main__":
         lr: float = 1e-3
         weight_decay: float = 1e-3
         batch_size: int = 1
-        epochs: int = 200
+        epochs: int = 300
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 512
-        n_blocks: int = 14
+        hidden: int = 384
+        n_blocks: int = 12
         dropout: float = 0.05
-        n_subsample: int = 10000
+        n_subsample: int = 8000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
