@@ -13,70 +13,43 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_geometric.nn import TransformerConv
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Multi-resolution GNN: subsample → GNN → interpolate back
+# Multi-resolution Graph Transformer
 # ---------------------------------------------------------------------------
 
-class MessagePassLayer(nn.Module):
-    """Simple message passing on k-NN graph using pure PyTorch."""
-    def __init__(self, dim, k=16):
+def build_knn_graph(pos, k=16):
+    """Build k-NN graph from positions. pos: [N, 3] -> edge_index: [2, N*k]"""
+    dist = torch.cdist(pos, pos)  # [N, N]
+    _, knn_idx = dist.topk(k, dim=1, largest=False)  # [N, k]
+    N = pos.shape[0]
+    src = torch.arange(N, device=pos.device).unsqueeze(1).expand(-1, k).reshape(-1)
+    dst = knn_idx.reshape(-1)
+    return torch.stack([src, dst])  # [2, N*k]
+
+
+class GraphTransformerBlock(nn.Module):
+    """Graph Transformer block using PyG's TransformerConv."""
+    def __init__(self, dim, n_heads=4, dropout=0.0):
         super().__init__()
-        self.k = k
-        self.msg_mlp = nn.Sequential(
-            nn.Linear(dim * 2 + 3, dim),
+        self.conv = TransformerConv(dim, dim // n_heads, heads=n_heads, concat=True,
+                                    dropout=dropout, edge_dim=3)
+        self.norm1 = nn.LayerNorm(dim)
+        self.ffn = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim * 4),
             nn.GELU(),
-            nn.Linear(dim, dim),
-        )
-        self.update_mlp = nn.Sequential(
-            nn.LayerNorm(dim * 2),
-            nn.Linear(dim * 2, dim),
-            nn.GELU(),
-            nn.Linear(dim, dim),
+            nn.Dropout(dropout),
+            nn.Linear(dim * 4, dim),
         )
 
-    def forward(self, x, pos, knn_idx):
-        """x: [N, D], pos: [N, 3], knn_idx: [N, k]"""
-        N, D = x.shape
-        k = knn_idx.shape[1]
-
-        # Gather neighbor features
-        x_j = x[knn_idx.reshape(-1)].reshape(N, k, D)  # [N, k, D]
-        pos_j = pos[knn_idx.reshape(-1)].reshape(N, k, 3)
-        x_i = x.unsqueeze(1).expand(-1, k, -1)  # [N, k, D]
-        rel_pos = pos_j - pos.unsqueeze(1)  # [N, k, 3]
-
-        # Message
-        msg_input = torch.cat([x_i, x_j, rel_pos], dim=-1)  # [N, k, 2D+3]
-        msgs = self.msg_mlp(msg_input)  # [N, k, D]
-        agg = msgs.mean(dim=1)  # [N, D]
-
-        # Update
-        out = self.update_mlp(torch.cat([x, agg], dim=-1))
-        return x + out
-
-
-class MultiResGNN(nn.Module):
-    """Multi-resolution GNN that operates on a subsampled point set."""
-    def __init__(self, dim, n_layers=3, k=16):
-        super().__init__()
-        self.k = k
-        self.layers = nn.ModuleList([MessagePassLayer(dim, k) for _ in range(n_layers)])
-
-    def build_knn(self, pos):
-        """Build k-NN graph using cdist (feasible for <10k points)."""
-        dist = torch.cdist(pos, pos)  # [N, N]
-        _, knn_idx = dist.topk(self.k, dim=1, largest=False)  # [N, k]
-        return knn_idx
-
-    def forward(self, x, pos):
-        """x: [N, D], pos: [N, 3]"""
-        knn_idx = self.build_knn(pos)
-        for layer in self.layers:
-            x = layer(x, pos, knn_idx)
+    def forward(self, x, edge_index, edge_attr):
+        x = x + self.conv(self.norm1(x), edge_index, edge_attr)
+        x = x + self.ffn(x)
         return x
 
 
@@ -96,19 +69,22 @@ class ResBlock(nn.Module):
 
 
 class VelocityPredictor(nn.Module):
-    """Multi-resolution model: pointwise encoder → subsample → GNN → upsample → refine.
+    """Multi-resolution Graph Transformer for velocity prediction.
 
-    1. Encode per-point features with MLP
-    2. Random subsample to n_sub points
-    3. Apply GNN message passing on subsampled points
-    4. Interpolate GNN features back to all points (inverse distance weighting)
-    5. Combine with pointwise features and predict
+    Architecture:
+    1. Pointwise MLP encodes per-point features for all 100k points
+    2. Subsample to n_sub points
+    3. Build k-NN graph on subsampled points
+    4. Apply Graph Transformer layers for spatial mixing
+    5. IDW interpolation back to 100k points
+    6. Combine with pointwise features and predict residual
     """
 
-    def __init__(self, hidden=256, n_point_blocks=4, n_gnn_layers=4,
-                 n_refine_blocks=3, n_sub=5000, k=16, dropout=0.05):
+    def __init__(self, hidden=256, n_point_blocks=3, n_graph_blocks=4,
+                 n_refine_blocks=2, n_sub=5000, k=16, n_heads=4, dropout=0.05):
         super().__init__()
         self.n_sub = n_sub
+        self.k = k
         in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + 9  # 39
         out_dim = T_OUT * 3  # 15
 
@@ -116,25 +92,26 @@ class VelocityPredictor(nn.Module):
         self.proj_in = nn.Linear(in_dim, hidden)
         self.point_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_point_blocks)])
 
-        # GNN on subsampled points
-        self.gnn = MultiResGNN(hidden, n_layers=n_gnn_layers, k=k)
+        # Graph Transformer on subsampled points
+        self.graph_blocks = nn.ModuleList([
+            GraphTransformerBlock(hidden, n_heads=n_heads, dropout=dropout)
+            for _ in range(n_graph_blocks)
+        ])
 
         # Refinement after upsampling
         self.refine = nn.Sequential(
-            nn.Linear(hidden * 2, hidden),  # concat pointwise + GNN features
+            nn.Linear(hidden * 2, hidden),
             *[ResBlock(hidden, dropout) for _ in range(n_refine_blocks)],
         )
 
         self.norm_out = nn.LayerNorm(hidden)
         self.proj_out = nn.Linear(hidden, out_dim)
 
-    def _subsample_and_upsample(self, point_feat, pos, n_sub):
-        """Subsample, apply GNN, interpolate back.
-        point_feat: [B, N, D], pos: [B, N, 3]
-        Returns: gnn_feat [B, N, D]
-        """
+    def _subsample_gnn_upsample(self, point_feat, pos):
+        """Subsample, apply Graph Transformer, interpolate back."""
         B, N, D = point_feat.shape
-        n_sub = min(n_sub, N)
+        n_sub = min(self.n_sub, N)
+        k = min(self.k, n_sub)
 
         all_gnn_feat = []
         for b in range(B):
@@ -143,24 +120,30 @@ class VelocityPredictor(nn.Module):
             sub_feat = point_feat[b, idx]  # [n_sub, D]
             sub_pos = pos[b, idx]  # [n_sub, 3]
 
-            # GNN on subsampled points
-            sub_feat = self.gnn(sub_feat, sub_pos)  # [n_sub, D]
+            # Build k-NN graph
+            edge_index = build_knn_graph(sub_pos, k)  # [2, n_sub*k]
 
-            # Interpolate back to all points using k=3 nearest neighbors + IDW
-            dist = torch.cdist(pos[b], sub_pos)  # [N, n_sub]
-            _, nn_idx = dist.topk(3, dim=1, largest=False)  # [N, 3]
-            nn_dist = torch.gather(dist, 1, nn_idx)  # [N, 3]
+            # Edge attributes: relative positions
+            src, dst = edge_index
+            edge_attr = sub_pos[dst] - sub_pos[src]  # [n_sub*k, 3]
 
-            # Inverse distance weights
-            w = 1.0 / (nn_dist + 1e-6)  # [N, 3]
-            w = w / w.sum(dim=1, keepdim=True)  # [N, 3]
+            # Apply Graph Transformer
+            h = sub_feat
+            for block in self.graph_blocks:
+                h = block(h, edge_index, edge_attr)
 
-            # Weighted sum of neighbor features
-            nn_feat = sub_feat[nn_idx.reshape(-1)].reshape(N, 3, D)  # [N, 3, D]
-            gnn_feat = (nn_feat * w.unsqueeze(-1)).sum(dim=1)  # [N, D]
+            # IDW interpolation back to all points
+            dist_all = torch.cdist(pos[b], sub_pos)  # [N, n_sub]
+            _, nn3 = dist_all.topk(3, dim=1, largest=False)  # [N, 3]
+            nn_dist = torch.gather(dist_all, 1, nn3)  # [N, 3]
+            w = 1.0 / (nn_dist + 1e-6)
+            w = w / w.sum(dim=1, keepdim=True)
+
+            nn_feat = h[nn3.reshape(-1)].reshape(N, 3, D)
+            gnn_feat = (nn_feat * w.unsqueeze(-1)).sum(dim=1)
             all_gnn_feat.append(gnn_feat)
 
-        return torch.stack(all_gnn_feat)  # [B, N, D]
+        return torch.stack(all_gnn_feat)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
@@ -177,19 +160,18 @@ class VelocityPredictor(nn.Module):
 
         # Pointwise encoding
         point_feat = self.proj_in(x)
-        point_feat = self.point_blocks(point_feat)  # [B, N, hidden]
+        point_feat = self.point_blocks(point_feat)
 
-        # Multi-resolution GNN
-        gnn_feat = self._subsample_and_upsample(point_feat, pos, self.n_sub)
+        # Multi-resolution Graph Transformer
+        gnn_feat = self._subsample_gnn_upsample(point_feat, pos)
 
         # Combine and refine
-        combined = torch.cat([point_feat, gnn_feat], dim=-1)  # [B, N, 2*hidden]
+        combined = torch.cat([point_feat, gnn_feat], dim=-1)
         x = self.refine(combined)
 
         delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
         out = delta + last_vel.unsqueeze(1)
 
-        # No-slip BC
         for i in range(B):
             out[i, :, idcs_airfoil[i], :] = 0.0
 
@@ -217,8 +199,7 @@ def validate(model, val_loaders, device, global_step):
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
 
-                with torch.amp.autocast("cuda"):
-                    pred = model(v_in, pos, t, idcs)
+                pred = model(v_in, pos, t, idcs)
                 pred = pred.float()
 
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
@@ -268,11 +249,12 @@ if __name__ == "__main__":
         agent: str | None = None
         debug: bool = False
         hidden: int = 256
-        n_point_blocks: int = 4
-        n_gnn_layers: int = 4
-        n_refine_blocks: int = 3
+        n_point_blocks: int = 3
+        n_graph_blocks: int = 4
+        n_refine_blocks: int = 2
         n_sub: int = 5000
         k: int = 16
+        n_heads: int = 4
         dropout: float = 0.05
 
     cfg = sp.parse(Config)
@@ -292,8 +274,8 @@ if __name__ == "__main__":
 
     model = VelocityPredictor(
         hidden=cfg.hidden, n_point_blocks=cfg.n_point_blocks,
-        n_gnn_layers=cfg.n_gnn_layers, n_refine_blocks=cfg.n_refine_blocks,
-        n_sub=cfg.n_sub, k=cfg.k, dropout=cfg.dropout,
+        n_graph_blocks=cfg.n_graph_blocks, n_refine_blocks=cfg.n_refine_blocks,
+        n_sub=cfg.n_sub, k=cfg.k, n_heads=cfg.n_heads, dropout=cfg.dropout,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -327,8 +309,8 @@ if __name__ == "__main__":
 
     model_cfg_dict = {
         "hidden": cfg.hidden, "n_point_blocks": cfg.n_point_blocks,
-        "n_gnn_layers": cfg.n_gnn_layers, "n_refine_blocks": cfg.n_refine_blocks,
-        "n_sub": cfg.n_sub, "k": cfg.k, "dropout": cfg.dropout,
+        "n_graph_blocks": cfg.n_graph_blocks, "n_refine_blocks": cfg.n_refine_blocks,
+        "n_sub": cfg.n_sub, "k": cfg.k, "n_heads": cfg.n_heads, "dropout": cfg.dropout,
     }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
