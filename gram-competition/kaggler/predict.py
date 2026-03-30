@@ -44,13 +44,11 @@ else:
     model_cfg = {}
 
 model = VelocityPredictor(
-    hidden=model_cfg.get("hidden", 192),
+    grid_size=(64, 32, 48),
+    base_ch=model_cfg.get("base_ch", 96),
+    point_hidden=model_cfg.get("point_hidden", 256),
     n_point_blocks=model_cfg.get("n_point_blocks", 4),
-    grid_size=(48, 24, 36),
-    grid_ch=model_cfg.get("grid_ch", 48),
-    n_combine_blocks=model_cfg.get("n_combine_blocks", 3),
     dropout=model_cfg.get("dropout", 0.1),
-    residual=model_cfg.get("residual", True),
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 model.eval()

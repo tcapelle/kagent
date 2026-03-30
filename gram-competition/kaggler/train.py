@@ -18,101 +18,104 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Grid-based spatial mixing
+# Grid operations
 # ---------------------------------------------------------------------------
 
-class PointToGrid(nn.Module):
-    """Scatter point features onto a regular 3D grid using trilinear splatting."""
-    def __init__(self, grid_size):
-        super().__init__()
-        self.grid_size = grid_size
+def splat_to_grid(features, pos, grid_size):
+    """Trilinear splatting of point features onto a 3D grid.
+    features: [B, N, C], pos: [B, N, 3]
+    Returns: grid [B, C, Gx, Gy, Gz], pos_min [B,1,3], pos_max [B,1,3]
+    """
+    B, N, C = features.shape
+    Gx, Gy, Gz = grid_size
 
-    def forward(self, features, pos):
-        B, N, C = features.shape
-        Gx, Gy, Gz = self.grid_size
+    pos_min = pos.min(dim=1, keepdim=True).values
+    pos_max = pos.max(dim=1, keepdim=True).values
+    pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)
 
-        pos_min = pos.min(dim=1, keepdim=True).values
-        pos_max = pos.max(dim=1, keepdim=True).values
-        pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)
+    gcoords = [
+        (pos_norm[..., i] * (g - 1)).clamp(0, g - 1) for i, g in enumerate([Gx, Gy, Gz])
+    ]
+    g0 = [gc.long().clamp(0, g - 2) for gc, g in zip(gcoords, [Gx, Gy, Gz])]
+    g1 = [gc + 1 for gc in g0]
 
-        gx = (pos_norm[..., 0] * (Gx - 1)).clamp(0, Gx - 1)
-        gy = (pos_norm[..., 1] * (Gy - 1)).clamp(0, Gy - 1)
-        gz = (pos_norm[..., 2] * (Gz - 1)).clamp(0, Gz - 1)
+    weights = [(gc - gc0.float()).unsqueeze(-1) for gc, gc0 in zip(gcoords, g0)]
 
-        gx0 = gx.long().clamp(0, Gx - 2)
-        gy0 = gy.long().clamp(0, Gy - 2)
-        gz0 = gz.long().clamp(0, Gz - 2)
-        gx1, gy1, gz1 = gx0 + 1, gy0 + 1, gz0 + 1
+    feat_f32 = features.float()
+    grid = torch.zeros(B, Gx, Gy, Gz, C, device=features.device, dtype=torch.float32)
+    count = torch.zeros(B, Gx, Gy, Gz, 1, device=features.device, dtype=torch.float32)
 
-        wx = (gx - gx0.float()).unsqueeze(-1)
-        wy = (gy - gy0.float()).unsqueeze(-1)
-        wz = (gz - gz0.float()).unsqueeze(-1)
+    for ix, (dx, dwx) in enumerate([(g0[0], 1 - weights[0]), (g1[0], weights[0])]):
+        for iy, (dy, dwy) in enumerate([(g0[1], 1 - weights[1]), (g1[1], weights[1])]):
+            for iz, (dz, dwz) in enumerate([(g0[2], 1 - weights[2]), (g1[2], weights[2])]):
+                w = (dwx * dwy * dwz).float()
+                idx = (dx * Gy * Gz + dy * Gz + dz).unsqueeze(-1).expand(-1, -1, C)
+                grid.view(B, -1, C).scatter_add_(1, idx, feat_f32 * w)
+                count.view(B, -1, 1).scatter_add_(1, idx[..., :1], w)
 
-        feat_f32 = features.float()
-        wx_f32, wy_f32, wz_f32 = wx.float(), wy.float(), wz.float()
-
-        grid = torch.zeros(B, Gx, Gy, Gz, C, device=features.device, dtype=torch.float32)
-        count = torch.zeros(B, Gx, Gy, Gz, 1, device=features.device, dtype=torch.float32)
-
-        for dx, dwx in [(gx0, 1 - wx_f32), (gx1, wx_f32)]:
-            for dy, dwy in [(gy0, 1 - wy_f32), (gy1, wy_f32)]:
-                for dz, dwz in [(gz0, 1 - wz_f32), (gz1, wz_f32)]:
-                    w = dwx * dwy * dwz
-                    idx = (dx * Gy * Gz + dy * Gz + dz).unsqueeze(-1).expand(-1, -1, C)
-                    grid.view(B, -1, C).scatter_add_(1, idx, feat_f32 * w)
-                    count.view(B, -1, 1).scatter_add_(1, idx[..., :1], w)
-
-        grid = grid / count.clamp(min=1e-6)
-        return grid.permute(0, 4, 1, 2, 3), pos_min, pos_max
+    grid = grid / count.clamp(min=1e-6)
+    return grid.permute(0, 4, 1, 2, 3), pos_min, pos_max
 
 
-class GridToPoint(nn.Module):
-    def forward(self, grid, pos, pos_min, pos_max):
-        pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)
-        pos_grid = pos_norm * 2 - 1
-        sample_grid = pos_grid.unsqueeze(1).unsqueeze(1)
-        sampled = F.grid_sample(grid.float(), sample_grid.float(), mode='bilinear',
-                                padding_mode='border', align_corners=True)
-        return sampled.squeeze(2).squeeze(2).permute(0, 2, 1)
+def sample_from_grid(grid, pos, pos_min, pos_max):
+    """Sample grid features at point positions using trilinear interpolation.
+    grid: [B, C, Gx, Gy, Gz], pos: [B, N, 3]
+    Returns: [B, N, C]
+    """
+    pos_norm = (pos - pos_min) / (pos_max - pos_min + 1e-6)
+    pos_grid = (pos_norm * 2 - 1).float()
+    sample_pts = pos_grid.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, N, 3]
+    sampled = F.grid_sample(grid.float(), sample_pts, mode='bilinear',
+                            padding_mode='border', align_corners=True)
+    return sampled.squeeze(2).squeeze(2).permute(0, 2, 1)  # [B, N, C]
 
+
+# ---------------------------------------------------------------------------
+# 3D U-Net
+# ---------------------------------------------------------------------------
 
 class ConvBlock3D(nn.Module):
     def __init__(self, in_ch, out_ch):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv3d(in_ch, out_ch, 3, padding=1),
-            nn.GroupNorm(min(8, out_ch), out_ch),
-            nn.GELU(),
-            nn.Conv3d(out_ch, out_ch, 3, padding=1),
-            nn.GroupNorm(min(8, out_ch), out_ch),
-            nn.GELU(),
-        )
+        self.conv1 = nn.Conv3d(in_ch, out_ch, 3, padding=1)
+        self.gn1 = nn.GroupNorm(min(8, out_ch), out_ch)
+        self.conv2 = nn.Conv3d(out_ch, out_ch, 3, padding=1)
+        self.gn2 = nn.GroupNorm(min(8, out_ch), out_ch)
         self.skip = nn.Conv3d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
 
     def forward(self, x):
-        return self.net(x) + self.skip(x)
+        h = F.gelu(self.gn1(self.conv1(x)))
+        h = F.gelu(self.gn2(self.conv2(h)))
+        return h + self.skip(x)
 
 
-class Grid3DNet(nn.Module):
+class UNet3D(nn.Module):
+    """3-level U-Net for 3D grid processing."""
+
     def __init__(self, in_ch, out_ch, base_ch=64):
         super().__init__()
-        self.enc1 = ConvBlock3D(in_ch, base_ch)
-        self.enc2 = ConvBlock3D(base_ch, base_ch * 2)
-        self.enc3 = ConvBlock3D(base_ch * 2, base_ch * 4)
+        c1, c2, c3 = base_ch, base_ch * 2, base_ch * 4
 
-        self.up2 = nn.ConvTranspose3d(base_ch * 4, base_ch * 2, 2, stride=2)
-        self.dec2 = ConvBlock3D(base_ch * 4, base_ch * 2)
-        self.up1 = nn.ConvTranspose3d(base_ch * 2, base_ch, 2, stride=2)
-        self.dec1 = ConvBlock3D(base_ch * 2, base_ch)
+        self.enc1 = ConvBlock3D(in_ch, c1)
+        self.enc2 = ConvBlock3D(c1, c2)
+        self.bottleneck = ConvBlock3D(c2, c3)
 
-        self.out_conv = nn.Conv3d(base_ch, out_ch, 1)
+        self.up2 = nn.ConvTranspose3d(c3, c2, 2, stride=2)
+        self.dec2 = ConvBlock3D(c2 * 2, c2)
+        self.up1 = nn.ConvTranspose3d(c2, c1, 2, stride=2)
+        self.dec1 = ConvBlock3D(c1 * 2, c1)
+
+        self.out_conv = nn.Conv3d(c1, out_ch, 1)
+        # Zero-init output so residual starts at 0
+        nn.init.zeros_(self.out_conv.weight)
+        nn.init.zeros_(self.out_conv.bias)
 
     def forward(self, x):
         e1 = self.enc1(x)
         e2 = self.enc2(F.avg_pool3d(e1, 2))
-        e3 = self.enc3(F.avg_pool3d(e2, 2))
+        bn = self.bottleneck(F.avg_pool3d(e2, 2))
 
-        d2 = self.up2(e3)
+        d2 = self.up2(bn)
         d2 = F.interpolate(d2, size=e2.shape[2:], mode='trilinear', align_corners=False)
         d2 = self.dec2(torch.cat([d2, e2], dim=1))
 
@@ -124,7 +127,7 @@ class Grid3DNet(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Model
+# Main model
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -143,62 +146,58 @@ class ResBlock(nn.Module):
 
 
 class VelocityPredictor(nn.Module):
-    """Hybrid model: pointwise MLP + grid-based 3D U-Net for spatial mixing.
+    """Pure grid-based velocity field prediction.
 
-    Direct prediction mode: predicts full output velocity (not residual).
-    Also supports residual mode via residual flag.
+    1. Splat velocity features onto 3D grid
+    2. Process with 3D U-Net for spatial mixing
+    3. Sample back to original point positions
+    4. Combine with point-level MLP for fine details
+    5. Residual prediction from last timestep
     """
 
-    def __init__(self, hidden=192, n_point_blocks=4, grid_size=(48, 24, 36),
-                 grid_ch=48, n_combine_blocks=3, dropout=0.1, residual=True):
+    def __init__(self, grid_size=(64, 32, 48), base_ch=96,
+                 point_hidden=256, n_point_blocks=4, dropout=0.1):
         super().__init__()
-        self.residual = residual
-        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3  # 30
-        out_dim = T_OUT * 3  # 15
+        self.grid_size = grid_size
+        in_ch = T_IN * 3 + (T_IN - 1) * 3  # velocity(15) + diffs(12) = 27
+        out_ch = T_OUT * 3  # 15
 
-        # Per-point feature encoder
-        self.point_proj = nn.Linear(in_dim, hidden)
-        self.point_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_point_blocks)])
+        # Grid U-Net: spatial mixing on the velocity field
+        self.grid_unet = UNet3D(in_ch, out_ch, base_ch=base_ch)
 
-        # Grid branch for spatial mixing
-        self.point_to_grid = PointToGrid(grid_size)
-        self.grid_net = Grid3DNet(hidden, grid_ch, base_ch=grid_ch)
-        self.grid_to_point = GridToPoint()
-
-        # Combine pointwise + spatial features
-        self.combine_proj = nn.Linear(hidden + grid_ch, hidden)
-        self.combine_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_combine_blocks)])
-
-        # Output
-        self.norm_out = nn.LayerNorm(hidden)
-        self.proj_out = nn.Linear(hidden, out_dim)
+        # Pointwise refinement MLP
+        point_in = 3 + in_ch + out_ch  # pos(3) + input_features(27) + grid_output(15) = 45
+        self.point_mlp = nn.Sequential(
+            nn.Linear(point_in, point_hidden),
+            *[ResBlock(point_hidden, dropout) for _ in range(n_point_blocks)],
+            nn.LayerNorm(point_hidden),
+        )
+        self.point_out = nn.Linear(point_hidden, out_ch)
+        nn.init.zeros_(self.point_out.weight)
+        nn.init.zeros_(self.point_out.bias)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         last_vel = velocity_in[:, -1]
 
         vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
-        vel_flat = velocity_in.reshape(B, N, T * C)
-        diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
-        x_in = torch.cat([pos, vel_flat, diff_flat], dim=-1)
+        vel_flat = velocity_in.reshape(B, N, T * C)  # [B, N, 15]
+        diff_flat = vel_diff.reshape(B, N, (T - 1) * C)  # [B, N, 12]
+        features = torch.cat([vel_flat, diff_flat], dim=-1)  # [B, N, 27]
 
-        # Pointwise encoding
-        point_feat = self.point_proj(x_in)
-        point_feat = self.point_blocks(point_feat)
+        # Grid processing
+        grid, pos_min, pos_max = splat_to_grid(features, pos, self.grid_size)
+        grid_delta = self.grid_unet(grid)  # [B, 15, Gx, Gy, Gz]
+        grid_output = sample_from_grid(grid_delta, pos, pos_min, pos_max)  # [B, N, 15]
 
-        # Grid spatial mixing
-        grid, pos_min, pos_max = self.point_to_grid(point_feat, pos)
-        grid = self.grid_net(grid)
-        grid_feat = self.grid_to_point(grid, pos, pos_min, pos_max)
+        # Pointwise refinement
+        point_input = torch.cat([pos, features, grid_output], dim=-1)
+        point_feat = self.point_mlp(point_input)
+        point_delta = self.point_out(point_feat).reshape(B, T_OUT, N, 3)
 
-        # Combine
-        x = self.combine_proj(torch.cat([point_feat, grid_feat], dim=-1))
-        x = self.combine_blocks(x)
-
-        out = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
-
-        if self.residual:
-            out = out + last_vel.unsqueeze(1)
+        # Combine: grid prediction + point refinement + residual
+        delta = grid_output.reshape(B, T_OUT, N, 3) + point_delta
+        out = delta + last_vel.unsqueeze(1)
 
         # No-slip BC
         for i in range(B):
@@ -255,13 +254,8 @@ def validate(model, val_loaders, device, global_step):
     return mean_val, val_metrics
 
 
-# ---------------------------------------------------------------------------
-# Data augmentation
-# ---------------------------------------------------------------------------
-
 def augment_batch(v_in, v_out, pos):
-    """Random spatial flipping for data augmentation."""
-    # Flip y-axis with 50% probability
+    """Random spatial flipping."""
     if torch.rand(1).item() < 0.5:
         pos = pos.clone()
         pos[..., 1] = -pos[..., 1]
@@ -269,7 +263,6 @@ def augment_batch(v_in, v_out, pos):
         v_in[..., 1] = -v_in[..., 1]
         v_out = v_out.clone()
         v_out[..., 1] = -v_out[..., 1]
-    # Flip z-axis with 50% probability
     if torch.rand(1).item() < 0.5:
         pos = pos.clone()
         pos[..., 2] = -pos[..., 2]
@@ -303,12 +296,10 @@ if __name__ == "__main__":
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 192
+        base_ch: int = 96
+        point_hidden: int = 256
         n_point_blocks: int = 4
-        n_combine_blocks: int = 3
-        grid_ch: int = 48
         dropout: float = 0.1
-        residual: bool = True
         augment: bool = True
 
     cfg = sp.parse(Config)
@@ -327,10 +318,9 @@ if __name__ == "__main__":
     }
 
     model = VelocityPredictor(
-        hidden=cfg.hidden, n_point_blocks=cfg.n_point_blocks,
-        grid_size=(48, 24, 36), grid_ch=cfg.grid_ch,
-        n_combine_blocks=cfg.n_combine_blocks, dropout=cfg.dropout,
-        residual=cfg.residual,
+        grid_size=(64, 32, 48), base_ch=cfg.base_ch,
+        point_hidden=cfg.point_hidden, n_point_blocks=cfg.n_point_blocks,
+        dropout=cfg.dropout,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -369,9 +359,8 @@ if __name__ == "__main__":
     model_path = model_dir / "checkpoint.pt"
 
     model_cfg_dict = {
-        "hidden": cfg.hidden, "n_point_blocks": cfg.n_point_blocks,
-        "n_combine_blocks": cfg.n_combine_blocks,
-        "grid_ch": cfg.grid_ch, "dropout": cfg.dropout, "residual": cfg.residual,
+        "base_ch": cfg.base_ch, "point_hidden": cfg.point_hidden,
+        "n_point_blocks": cfg.n_point_blocks, "dropout": cfg.dropout,
     }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
