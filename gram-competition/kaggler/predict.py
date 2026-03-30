@@ -38,7 +38,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 from train import AirflowGNN
-model = AirflowGNN(hidden=192, n_gat_layers=4, n_mlp_blocks=4, k=12).to(device)
+model = AirflowGNN(hidden=128, n_gat_layers=4, n_mlp_blocks=4, k=12).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
