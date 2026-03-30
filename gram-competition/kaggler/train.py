@@ -154,7 +154,7 @@ val_loaders = {
 }
 
 model = ResidualMLP(
-    hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_freqs=256,
+    hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_freqs=128,
     vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
 ).to(device)
 

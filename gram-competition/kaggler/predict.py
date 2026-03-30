@@ -42,7 +42,7 @@ splits_dir = Path(cfg.splits_dir)
 _, _, stats = load_data(splits_dir)
 
 model = ResidualMLP(
-    hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_freqs=256,
+    hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_freqs=128,
     vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
