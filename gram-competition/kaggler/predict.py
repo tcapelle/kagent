@@ -96,8 +96,8 @@ class EdgeConvBlock(nn.Module):
 
 
 class AirflowPredictor(nn.Module):
-    def __init__(self, hidden=512, n_blocks=9, n_fourier=64, dropout=0.05,
-                 k_neighbors=16, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=8, n_fourier=64, dropout=0.05,
+                 k_neighbors=8, n_edge_conv=4, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_fourier = n_fourier
         self.k_neighbors = k_neighbors
@@ -129,12 +129,16 @@ class AirflowPredictor(nn.Module):
 
         self.proj_in = nn.Linear(in_dim, hidden)
 
-        third = n_blocks // 3
-        self.blocks_1 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(third)])
-        self.edge_conv_1 = EdgeConvBlock(hidden, k=k_neighbors)
-        self.blocks_2 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(third)])
-        self.edge_conv_2 = EdgeConvBlock(hidden, k=k_neighbors)
-        self.blocks_3 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks - 2 * third)])
+        n_groups = n_edge_conv + 1
+        blocks_per_group = n_blocks // n_groups
+        remainder = n_blocks % n_groups
+        self.res_groups = nn.ModuleList()
+        self.edge_convs = nn.ModuleList()
+        for i in range(n_groups):
+            n = blocks_per_group + (1 if i < remainder else 0)
+            self.res_groups.append(nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n)]))
+            if i < n_edge_conv:
+                self.edge_convs.append(EdgeConvBlock(hidden, k=k_neighbors))
 
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
@@ -188,11 +192,10 @@ class AirflowPredictor(nn.Module):
             knn_idx = chunked_knn(pos.float(), self.k_neighbors)
 
         x = self.proj_in(x)
-        x = self.blocks_1(x)
-        x = self.edge_conv_1(x, pos, knn_idx)
-        x = self.blocks_2(x)
-        x = self.edge_conv_2(x, pos, knn_idx)
-        x = self.blocks_3(x)
+        for i, res_group in enumerate(self.res_groups):
+            x = res_group(x)
+            if i < len(self.edge_convs):
+                x = self.edge_convs[i](x, pos, knn_idx)
         delta_norm = self.proj_out(x)
         delta_norm = delta_norm.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
 
@@ -218,10 +221,11 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
-    hidden: int = 768
-    n_blocks: int = 6
+    hidden: int = 512
+    n_blocks: int = 8
     n_fourier: int = 64
-    k_neighbors: int = 12
+    k_neighbors: int = 8
+    n_edge_conv: int = 4
 
 
 cfg = sp.parse(Config)
@@ -235,7 +239,7 @@ vel_std = torch.tensor(stats_raw["vel_std"], dtype=torch.float32)
 
 model = AirflowPredictor(
     hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_fourier=cfg.n_fourier,
-    k_neighbors=cfg.k_neighbors,
+    k_neighbors=cfg.k_neighbors, n_edge_conv=cfg.n_edge_conv,
     vel_mean=vel_mean, vel_std=vel_std,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))

@@ -102,8 +102,8 @@ class EdgeConvBlock(nn.Module):
 class AirflowPredictor(nn.Module):
     """Residual MLP + EdgeConv with physics-informed design and Fourier features."""
 
-    def __init__(self, hidden=512, n_blocks=9, n_fourier=64, dropout=0.05,
-                 k_neighbors=16, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=512, n_blocks=8, n_fourier=64, dropout=0.05,
+                 k_neighbors=8, n_edge_conv=4, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_fourier = n_fourier
         self.k_neighbors = k_neighbors
@@ -140,13 +140,19 @@ class AirflowPredictor(nn.Module):
 
         self.proj_in = nn.Linear(in_dim, hidden)
 
-        # Split ResBlocks into 3 groups with EdgeConv between them
-        third = n_blocks // 3
-        self.blocks_1 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(third)])
-        self.edge_conv_1 = EdgeConvBlock(hidden, k=k_neighbors)
-        self.blocks_2 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(third)])
-        self.edge_conv_2 = EdgeConvBlock(hidden, k=k_neighbors)
-        self.blocks_3 = nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n_blocks - 2 * third)])
+        # Interleave ResBlocks and EdgeConv layers
+        # n_edge_conv EdgeConv layers split ResBlocks into (n_edge_conv+1) groups
+        n_groups = n_edge_conv + 1
+        blocks_per_group = n_blocks // n_groups
+        remainder = n_blocks % n_groups
+
+        self.res_groups = nn.ModuleList()
+        self.edge_convs = nn.ModuleList()
+        for i in range(n_groups):
+            n = blocks_per_group + (1 if i < remainder else 0)
+            self.res_groups.append(nn.Sequential(*[ResBlock(hidden, dropout=dropout) for _ in range(n)]))
+            if i < n_edge_conv:
+                self.edge_convs.append(EdgeConvBlock(hidden, k=k_neighbors))
 
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
@@ -212,11 +218,10 @@ class AirflowPredictor(nn.Module):
             knn_idx = chunked_knn(pos.float(), self.k_neighbors)
 
         x = self.proj_in(x)
-        x = self.blocks_1(x)
-        x = self.edge_conv_1(x, pos, knn_idx)
-        x = self.blocks_2(x)
-        x = self.edge_conv_2(x, pos, knn_idx)
-        x = self.blocks_3(x)
+        for i, res_group in enumerate(self.res_groups):
+            x = res_group(x)
+            if i < len(self.edge_convs):
+                x = self.edge_convs[i](x, pos, knn_idx)
         delta_norm = self.proj_out(x)
         delta_norm = delta_norm.reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
 
@@ -300,10 +305,11 @@ class Config:
     batch_size: int = 2
     epochs: int = 80
     subsample_points: int = 15000
-    hidden: int = 768
-    n_blocks: int = 6
+    hidden: int = 512
+    n_blocks: int = 8
     n_fourier: int = 64
-    k_neighbors: int = 12
+    k_neighbors: int = 8
+    n_edge_conv: int = 4
     dropout: float = 0.05
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
@@ -330,7 +336,7 @@ val_loaders = {
 
 model = AirflowPredictor(
     hidden=cfg.hidden, n_blocks=cfg.n_blocks, n_fourier=cfg.n_fourier,
-    dropout=cfg.dropout, k_neighbors=cfg.k_neighbors,
+    dropout=cfg.dropout, k_neighbors=cfg.k_neighbors, n_edge_conv=cfg.n_edge_conv,
     vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
 ).to(device)
 
