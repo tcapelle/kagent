@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from torch.utils.data import DataLoader
-from torch_geometric.nn import GATConv
+from torch_geometric.nn import GATv2Conv
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
@@ -26,7 +26,7 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 def build_knn_graph(pos, k=8, chunk_size=10000):
-    """Build k-NN graph using chunked cdist. Returns edge_index [2, N*k]."""
+    """Build k-NN graph. Returns edge_index [2, N*k] and edge_attr [N*k, 3] (relative positions)."""
     N = pos.shape[0]
     device = pos.device
 
@@ -34,20 +34,23 @@ def build_knn_graph(pos, k=8, chunk_size=10000):
 
     for i in range(0, N, chunk_size):
         end = min(i + chunk_size, N)
-        dist = torch.cdist(pos[i:end], pos)  # [chunk, N]
+        dist = torch.cdist(pos[i:end], pos)
         dist[torch.arange(end - i, device=device), torch.arange(i, end, device=device)] = float('inf')
         _, idx = dist.topk(k, dim=1, largest=False)
         knn_idx[i:end] = idx
 
-    # Convert to edge_index [2, N*k] (source -> target)
     row = torch.arange(N, device=device).unsqueeze(1).expand(-1, k).reshape(-1)
     col = knn_idx.reshape(-1)
-    edge_index = torch.stack([col, row])  # message flows from col to row
-    return edge_index
+    edge_index = torch.stack([col, row])  # source -> target
+
+    # Relative position: target - source
+    edge_attr = pos[row] - pos[col]  # [N*k, 3]
+
+    return edge_index, edge_attr
 
 
 # ---------------------------------------------------------------------------
-# Model: GNN with GAT message passing
+# Model: GNN with GATv2 + edge features
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -64,27 +67,20 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class GATBlock(nn.Module):
-    """GAT layer with residual connection."""
-    def __init__(self, dim, heads=4):
+class GATv2Block(nn.Module):
+    """GATv2 layer with edge features and residual connection."""
+    def __init__(self, dim, heads=4, edge_dim=3):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
-        self.gat = GATConv(dim, dim, heads=heads, concat=False, add_self_loops=True)
+        self.gat = GATv2Conv(dim, dim, heads=heads, concat=False,
+                             edge_dim=edge_dim, add_self_loops=False)
 
-    def forward(self, x, edge_index):
-        return x + self.gat(self.norm(x), edge_index)
+    def forward(self, x, edge_index, edge_attr):
+        return x + self.gat(self.norm(x), edge_index, edge_attr=edge_attr)
 
 
 class AirflowGNN(nn.Module):
-    """GNN for airflow velocity prediction.
-
-    Architecture:
-    1. Encode per-point features (pos + velocity + airfoil indicator)
-    2. k-NN graph construction
-    3. GAT message passing layers
-    4. Per-point MLP head
-    5. Residual prediction + no-slip BC
-    """
+    """GNN for airflow velocity prediction with GATv2 and edge features."""
 
     def __init__(self, hidden=128, n_gat_layers=3, n_mlp_blocks=3, k=8, gat_heads=4):
         super().__init__()
@@ -92,45 +88,39 @@ class AirflowGNN(nn.Module):
         in_dim = 3 + T_IN * 3 + 1  # pos(3) + velocity(15) + airfoil(1) = 19
         out_dim = T_OUT * 3
 
-        # Input encoder
         self.encoder = nn.Sequential(
             nn.Linear(in_dim, hidden),
             nn.GELU(),
             nn.Linear(hidden, hidden),
         )
 
-        # GAT message passing
         self.gat_layers = nn.ModuleList([
-            GATBlock(hidden, heads=gat_heads) for _ in range(n_gat_layers)
+            GATv2Block(hidden, heads=gat_heads, edge_dim=3)
+            for _ in range(n_gat_layers)
         ])
 
-        # Per-point MLP head
         self.mlp_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks)])
         self.head = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
     def _forward_single(self, v_in_i, pos_i, airfoil_mask_i):
-        """Forward pass for a single sample (needed since graph is per-sample)."""
         N = pos_i.shape[0]
-        T, _, C = v_in_i.shape[0], v_in_i.shape[1], v_in_i.shape[2]
+        T = v_in_i.shape[0]
+        C = v_in_i.shape[2]
 
-        v_flat = v_in_i.permute(1, 0, 2).reshape(N, T * C)  # [N, 15]
-        x_in = torch.cat([pos_i, v_flat, airfoil_mask_i], dim=-1)  # [N, 19]
+        v_flat = v_in_i.permute(1, 0, 2).reshape(N, T * C)
+        x_in = torch.cat([pos_i, v_flat, airfoil_mask_i], dim=-1)
 
-        # Encode
-        x = self.encoder(x_in)  # [N, hidden]
+        x = self.encoder(x_in)
 
-        # Build k-NN graph
         with torch.no_grad():
-            edge_index = build_knn_graph(pos_i, k=self.k)
+            edge_index, edge_attr = build_knn_graph(pos_i, k=self.k)
 
-        # Message passing
         for gat in self.gat_layers:
-            x = gat(x, edge_index)
+            x = gat(x, edge_index, edge_attr)
 
-        # MLP head
         x = self.mlp_blocks(x)
-        delta = self.head(x)  # [N, 15]
-        return delta.reshape(N, T_OUT, 3).permute(1, 0, 2)  # [5, N, 3]
+        delta = self.head(x)
+        return delta.reshape(N, T_OUT, 3).permute(1, 0, 2)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
@@ -138,24 +128,20 @@ class AirflowGNN(nn.Module):
 
         results = []
         for i in range(B):
-            # Airfoil mask for this sample
             mask = torch.zeros(N, 1, device=device)
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 idx = idcs_airfoil[i].to(device)
                 mask[idx, 0] = 1.0
 
-            delta = self._forward_single(velocity_in[i], pos[i], mask)  # [5, N, 3]
-
-            # Residual prediction
+            delta = self._forward_single(velocity_in[i], pos[i], mask)
             pred = velocity_in[i, -1:, :, :] + delta
 
-            # No-slip BC
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
                 pred[:, idx, :] = 0.0
 
             results.append(pred)
 
-        return torch.stack(results)  # [B, 5, N, 3]
+        return torch.stack(results)
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +238,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 3e-4
+    lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
     epochs: int = 200
@@ -262,10 +248,11 @@ class Config:
     agent: str | None = None
     debug: bool = False
     hidden: int = 128
-    n_gat_layers: int = 4
-    n_mlp_blocks: int = 4
-    k: int = 12
-    n_subsample: int = 15000
+    n_gat_layers: int = 3
+    n_mlp_blocks: int = 3
+    k: int = 8
+    n_subsample: int = 10000
+    grad_accum: int = 2
 
 
 if __name__ == "__main__":
@@ -333,34 +320,43 @@ if __name__ == "__main__":
         model.train()
         epoch_loss = 0.0
         n_batches = 0
+        optimizer.zero_grad()
 
-        for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+        for batch_idx, (v_in, v_out, pos, t, idcs) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False)):
             v_in = v_in.to(device, non_blocking=True)
             v_out = v_out.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            # Subsample for speed
             v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
                 v_in, v_out, pos, idcs, n_points=cfg.n_subsample
             )
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean()
+                loss = (pred - v_out_s).pow(2).mean() / cfg.grad_accum
 
-            optimizer.zero_grad()
             scaler.scale(loss).backward()
+
+            if (batch_idx + 1) % cfg.grad_accum == 0:
+                scaler.unscale_(optimizer)
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+                global_step += 1
+                wandb.log({"train/loss": loss.item() * cfg.grad_accum, "global_step": global_step})
+
+            epoch_loss += loss.item() * cfg.grad_accum
+            n_batches += 1
+
+        # Handle remaining gradients
+        if n_batches % cfg.grad_accum != 0:
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
-
-            global_step += 1
-            wandb.log({"train/loss": loss.item(), "global_step": global_step})
-
-            epoch_loss += loss.item()
-            n_batches += 1
+            optimizer.zero_grad()
 
         scheduler.step()
         epoch_loss /= n_batches
