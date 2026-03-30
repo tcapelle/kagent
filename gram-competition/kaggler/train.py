@@ -82,8 +82,53 @@ class VelocityPredictor(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+# EMA model
+# ---------------------------------------------------------------------------
+
+class EMA:
+    """Exponential Moving Average of model parameters."""
+    def __init__(self, model, decay=0.999):
+        self.decay = decay
+        self.shadow = {k: v.clone().detach() for k, v in model.state_dict().items()}
+
+    @torch.no_grad()
+    def update(self, model):
+        for k, v in model.state_dict().items():
+            self.shadow[k].mul_(self.decay).add_(v, alpha=1 - self.decay)
+
+    def apply(self, model):
+        """Apply EMA weights to model (for evaluation)."""
+        backup = {k: v.clone() for k, v in model.state_dict().items()}
+        model.load_state_dict(self.shadow)
+        return backup
+
+    def restore(self, model, backup):
+        """Restore original weights."""
+        model.load_state_dict(backup)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def augment_flip(v_in, v_out, pos):
+    """Random Y/Z flip augmentation."""
+    if torch.rand(1).item() < 0.5:
+        pos = pos.clone()
+        pos[..., 1] = -pos[..., 1]
+        v_in = v_in.clone()
+        v_in[..., 1] = -v_in[..., 1]
+        v_out = v_out.clone()
+        v_out[..., 1] = -v_out[..., 1]
+    if torch.rand(1).item() < 0.5:
+        pos = pos.clone()
+        pos[..., 2] = -pos[..., 2]
+        v_in = v_in.clone()
+        v_in[..., 2] = -v_in[..., 2]
+        v_out = v_out.clone()
+        v_out[..., 2] = -v_out[..., 2]
+    return v_in, v_out, pos
+
 
 def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
     B, T, N, C = v_in.shape
@@ -170,7 +215,7 @@ if __name__ == "__main__":
         hidden: int = 384
         n_blocks: int = 12
         dropout: float = 0.05
-        n_subsample: int = 100000
+        n_subsample: int = 30000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -225,6 +270,8 @@ if __name__ == "__main__":
     }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
+    ema = EMA(model, decay=0.999)
+
     best_val = float("inf")
     best_metrics: dict = {}
     global_step = 0
@@ -246,6 +293,9 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
+            # Data augmentation
+            v_in, v_out, pos = augment_flip(v_in, v_out, pos)
+
             # Subsample for training efficiency + regularization
             v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
                 v_in, v_out, pos, idcs, cfg.n_subsample
@@ -262,6 +312,8 @@ if __name__ == "__main__":
             scaler.step(optimizer)
             scaler.update()
 
+            ema.update(model)
+
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
             epoch_loss += loss.item()
@@ -270,7 +322,10 @@ if __name__ == "__main__":
         scheduler.step()
         epoch_loss /= n_batches
 
+        # Validate with EMA weights
+        backup = ema.apply(model)
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+        ema.restore(model, backup)
         dt = time.time() - t0
 
         wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
@@ -282,7 +337,7 @@ if __name__ == "__main__":
             best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(model.state_dict(), model_path)
+            torch.save(ema.shadow, model_path)  # Save EMA weights
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
