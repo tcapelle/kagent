@@ -50,9 +50,9 @@ class VelocityPredictor(nn.Module):
 
     def __init__(self, hidden=384, n_blocks=12, dropout=0.05, n_fourier=32):
         super().__init__()
-        # Input: pos(3) + fourier_pos(2*n_fourier) + vel_in(15) + vel_diff(12) + vel_stats(9)
+        # Input: pos(3) + fourier_pos(2*n_fourier) + vel_in(15) + vel_diff(12) + vel_stats(9) + airfoil_flag(1)
         fourier_dim = 2 * n_fourier
-        in_dim = 3 + fourier_dim + T_IN * 3 + (T_IN - 1) * 3 + 9
+        in_dim = 3 + fourier_dim + T_IN * 3 + (T_IN - 1) * 3 + 9 + 1
         self.in_dim = in_dim
 
         # Random Fourier features for position
@@ -69,7 +69,7 @@ class VelocityPredictor(nn.Module):
         # Separate output heads per timestep for more specialization
         self.proj_outs = nn.ModuleList([nn.Linear(hidden, 3) for _ in range(T_OUT)])
 
-    def _build_features(self, velocity_in, pos):
+    def _build_features(self, velocity_in, pos, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         # Fourier position features
         pos_proj = pos @ self.fourier_B  # [B, N, n_fourier]
@@ -81,12 +81,18 @@ class VelocityPredictor(nn.Module):
         vel_mean = velocity_in.mean(dim=1)
         vel_std = velocity_in.std(dim=1)
         vel_trend = velocity_in[:, -1] - velocity_in[:, 0]
-        return torch.cat([pos, pos_fourier, vel_flat, diff_flat, vel_mean, vel_std, vel_trend], dim=-1)
+
+        # Airfoil mask: 1 for airfoil surface points, 0 otherwise
+        airfoil_mask = torch.zeros(B, N, 1, device=pos.device)
+        for i in range(B):
+            airfoil_mask[i, idcs_airfoil[i], 0] = 1.0
+
+        return torch.cat([pos, pos_fourier, vel_flat, diff_flat, vel_mean, vel_std, vel_trend, airfoil_mask], dim=-1)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
 
-        features = self._build_features(velocity_in, pos)  # [B, N, in_dim]
+        features = self._build_features(velocity_in, pos, idcs_airfoil)  # [B, N, in_dim]
         h = self.proj_in(features)  # [B, N, hidden]
 
         # Process through shared backbone
