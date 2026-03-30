@@ -125,10 +125,10 @@ class Config:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 4
-    epochs: int = 100
-    subsample_train: int = 30000
-    hidden: int = 768
-    n_blocks: int = 12
+    epochs: int = 150
+    subsample_train: int = 40000
+    hidden: int = 512
+    n_blocks: int = 10
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
