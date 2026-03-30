@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
+        lr: float = 1e-3
         weight_decay: float = 1e-3
         batch_size: int = 1
         epochs: int = 300
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
-    ema = EMA(model, decay=0.9995)
+    ema = EMA(model, decay=0.999)
 
     best_val = float("inf")
     best_metrics: dict = {}
@@ -313,7 +313,7 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = F.smooth_l1_loss(pred, v_out_s)
+                loss = F.smooth_l1_loss(pred, v_out_s, beta=0.5)
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
