@@ -274,8 +274,8 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 2
-    epochs: int = 60
-    subsample_points: int = 20000
+    epochs: int = 80
+    subsample_points: int = 15000
     hidden: int = 512
     n_blocks: int = 9
     n_fourier: int = 64
