@@ -204,7 +204,9 @@ if __name__ == "__main__":
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    # T_max matches approximate training budget (30 min / ~37s per epoch)
+    actual_epochs = min(MAX_EPOCHS, 50)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=actual_epochs)
     scaler = torch.amp.GradScaler("cuda")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
@@ -274,7 +276,10 @@ if __name__ == "__main__":
 
             with torch.amp.autocast('cuda'):
                 pred = model(v_in, pos, t, idcs)
-                loss = (pred - v_out).pow(2).mean() / cfg.grad_accum
+                # L1 + L2 mixed loss (Huber-like but separate)
+                l2_loss = (pred - v_out).pow(2).mean()
+                l1_loss = (pred - v_out).abs().mean()
+                loss = (0.5 * l2_loss + 0.5 * l1_loss) / cfg.grad_accum
 
             scaler.scale(loss).backward()
 
