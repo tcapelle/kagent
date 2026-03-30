@@ -21,4 +21,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 15 | chihiro | `bb53e04` | 1.7501 | 1.1629 | 0.5048 | 0.8499 |
 | 16 | alphonse | `9ddba55` | 1.7637 | 1.1717 | 0.5082 | 0.8577 |
 
-*Last updated: 2026-03-30 00:48 UTC*
+*Last updated: 2026-03-30 00:54 UTC*
