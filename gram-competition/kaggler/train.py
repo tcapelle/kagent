@@ -22,7 +22,7 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.0, ffn_mult=4):
+    def __init__(self, dim, dropout=0.0, ffn_mult=4, drop_path=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
@@ -31,8 +31,12 @@ class ResBlock(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(dim * ffn_mult, dim),
         )
+        self.drop_path = drop_path
 
     def forward(self, x):
+        if self.training and self.drop_path > 0:
+            keep = torch.rand(1, device=x.device) > self.drop_path
+            return x + self.net(x) * keep / (1 - self.drop_path)
         return x + self.net(x)
 
 
@@ -44,7 +48,7 @@ class VelocityPredictor(nn.Module):
     This gives 5x the training signal and allows specialization per timestep.
     """
 
-    def __init__(self, hidden=384, n_blocks=12, dropout=0.05, n_fourier=64):
+    def __init__(self, hidden=384, n_blocks=12, dropout=0.05, n_fourier=32):
         super().__init__()
         # Input: pos(3) + fourier_pos(2*n_fourier) + vel_in(15) + vel_diff(12) + vel_stats(9)
         fourier_dim = 2 * n_fourier
@@ -58,7 +62,9 @@ class VelocityPredictor(nn.Module):
         self.time_embed = nn.Embedding(T_OUT, hidden)
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
+        # Stochastic depth: linearly increase drop path from 0 to 0.1
+        drop_rates = [0.1 * i / max(n_blocks - 1, 1) for i in range(n_blocks)]
+        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout, drop_path=dr) for dr in drop_rates])
         self.norm_out = nn.LayerNorm(hidden)
         # Separate output heads per timestep for more specialization
         self.proj_outs = nn.ModuleList([nn.Linear(hidden, 3) for _ in range(T_OUT)])
