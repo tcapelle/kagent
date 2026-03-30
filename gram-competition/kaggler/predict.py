@@ -23,12 +23,10 @@ class PredictConfig:
     checkpoint: str
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
-    hidden: int = 384
-    n_heads: int = 8
-    n_transformer_blocks: int = 6
-    n_pre_mlp: int = 2
-    n_post_mlp: int = 2
-    dropout: float = 0.0  # no dropout at inference
+    hidden: int = 256
+    n_mlp_blocks: int = 4
+    n_gnn_blocks: int = 3
+    k_neighbors: int = 16
 
 
 def main():
@@ -44,10 +42,8 @@ def main():
 
     from train import AirflowModel
     model = AirflowModel(
-        hidden=cfg.hidden, n_heads=cfg.n_heads,
-        n_transformer_blocks=cfg.n_transformer_blocks,
-        n_pre_mlp=cfg.n_pre_mlp, n_post_mlp=cfg.n_post_mlp,
-        dropout=cfg.dropout,
+        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
+        n_gnn_blocks=cfg.n_gnn_blocks, k_neighbors=cfg.k_neighbors,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
     model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))

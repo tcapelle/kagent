@@ -13,7 +13,6 @@ import simple_parsing as sp
 import torch
 import torch.nn as nn
 import wandb
-from flash_attn import flash_attn_func
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -21,50 +20,91 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model: Transformer with mean-residual prediction
+# Efficient kNN-based message passing
 # ---------------------------------------------------------------------------
 
-class TransformerBlock(nn.Module):
-    def __init__(self, dim, n_heads=8, mlp_ratio=4, dropout=0.0):
+def build_knn(pos, k=16, chunk_size=4096):
+    """Build kNN graph efficiently using chunked cdist. pos: [B, N, 3]."""
+    B, N, _ = pos.shape
+    device = pos.device
+    knn_idx = torch.zeros(B, N, k, dtype=torch.long, device=device)
+
+    for b in range(B):
+        for start in range(0, N, chunk_size):
+            end = min(start + chunk_size, N)
+            dists = torch.cdist(pos[b, start:end], pos[b])  # [chunk, N]
+            _, idx = dists.topk(k, dim=-1, largest=False)
+            knn_idx[b, start:end] = idx
+
+    return knn_idx  # [B, N, k]
+
+
+class MessagePassingBlock(nn.Module):
+    """Simple graph neural network block using kNN message passing."""
+
+    def __init__(self, dim, k=16):
         super().__init__()
-        self.n_heads = n_heads
-        self.head_dim = dim // n_heads
-
-        self.norm1 = nn.LayerNorm(dim)
-        self.qkv = nn.Linear(dim, 3 * dim)
-        self.proj = nn.Linear(dim, dim)
-        self.drop1 = nn.Dropout(dropout)
-
-        self.norm2 = nn.LayerNorm(dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(dim, dim * mlp_ratio),
+        self.k = k
+        # Message function: compute edge features from source, target, and relative position
+        self.msg_mlp = nn.Sequential(
+            nn.Linear(dim * 2 + 3, dim),
             nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim * mlp_ratio, dim),
-            nn.Dropout(dropout),
+            nn.Linear(dim, dim),
+        )
+        self.update_mlp = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim * 2, dim * 2),
+            nn.GELU(),
+            nn.Linear(dim * 2, dim),
         )
 
-    def forward(self, x):
+    def forward(self, x, pos, knn_idx):
+        """
+        x: [B, N, D], pos: [B, N, 3], knn_idx: [B, N, k]
+        """
         B, N, D = x.shape
-        h = self.norm1(x)
-        qkv = self.qkv(h).reshape(B, N, 3, self.n_heads, self.head_dim)
-        q, k, v = qkv.unbind(dim=2)
-        attn_out = flash_attn_func(q, k, v).reshape(B, N, D)
-        x = x + self.drop1(self.proj(attn_out))
-        x = x + self.mlp(self.norm2(x))
-        return x
+        k = knn_idx.shape[-1]
 
+        # Gather neighbor features and positions
+        # Flatten batch and point dims for gather
+        knn_flat = knn_idx.reshape(B, N * k)  # [B, N*k]
+
+        x_nb = torch.gather(
+            x, 1, knn_flat.unsqueeze(-1).expand(B, N * k, D)
+        ).reshape(B, N, k, D)  # [B, N, k, D]
+
+        pos_nb = torch.gather(
+            pos, 1, knn_flat.unsqueeze(-1).expand(B, N * k, 3)
+        ).reshape(B, N, k, 3)
+
+        # Relative positions
+        rel_pos = pos_nb - pos.unsqueeze(2)  # [B, N, k, 3]
+
+        # Message: combine source (neighbor), target (self), and relative position
+        x_expanded = x.unsqueeze(2).expand(B, N, k, D)
+        msg_input = torch.cat([x_expanded, x_nb, rel_pos], dim=-1)  # [B, N, k, 2D+3]
+        messages = self.msg_mlp(msg_input)  # [B, N, k, D]
+
+        # Aggregate: mean over neighbors
+        agg = messages.mean(dim=2)  # [B, N, D]
+
+        # Update: combine with self features
+        update = self.update_mlp(torch.cat([x, agg], dim=-1))  # [B, N, D]
+        return x + update  # residual
+
+
+# ---------------------------------------------------------------------------
+# Model
+# ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.0):
+    def __init__(self, dim):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 4),
             nn.GELU(),
-            nn.Dropout(dropout),
             nn.Linear(dim * 4, dim),
-            nn.Dropout(dropout),
         )
 
     def forward(self, x):
@@ -72,11 +112,16 @@ class ResBlock(nn.Module):
 
 
 class AirflowModel(nn.Module):
-    """Transformer predicting residual from temporal mean."""
+    """
+    GNN + MLP model: kNN message passing for spatial interaction,
+    MLP for per-point prediction. Predicts residual from temporal mean.
+    """
 
-    def __init__(self, hidden=384, n_heads=8, n_transformer_blocks=6, n_pre_mlp=2, n_post_mlp=2,
-                 dropout=0.05, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=256, n_mlp_blocks=4, n_gnn_blocks=3, k_neighbors=16,
+                 vel_mean=None, vel_std=None):
         super().__init__()
+        self.k_neighbors = k_neighbors
+        self.n_gnn_blocks = n_gnn_blocks
 
         if vel_mean is not None:
             self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
@@ -90,17 +135,18 @@ class AirflowModel(nn.Module):
         out_dim = T_OUT * 3
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.pre_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_pre_mlp)])
-        self.transformer = nn.Sequential(
-            *[TransformerBlock(hidden, n_heads, dropout=dropout) for _ in range(n_transformer_blocks)]
-        )
-        self.post_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_post_mlp)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
+        # Interleave MLP and GNN blocks
+        self.pre_mlp = nn.Sequential(*[ResBlock(hidden) for _ in range(2)])
+        self.gnn_blocks = nn.ModuleList([MessagePassingBlock(hidden, k_neighbors) for _ in range(n_gnn_blocks)])
+        self.inter_mlp = nn.ModuleList([ResBlock(hidden) for _ in range(n_gnn_blocks)])
+        self.post_mlp = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks - 2)])
+
+        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
         nn.init.zeros_(self.proj_out[-1].weight)
         nn.init.zeros_(self.proj_out[-1].bias)
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
+    def forward(self, velocity_in, pos, t, idcs_airfoil, knn_idx=None):
         B, T, N, C = velocity_in.shape
 
         vel_norm = (velocity_in - self.vel_mean) / (self.vel_std + 1e-8)
@@ -112,11 +158,19 @@ class AirflowModel(nn.Module):
 
         x = torch.cat([pos, vel_flat, dev_flat], dim=-1)
         x = self.proj_in(x)
-        x = self.pre_blocks(x)
-        x = self.transformer(x)
-        x = self.post_blocks(x)
+        x = self.pre_mlp(x)
 
+        # Build kNN graph (can be precomputed)
+        if knn_idx is None and self.n_gnn_blocks > 0:
+            knn_idx = build_knn(pos, k=self.k_neighbors)
+
+        for gnn, mlp in zip(self.gnn_blocks, self.inter_mlp):
+            x = gnn(x, pos, knn_idx)
+            x = mlp(x)
+
+        x = self.post_mlp(x)
         delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
+
         out_norm = delta_norm + vel_mean_t
         out = out_norm * (self.vel_std + 1e-8) + self.vel_mean
 
@@ -215,20 +269,18 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 2
-    epochs: int = 300
+    batch_size: int = 1
+    epochs: int = 200
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    subsample_train: int = 12000
-    hidden: int = 384
-    n_heads: int = 8
-    n_transformer_blocks: int = 6
-    n_pre_mlp: int = 2
-    n_post_mlp: int = 2
-    dropout: float = 0.05
+    subsample_train: int = 20000
+    hidden: int = 256
+    n_mlp_blocks: int = 4
+    n_gnn_blocks: int = 3
+    k_neighbors: int = 16
 
 
 def main():
@@ -251,10 +303,8 @@ def main():
     vel_std = stats["vel_std"].to(device)
 
     model = AirflowModel(
-        hidden=cfg.hidden, n_heads=cfg.n_heads,
-        n_transformer_blocks=cfg.n_transformer_blocks,
-        n_pre_mlp=cfg.n_pre_mlp, n_post_mlp=cfg.n_post_mlp,
-        dropout=cfg.dropout,
+        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
+        n_gnn_blocks=cfg.n_gnn_blocks, k_neighbors=cfg.k_neighbors,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
 
