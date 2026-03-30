@@ -204,16 +204,16 @@ if __name__ == "__main__":
         lr: float = 1e-3
         weight_decay: float = 1e-3
         batch_size: int = 1
-        epochs: int = 100
+        epochs: int = 200
         splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
         wandb_group: str | None = None
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 512
-        n_blocks: int = 10
+        hidden: int = 384
+        n_blocks: int = 12
         dropout: float = 0.05
-        n_subsample: int = 100000
+        n_subsample: int = 15000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -301,16 +301,17 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = F.smooth_l1_loss(pred, v_out_s)
+                loss = F.smooth_l1_loss(pred, v_out_s) / 2  # grad accum over 2 steps
 
-            optimizer.zero_grad()
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
 
-            ema.update(model)
+            if (n_batches + 1) % 2 == 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+                ema.update(model)
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
