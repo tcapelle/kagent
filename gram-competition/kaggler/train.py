@@ -66,8 +66,14 @@ class VelocityPredictor(nn.Module):
         drop_rates = [0.1 * i / max(n_blocks - 1, 1) for i in range(n_blocks)]
         self.blocks = nn.Sequential(*[ResBlock(hidden, dropout, drop_path=dr) for dr in drop_rates])
         self.norm_out = nn.LayerNorm(hidden)
-        # Separate output heads per timestep for more specialization
-        self.proj_outs = nn.ModuleList([nn.Linear(hidden, 3) for _ in range(T_OUT)])
+        # Per-timestep refinement MLPs (2 layers each) for more specialization
+        self.refine_blocks = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(hidden, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, 3),
+            ) for _ in range(T_OUT)
+        ])
 
     def _build_features(self, velocity_in, pos, idcs_airfoil):
         B, T, N, C = velocity_in.shape
@@ -104,7 +110,7 @@ class VelocityPredictor(nn.Module):
         for step in range(T_OUT):
             t_emb = self.time_embed(torch.tensor(step, device=h.device))
             h_cond = h + t_emb.unsqueeze(0).unsqueeze(0)
-            pred = self.proj_outs[step](h_cond)  # [B, N, 3]
+            pred = self.refine_blocks[step](h_cond)  # [B, N, 3]
             outputs.append(pred)
 
         delta = torch.stack(outputs, dim=1)  # [B, 5, N, 3]
