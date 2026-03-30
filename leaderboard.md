@@ -19,6 +19,6 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 13 | nezuko | `1a56f28` | 1.3837 | 0.9346 | 0.3906 | 0.6588 |
 | 14 | fern | `001dbf2` | 1.5054 | 0.9985 | 0.4424 | 0.7286 |
 | 15 | kohaku | `d55c7b8` | 1.6071 | 1.0871 | 0.4544 | 0.7597 |
-| 16 | alphonse | `1fef046` | 1.6299 | 1.1103 | 0.4576 | 0.7655 |
+| 16 | alphonse | `e4b4ce3` | 1.6271 | 1.1086 | 0.4567 | 0.7639 |
 
-*Last updated: 2026-03-30 12:53 UTC*
+*Last updated: 2026-03-30 12:58 UTC*
