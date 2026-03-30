@@ -221,7 +221,7 @@ class Config:
     hidden: int = 512
     n_blocks: int = 9
     n_fourier: int = 64
-    k_neighbors: int = 16
+    k_neighbors: int = 12
 
 
 cfg = sp.parse(Config)

@@ -303,7 +303,7 @@ class Config:
     hidden: int = 512
     n_blocks: int = 9
     n_fourier: int = 64
-    k_neighbors: int = 16
+    k_neighbors: int = 12
     dropout: float = 0.05
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
@@ -430,7 +430,7 @@ for epoch in range(MAX_EPOCHS):
             pred = model(v_in_sub, pos_sub, t, idcs_sub)
             # Two-phase loss: MSE early for fast convergence, L2 later for metric
             elapsed_frac = (time.time() - train_start) / (MAX_TIMEOUT * 60)
-            if elapsed_frac < 0.5:
+            if elapsed_frac < 0.4:
                 loss = (pred - v_out_sub).pow(2).mean()
             else:
                 loss = (pred - v_out_sub).norm(dim=3).mean()
