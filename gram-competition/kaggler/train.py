@@ -242,7 +242,7 @@ class Config:
     n_gat_layers: int = 3
     n_mlp_blocks: int = 3
     k: int = 16
-    gat_heads: int = 8
+    gat_heads: int = 4
     n_subsample: int = 10000
     val_every: int = 3
 
