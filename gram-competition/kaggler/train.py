@@ -226,7 +226,7 @@ if __name__ == "__main__":
         hidden: int = 384
         n_blocks: int = 12
         dropout: float = 0.05
-        n_subsample: int = 10000
+        n_subsample: int = 8000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
