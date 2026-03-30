@@ -190,7 +190,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 8e-4
+        lr: float = 6e-4
         weight_decay: float = 1e-4
         batch_size: int = 1
         epochs: int = 200
