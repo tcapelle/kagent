@@ -44,7 +44,7 @@ class VelocityPredictor(nn.Module):
     This gives 5x the training signal and allows specialization per timestep.
     """
 
-    def __init__(self, hidden=384, n_blocks=12, dropout=0.05, n_fourier=32):
+    def __init__(self, hidden=384, n_blocks=12, dropout=0.05, n_fourier=64):
         super().__init__()
         # Input: pos(3) + fourier_pos(2*n_fourier) + vel_in(15) + vel_diff(12) + vel_stats(9)
         fourier_dim = 2 * n_fourier
