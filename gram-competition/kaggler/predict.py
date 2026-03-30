@@ -32,9 +32,10 @@ class PredictConfig:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
-    hidden: int = 384
-    n_blocks: int = 8
-    voxel_dim: int = 64
+    hidden: int = 256
+    n_heads: int = 8
+    n_transformer_blocks: int = 4
+    n_mlp_blocks: int = 4
 
 
 def main():
@@ -50,8 +51,9 @@ def main():
 
     from train import AirflowModel
     model = AirflowModel(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
-        voxel_dim=cfg.voxel_dim,
+        hidden=cfg.hidden, n_heads=cfg.n_heads,
+        n_transformer_blocks=cfg.n_transformer_blocks,
+        n_mlp_blocks=cfg.n_mlp_blocks,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
     model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))

@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
+from flash_attn import flash_attn_func
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -21,93 +22,36 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Voxel-based spatial interaction
+# Model: Single-step predictor used autoregressively
 # ---------------------------------------------------------------------------
 
-class VoxelEncoder(nn.Module):
-    """
-    Bin point features into a 3D voxel grid, run 3D CNN, interpolate back.
-    This gives spatial context to each point efficiently.
-    """
-    def __init__(self, in_dim, voxel_dim=64, grid_size=(32, 8, 16), n_conv_blocks=3):
+class TransformerBlock(nn.Module):
+    def __init__(self, dim, n_heads=8, mlp_ratio=4):
         super().__init__()
-        self.grid_size = grid_size  # (Gx, Gy, Gz)
-        Gx, Gy, Gz = grid_size
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
 
-        # Project per-point features to voxel features
-        self.point_to_voxel = nn.Linear(in_dim, voxel_dim)
+        self.norm1 = nn.LayerNorm(dim)
+        self.qkv = nn.Linear(dim, 3 * dim)
+        self.proj = nn.Linear(dim, dim)
 
-        # 3D CNN for spatial interaction
-        layers = []
-        for i in range(n_conv_blocks):
-            layers.append(nn.Conv3d(voxel_dim, voxel_dim, kernel_size=3, padding=1))
-            layers.append(nn.GroupNorm(8, voxel_dim))
-            layers.append(nn.GELU())
-        self.cnn = nn.Sequential(*layers)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, dim * mlp_ratio),
+            nn.GELU(),
+            nn.Linear(dim * mlp_ratio, dim),
+        )
 
-        # The output is voxel_dim features per point (interpolated from grid)
+    def forward(self, x):
+        B, N, D = x.shape
+        h = self.norm1(x)
+        qkv = self.qkv(h).reshape(B, N, 3, self.n_heads, self.head_dim)
+        q, k, v = qkv.unbind(dim=2)
+        attn_out = flash_attn_func(q, k, v).reshape(B, N, D)
+        x = x + self.proj(attn_out)
+        x = x + self.mlp(self.norm2(x))
+        return x
 
-    def forward(self, point_features, pos, pos_min, pos_max):
-        """
-        point_features: [B, N, in_dim]
-        pos: [B, N, 3]
-        pos_min, pos_max: [3] bounds for the grid
-        Returns: [B, N, voxel_dim] spatial features for each point
-        """
-        B, N, D = point_features.shape
-        Gx, Gy, Gz = self.grid_size
-        device = point_features.device
-
-        # Project features
-        feats = self.point_to_voxel(point_features)  # [B, N, voxel_dim]
-        voxel_dim = feats.shape[-1]
-
-        # Normalize positions to [0, 1] range
-        pos_range = (pos_max - pos_min).clamp(min=1e-6)
-        pos_norm = (pos - pos_min.view(1, 1, 3)) / pos_range.view(1, 1, 3)  # [B, N, 3]
-        pos_norm = pos_norm.clamp(0, 1 - 1e-6)
-
-        # Compute voxel indices
-        vx = (pos_norm[:, :, 0] * Gx).long().clamp(0, Gx - 1)
-        vy = (pos_norm[:, :, 1] * Gy).long().clamp(0, Gy - 1)
-        vz = (pos_norm[:, :, 2] * Gz).long().clamp(0, Gz - 1)
-        voxel_idx = vx * (Gy * Gz) + vy * Gz + vz  # [B, N]
-
-        # Scatter features into voxel grid (mean pooling)
-        grid_flat = torch.zeros(B, Gx * Gy * Gz, voxel_dim, device=device)
-        count = torch.zeros(B, Gx * Gy * Gz, 1, device=device)
-
-        # Use scatter_add for efficiency
-        idx_expanded = voxel_idx.unsqueeze(-1).expand(B, N, voxel_dim)  # [B, N, voxel_dim]
-        grid_flat.scatter_add_(1, idx_expanded, feats)
-        count.scatter_add_(1, voxel_idx.unsqueeze(-1), torch.ones(B, N, 1, device=device))
-
-        grid_flat = grid_flat / count.clamp(min=1)  # mean pooling
-
-        # Reshape to 3D grid: [B, voxel_dim, Gx, Gy, Gz]
-        grid_3d = grid_flat.permute(0, 2, 1).reshape(B, voxel_dim, Gx, Gy, Gz)
-
-        # Apply 3D CNN
-        grid_3d = grid_3d + self.cnn(grid_3d)  # residual connection
-
-        # Interpolate back to each point using trilinear interpolation
-        # grid_sample needs [B, C, D, H, W] and grid in [-1, 1]
-        grid_coords = pos_norm * 2 - 1  # [B, N, 3] in [-1, 1]
-        # grid_sample expects [B, 1, 1, N, 3] with (x, y, z) ordering
-        grid_coords = grid_coords.view(B, 1, 1, N, 3)
-
-        spatial_feats = F.grid_sample(
-            grid_3d, grid_coords,
-            mode='bilinear', padding_mode='border', align_corners=True,
-        )  # [B, voxel_dim, 1, 1, N]
-        spatial_feats = spatial_feats.squeeze(2).squeeze(2).permute(0, 2, 1)  # [B, N, voxel_dim]
-
-        return spatial_feats
-
-
-# ---------------------------------------------------------------------------
-# Model
-# ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
     def __init__(self, dim):
@@ -125,14 +69,17 @@ class ResBlock(nn.Module):
 
 class AirflowModel(nn.Module):
     """
-    Per-point MLP with voxel-based spatial interaction.
-    Predicts residual from temporal mean of input velocities.
+    Single-step predictor: given K input timesteps, predict the next timestep.
+    Used autoregressively for multi-step prediction.
+
+    Predicts normalized residual from temporal mean.
     """
 
-    def __init__(self, hidden=384, n_blocks=8, voxel_dim=64,
-                 grid_size=(32, 8, 16), n_conv_blocks=3,
-                 vel_mean=None, vel_std=None):
+    def __init__(self, hidden=256, n_heads=8, n_transformer_blocks=4, n_mlp_blocks=4,
+                 n_input_steps=5, vel_mean=None, vel_std=None):
         super().__init__()
+        self.n_input_steps = n_input_steps
+
         if vel_mean is not None:
             self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
             self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
@@ -140,68 +87,90 @@ class AirflowModel(nn.Module):
             self.register_buffer("vel_mean", torch.zeros(1, 1, 1, 3))
             self.register_buffer("vel_std", torch.ones(1, 1, 1, 3))
 
-        # Domain bounds (fixed for this dataset)
-        self.register_buffer("pos_min", torch.tensor([0.0, -0.41, 0.0]))
-        self.register_buffer("pos_max", torch.tensor([2.1, 0.41, 1.22]))
+        # Input per point: pos(3) + vel_norm(K*3) + vel_diff((K-1)*3) + vel_dev(K*3)
+        in_dim = 3 + n_input_steps * 3 + (n_input_steps - 1) * 3 + n_input_steps * 3
+        out_dim = 3  # single next timestep
 
-        # Per-point input: pos(3) + vel_in_norm(15) + vel_dev(15) = 33
-        in_dim = 3 + T_IN * 3 + T_IN * 3
-        out_dim = T_OUT * 3
+        self.proj_in = nn.Linear(in_dim, hidden)
 
-        # Voxel encoder for spatial features
-        self.voxel_encoder = VoxelEncoder(
-            in_dim=in_dim, voxel_dim=voxel_dim,
-            grid_size=grid_size, n_conv_blocks=n_conv_blocks,
-        )
+        # MLP blocks first
+        self.pre_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks // 2)])
 
-        # Main MLP: per-point features + spatial features
-        self.proj_in = nn.Linear(in_dim + voxel_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        # Transformer blocks for spatial interaction
+        if n_transformer_blocks > 0:
+            self.transformer = nn.Sequential(
+                *[TransformerBlock(hidden, n_heads=n_heads) for _ in range(n_transformer_blocks)]
+            )
+        else:
+            self.transformer = nn.Identity()
+
+        # More MLP blocks after
+        self.post_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks - n_mlp_blocks // 2)])
+
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # Zero-init for residual learning
+        # Zero-init for residual
         nn.init.zeros_(self.proj_out[-1].weight)
         nn.init.zeros_(self.proj_out[-1].bias)
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
-        B, T, N, C = velocity_in.shape
+    def predict_one_step(self, vel_history, pos, idcs_airfoil):
+        """
+        vel_history: [B, K, N, 3] - K timesteps of velocity
+        pos: [B, N, 3]
+        Returns: [B, N, 3] - predicted next timestep
+        """
+        B, K, N, C = vel_history.shape
 
-        # Normalize velocity
-        vel_norm = (velocity_in - self.vel_mean) / (self.vel_std + 1e-8)
-
-        # Temporal mean
+        vel_norm = (vel_history - self.vel_mean) / (self.vel_std + 1e-8)
         vel_mean_t = vel_norm.mean(dim=1, keepdim=True)
-
-        # Deviation from mean
         vel_dev = vel_norm - vel_mean_t
+        vel_diff = vel_norm[:, 1:] - vel_norm[:, :-1]
 
-        vel_flat = vel_norm.reshape(B, N, T * C)
-        dev_flat = vel_dev.reshape(B, N, T * C)
+        vel_flat = vel_norm.reshape(B, N, K * C)
+        dev_flat = vel_dev.reshape(B, N, K * C)
+        diff_flat = vel_diff.reshape(B, N, (K - 1) * C)
 
-        point_feats = torch.cat([pos, vel_flat, dev_flat], dim=-1)  # [B, N, 33]
-
-        # Get spatial features from voxel encoder
-        spatial_feats = self.voxel_encoder(point_feats, pos, self.pos_min, self.pos_max)
-
-        # Combine per-point and spatial features
-        x = torch.cat([point_feats, spatial_feats], dim=-1)  # [B, N, 33 + voxel_dim]
+        x = torch.cat([pos, vel_flat, diff_flat, dev_flat], dim=-1)
 
         x = self.proj_in(x)
-        x = self.blocks(x)
-        delta_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        x = self.pre_blocks(x)
+        x = self.transformer(x)
+        x = self.post_blocks(x)
+        delta_norm = self.proj_out(x)  # [B, N, 3]
 
-        # Residual from temporal mean
-        out_norm = delta_norm + vel_mean_t
+        # Predict relative to temporal mean
+        out_norm = delta_norm + vel_mean_t.squeeze(1)
+        out = out_norm * (self.vel_std.squeeze(1) + 1e-8) + self.vel_mean.squeeze(1)
 
-        # Denormalize
-        out = out_norm * (self.vel_std + 1e-8) + self.vel_mean
-
-        # No-slip boundary condition
+        # No-slip BC
         for i in range(B):
             if idcs_airfoil[i] is not None and len(idcs_airfoil[i]) > 0:
-                out[i, :, idcs_airfoil[i].to(out.device), :] = 0.0
+                out[i, idcs_airfoil[i].to(out.device), :] = 0.0
 
         return out
+
+    def forward(self, velocity_in, pos, t, idcs_airfoil):
+        """
+        Autoregressive multi-step prediction.
+        velocity_in: [B, 5, N, 3]
+        Returns: [B, 5, N, 3]
+        """
+        B, T, N, C = velocity_in.shape
+        K = self.n_input_steps
+
+        predictions = []
+        # Start with the input history
+        history = velocity_in  # [B, 5, N, 3]
+
+        for step in range(T_OUT):
+            # Use last K timesteps
+            recent = history[:, -K:]
+            next_vel = self.predict_one_step(recent, pos, idcs_airfoil)  # [B, N, 3]
+            predictions.append(next_vel)
+            # Append to history for next step
+            history = torch.cat([history, next_vel.unsqueeze(1)], dim=1)
+
+        return torch.stack(predictions, dim=1)  # [B, 5, N, 3]
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +228,7 @@ def validate(model, val_loaders, device, global_step):
 # Point subsampling
 # ---------------------------------------------------------------------------
 
-def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=30000):
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=8192):
     B, T, N, C = v_in.shape
     device = v_in.device
 
@@ -287,6 +256,59 @@ def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points=30000):
 
 
 # ---------------------------------------------------------------------------
+# Training with teacher forcing
+# ---------------------------------------------------------------------------
+
+def train_step_teacher_forcing(model, v_in, v_out, pos, t, idcs, subsample_n=8192):
+    """
+    Train the single-step predictor using teacher forcing.
+    For each of the 5 output timesteps, use ground truth history to predict next step.
+    """
+    B, T_in, N, C = v_in.shape
+    device = v_in.device
+    K = model.n_input_steps
+
+    # Concatenate input and output: [B, 10, N, 3]
+    all_vel = torch.cat([v_in, v_out], dim=1)  # [B, 10, N, 3]
+
+    total_loss = 0.0
+    n_steps = 0
+
+    # For each output timestep, predict from ground truth history
+    for step in range(T_OUT):
+        target_idx = T_in + step
+        history_start = max(0, target_idx - K)
+        history = all_vel[:, history_start:target_idx]  # [B, K, N, 3]
+
+        # Subsample for training
+        if subsample_n and subsample_n < N:
+            idx = torch.randperm(N, device=device)[:subsample_n].sort().values
+            hist_s = history[:, :, idx, :]
+            target_s = all_vel[:, target_idx, idx, :]
+            pos_s = pos[:, idx, :]
+
+            idcs_s = []
+            for i in range(B):
+                if idcs[i] is not None and len(idcs[i]) > 0:
+                    mask = torch.isin(idx, idcs[i].to(device))
+                    idcs_s.append(torch.where(mask)[0])
+                else:
+                    idcs_s.append(torch.tensor([], dtype=torch.long, device=device))
+        else:
+            hist_s = history
+            target_s = all_vel[:, target_idx]
+            pos_s = pos
+            idcs_s = idcs
+
+        pred = model.predict_one_step(hist_s, pos_s, idcs_s)  # [B, N_sub, 3]
+        loss = (pred - target_s).pow(2).mean()
+        total_loss += loss
+        n_steps += 1
+
+    return total_loss / n_steps
+
+
+# ---------------------------------------------------------------------------
 # Config + main
 # ---------------------------------------------------------------------------
 
@@ -297,17 +319,18 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 1
+    batch_size: int = 2
     epochs: int = 100
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    subsample_train: int = 0  # 0 = use all points
-    hidden: int = 384
-    n_blocks: int = 8
-    voxel_dim: int = 64
+    subsample_train: int = 8192
+    hidden: int = 256
+    n_heads: int = 8
+    n_transformer_blocks: int = 4
+    n_mlp_blocks: int = 4
 
 
 def main():
@@ -330,8 +353,9 @@ def main():
     vel_std = stats["vel_std"].to(device)
 
     model = AirflowModel(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks,
-        voxel_dim=cfg.voxel_dim,
+        hidden=cfg.hidden, n_heads=cfg.n_heads,
+        n_transformer_blocks=cfg.n_transformer_blocks,
+        n_mlp_blocks=cfg.n_mlp_blocks,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
 
@@ -389,18 +413,13 @@ def main():
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            if cfg.subsample_train and cfg.subsample_train < N_POINTS:
-                v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
-                    v_in, v_out, pos, idcs, n_points=cfg.subsample_train
-                )
-            else:
-                v_in_s, v_out_s, pos_s, idcs_s = v_in, v_out, pos, idcs
-
             optimizer.zero_grad()
 
             with torch.cuda.amp.autocast():
-                pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean()
+                loss = train_step_teacher_forcing(
+                    model, v_in, v_out, pos, t, idcs,
+                    subsample_n=cfg.subsample_train,
+                )
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
