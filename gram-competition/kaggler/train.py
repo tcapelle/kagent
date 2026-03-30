@@ -190,7 +190,7 @@ if __name__ == "__main__":
 
     @dataclass
     class Config:
-        lr: float = 5e-4
+        lr: float = 8e-4
         weight_decay: float = 1e-4
         batch_size: int = 1
         epochs: int = 200
@@ -224,6 +224,18 @@ if __name__ == "__main__":
         hidden=512, n_blocks=10, n_fourier_freqs=96,
         vel_mean=vel_mean, vel_std=vel_std, window=T_IN,
     ).to(device)
+
+    # EMA model for stable validation/prediction
+    import copy
+    ema_model = copy.deepcopy(model)
+    ema_decay = 0.999
+
+    def update_ema(ema, model, decay):
+        with torch.no_grad():
+            for ep, mp in zip(ema.parameters(), model.parameters()):
+                ep.data.mul_(decay).add_(mp.data, alpha=1 - decay)
+            for eb, mb in zip(ema.buffers(), model.buffers()):
+                eb.data.copy_(mb.data)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params:,}")
@@ -323,6 +335,7 @@ if __name__ == "__main__":
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
+            update_ema(ema_model, model, ema_decay)
 
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -334,7 +347,7 @@ if __name__ == "__main__":
 
         # Validate every N epochs (or always in first few epochs)
         if epoch < 5 or (epoch + 1) % cfg.val_every == 0:
-            mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+            mean_val, split_metrics = validate(ema_model, val_loaders, device, global_step)
             dt = time.time() - t0
 
             wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
@@ -346,7 +359,7 @@ if __name__ == "__main__":
                 best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
                 for sm in split_metrics.values():
                     best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-                torch.save(model.state_dict(), model_path)
+                torch.save(ema_model.state_dict(), model_path)
                 tag = " *"
 
             peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
