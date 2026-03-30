@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from torch.utils.data import DataLoader
-from torch_geometric.nn import GATv2Conv
+from torch_geometric.nn import GATConv
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
@@ -26,7 +26,7 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 def build_knn_graph(pos, k=8, chunk_size=10000):
-    """Build k-NN graph. Returns edge_index [2, N*k] and edge_attr [N*k, 3] (relative positions)."""
+    """Build k-NN graph. Returns edge_index [2, N*k]."""
     N = pos.shape[0]
     device = pos.device
 
@@ -41,16 +41,11 @@ def build_knn_graph(pos, k=8, chunk_size=10000):
 
     row = torch.arange(N, device=device).unsqueeze(1).expand(-1, k).reshape(-1)
     col = knn_idx.reshape(-1)
-    edge_index = torch.stack([col, row])  # source -> target
-
-    # Relative position: target - source
-    edge_attr = pos[row] - pos[col]  # [N*k, 3]
-
-    return edge_index, edge_attr
+    return torch.stack([col, row])
 
 
 # ---------------------------------------------------------------------------
-# Model: GNN with GATv2 + edge features
+# Model: GNN with GAT
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
@@ -67,20 +62,18 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class GATv2Block(nn.Module):
-    """GATv2 layer with edge features and residual connection."""
-    def __init__(self, dim, heads=4, edge_dim=3):
+class GATBlock(nn.Module):
+    def __init__(self, dim, heads=4):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
-        self.gat = GATv2Conv(dim, dim, heads=heads, concat=False,
-                             edge_dim=edge_dim, add_self_loops=False)
+        self.gat = GATConv(dim, dim, heads=heads, concat=False, add_self_loops=True)
 
-    def forward(self, x, edge_index, edge_attr):
-        return x + self.gat(self.norm(x), edge_index, edge_attr=edge_attr)
+    def forward(self, x, edge_index):
+        return x + self.gat(self.norm(x), edge_index)
 
 
 class AirflowGNN(nn.Module):
-    """GNN for airflow velocity prediction with GATv2 and edge features."""
+    """GNN for airflow velocity prediction."""
 
     def __init__(self, hidden=128, n_gat_layers=3, n_mlp_blocks=3, k=8, gat_heads=4):
         super().__init__()
@@ -95,8 +88,7 @@ class AirflowGNN(nn.Module):
         )
 
         self.gat_layers = nn.ModuleList([
-            GATv2Block(hidden, heads=gat_heads, edge_dim=3)
-            for _ in range(n_gat_layers)
+            GATBlock(hidden, heads=gat_heads) for _ in range(n_gat_layers)
         ])
 
         self.mlp_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_mlp_blocks)])
@@ -104,8 +96,7 @@ class AirflowGNN(nn.Module):
 
     def _forward_single(self, v_in_i, pos_i, airfoil_mask_i):
         N = pos_i.shape[0]
-        T = v_in_i.shape[0]
-        C = v_in_i.shape[2]
+        T, C = v_in_i.shape[0], v_in_i.shape[2]
 
         v_flat = v_in_i.permute(1, 0, 2).reshape(N, T * C)
         x_in = torch.cat([pos_i, v_flat, airfoil_mask_i], dim=-1)
@@ -113,10 +104,10 @@ class AirflowGNN(nn.Module):
         x = self.encoder(x_in)
 
         with torch.no_grad():
-            edge_index, edge_attr = build_knn_graph(pos_i, k=self.k)
+            edge_index = build_knn_graph(pos_i, k=self.k)
 
         for gat in self.gat_layers:
-            x = gat(x, edge_index, edge_attr)
+            x = gat(x, edge_index)
 
         x = self.mlp_blocks(x)
         delta = self.head(x)
@@ -252,7 +243,7 @@ class Config:
     n_mlp_blocks: int = 3
     k: int = 8
     n_subsample: int = 10000
-    grad_accum: int = 2
+    val_every: int = 2
 
 
 if __name__ == "__main__":
@@ -320,9 +311,8 @@ if __name__ == "__main__":
         model.train()
         epoch_loss = 0.0
         n_batches = 0
-        optimizer.zero_grad()
 
-        for batch_idx, (v_in, v_out, pos, t, idcs) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False)):
+        for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
             v_in = v_in.to(device, non_blocking=True)
             v_out = v_out.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
@@ -334,41 +324,40 @@ if __name__ == "__main__":
 
             with torch.amp.autocast("cuda"):
                 pred = model(v_in_s, pos_s, t, idcs_s)
-                loss = (pred - v_out_s).pow(2).mean() / cfg.grad_accum
+                loss = (pred - v_out_s).pow(2).mean()
 
+            optimizer.zero_grad()
             scaler.scale(loss).backward()
-
-            if (batch_idx + 1) % cfg.grad_accum == 0:
-                scaler.unscale_(optimizer)
-                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                scaler.step(optimizer)
-                scaler.update()
-                optimizer.zero_grad()
-                global_step += 1
-                wandb.log({"train/loss": loss.item() * cfg.grad_accum, "global_step": global_step})
-
-            epoch_loss += loss.item() * cfg.grad_accum
-            n_batches += 1
-
-        # Handle remaining gradients
-        if n_batches % cfg.grad_accum != 0:
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
-            optimizer.zero_grad()
+
+            global_step += 1
+            wandb.log({"train/loss": loss.item(), "global_step": global_step})
+
+            epoch_loss += loss.item()
+            n_batches += 1
 
         scheduler.step()
         epoch_loss /= n_batches
 
-        mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+        # Validate every val_every epochs (or last epoch before timeout)
+        remaining_min = MAX_TIMEOUT - (time.time() - train_start) / 60.0
+        should_val = (epoch + 1) % cfg.val_every == 0 or remaining_min < 1.5
+
+        if should_val:
+            mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+        else:
+            mean_val = best_val + 1  # skip val
+
         dt = time.time() - t0
 
         wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
                    "epoch_time_s": dt, "global_step": global_step})
 
         tag = ""
-        if mean_val < best_val:
+        if should_val and mean_val < best_val:
             best_val = mean_val
             best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
             for sm in split_metrics.values():
@@ -377,9 +366,10 @@ if __name__ == "__main__":
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+        val_str = f"val/l2={mean_val:.4f}" if should_val else "val/l2=skip"
         print(
             f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
-            f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+            f"train={epoch_loss:.4f}  {val_str}{tag}"
         )
 
     total_time = (time.time() - train_start) / 60.0
