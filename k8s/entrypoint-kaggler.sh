@@ -21,7 +21,7 @@ cd /workspace/kagent
 
 # --- Branch setup (sparse: kaggler dir only, no organizer) ---
 if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
-    git fetch origin "$BRANCH"
+    git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH"
     git checkout -b "$BRANCH" "origin/$BRANCH"
 else
     git checkout -b "$BRANCH"
