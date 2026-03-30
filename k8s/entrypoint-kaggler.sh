@@ -20,8 +20,8 @@ echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || ec
 cd /workspace/kagent
 
 # --- Branch setup (sparse: kaggler dir only, no organizer) ---
-git fetch --depth 1 origin
-if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
+if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+    git fetch origin "$BRANCH"
     git checkout "$BRANCH"
     git pull origin "$BRANCH"
 else
