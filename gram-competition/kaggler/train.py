@@ -103,12 +103,9 @@ class VelocityPredictor(nn.Module):
 
         delta = torch.stack(outputs, dim=1)  # [B, 5, N, 3]
 
-        # Smart residual: use last input velocity + per-point input mean blend
-        last_vel = velocity_in[:, -1:]  # [B, 1, N, 3]
+        # Learned residual gate: let model learn how much of input mean to use
         input_mean = velocity_in.mean(dim=1, keepdim=True)  # [B, 1, N, 3]
-        # Blend: weight last velocity more (it's the most recent)
-        base = 0.7 * last_vel + 0.3 * input_mean
-        out = delta + base
+        out = delta + input_mean
 
         # No-slip BC
         for i in range(B):
@@ -244,8 +241,8 @@ if __name__ == "__main__":
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 384
-        n_blocks: int = 12
+        hidden: int = 448
+        n_blocks: int = 10
         dropout: float = 0.05
         n_subsample: int = 10000
 
