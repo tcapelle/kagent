@@ -26,10 +26,9 @@ class PredictConfig:
     agent: str | None = None
     batch_size: int = 1
     hidden: int = 256
-    n_heads: int = 8
-    n_transformer_blocks: int = 4
-    n_pre_mlp: int = 2
-    n_post_mlp: int = 2
+    n_mlp_blocks: int = 6
+    fno_channels: int = 32
+    n_fno_blocks: int = 4
 
 
 def main():
@@ -45,9 +44,8 @@ def main():
 
     from train import AirflowModel
     model = AirflowModel(
-        hidden=cfg.hidden, n_heads=cfg.n_heads,
-        n_transformer_blocks=cfg.n_transformer_blocks,
-        n_pre_mlp=cfg.n_pre_mlp, n_post_mlp=cfg.n_post_mlp,
+        hidden=cfg.hidden, n_mlp_blocks=cfg.n_mlp_blocks,
+        fno_channels=cfg.fno_channels, n_fno_blocks=cfg.n_fno_blocks,
         vel_mean=vel_mean, vel_std=vel_std,
     ).to(device)
     model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
