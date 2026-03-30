@@ -31,7 +31,6 @@ class LocalAttention(nn.Module):
         self.chunk_size = chunk_size
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
-        self.scale = self.head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, dim * 3)
         self.proj = nn.Linear(dim, dim)
@@ -69,14 +68,13 @@ class LocalAttention(nn.Module):
         # Reshape into chunks
         x_chunks = x_sorted.reshape(B * n_chunks, cs, D)
 
-        # Multi-head self-attention
+        # Multi-head self-attention with SDPA (numerically stable)
         qkv = self.qkv(x_chunks).reshape(B * n_chunks, cs, 3, self.n_heads, self.head_dim)
         qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B*nc, nh, cs, hd]
         q, k, v = qkv.unbind(0)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        out = (attn @ v).transpose(1, 2).reshape(B * n_chunks, cs, D)
+        out = F.scaled_dot_product_attention(q, k, v)
+        out = out.transpose(1, 2).reshape(B * n_chunks, cs, D)
         out = self.proj(out)
 
         # Reshape back
@@ -224,6 +222,21 @@ def validate(model, val_loaders, device, global_step):
     return mean_val, val_metrics
 
 
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, n_points):
+    B, T, N, C = v_in.shape
+    if n_points >= N:
+        return v_in, v_out, pos, idcs_airfoil
+    idx = torch.randperm(N, device=v_in.device)[:n_points].sort().values
+    v_in_sub = v_in[:, :, idx]
+    v_out_sub = v_out[:, :, idx]
+    pos_sub = pos[:, idx]
+    new_idcs = []
+    for i in range(B):
+        mask = torch.isin(idx, idcs_airfoil[i].to(v_in.device))
+        new_idcs.append(mask.nonzero(as_tuple=True)[0])
+    return v_in_sub, v_out_sub, pos_sub, new_idcs
+
+
 def augment_batch(v_in, v_out, pos):
     if torch.rand(1).item() < 0.5:
         pos = pos.clone()
@@ -269,9 +282,10 @@ if __name__ == "__main__":
         n_mlp_blocks: int = 4
         n_spatial_blocks: int = 3
         n_heads: int = 8
-        chunk_size: int = 1024
+        chunk_size: int = 512
         dropout: float = 0.1
         augment: bool = True
+        subsample_train: int = 20000
 
     cfg = sp.parse(Config)
     MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
@@ -360,9 +374,14 @@ if __name__ == "__main__":
             if cfg.augment:
                 v_in, v_out, pos = augment_batch(v_in, v_out, pos)
 
+            # Subsample for training speed
+            v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
+                v_in, v_out, pos, idcs, cfg.subsample_train
+            )
+
             with torch.amp.autocast("cuda"):
-                pred = model(v_in, pos, t, idcs)
-                loss = (pred - v_out).pow(2).mean()
+                pred = model(v_in_s, pos_s, t, idcs_s)
+                loss = (pred - v_out_s).pow(2).mean()
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
