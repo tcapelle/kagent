@@ -241,9 +241,9 @@ class Config:
     hidden: int = 128
     n_gat_layers: int = 3
     n_mlp_blocks: int = 3
-    k: int = 8
+    k: int = 12
     n_subsample: int = 10000
-    val_every: int = 2
+    val_every: int = 3
 
 
 if __name__ == "__main__":
