@@ -18,8 +18,67 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Model
+# Multi-resolution GNN: subsample → GNN → interpolate back
 # ---------------------------------------------------------------------------
+
+class MessagePassLayer(nn.Module):
+    """Simple message passing on k-NN graph using pure PyTorch."""
+    def __init__(self, dim, k=16):
+        super().__init__()
+        self.k = k
+        self.msg_mlp = nn.Sequential(
+            nn.Linear(dim * 2 + 3, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        )
+        self.update_mlp = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim * 2, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        )
+
+    def forward(self, x, pos, knn_idx):
+        """x: [N, D], pos: [N, 3], knn_idx: [N, k]"""
+        N, D = x.shape
+        k = knn_idx.shape[1]
+
+        # Gather neighbor features
+        x_j = x[knn_idx.reshape(-1)].reshape(N, k, D)  # [N, k, D]
+        pos_j = pos[knn_idx.reshape(-1)].reshape(N, k, 3)
+        x_i = x.unsqueeze(1).expand(-1, k, -1)  # [N, k, D]
+        rel_pos = pos_j - pos.unsqueeze(1)  # [N, k, 3]
+
+        # Message
+        msg_input = torch.cat([x_i, x_j, rel_pos], dim=-1)  # [N, k, 2D+3]
+        msgs = self.msg_mlp(msg_input)  # [N, k, D]
+        agg = msgs.mean(dim=1)  # [N, D]
+
+        # Update
+        out = self.update_mlp(torch.cat([x, agg], dim=-1))
+        return x + out
+
+
+class MultiResGNN(nn.Module):
+    """Multi-resolution GNN that operates on a subsampled point set."""
+    def __init__(self, dim, n_layers=3, k=16):
+        super().__init__()
+        self.k = k
+        self.layers = nn.ModuleList([MessagePassLayer(dim, k) for _ in range(n_layers)])
+
+    def build_knn(self, pos):
+        """Build k-NN graph using cdist (feasible for <10k points)."""
+        dist = torch.cdist(pos, pos)  # [N, N]
+        _, knn_idx = dist.topk(self.k, dim=1, largest=False)  # [N, k]
+        return knn_idx
+
+    def forward(self, x, pos):
+        """x: [N, D], pos: [N, 3]"""
+        knn_idx = self.build_knn(pos)
+        for layer in self.layers:
+            x = layer(x, pos, knn_idx)
+        return x
+
 
 class ResBlock(nn.Module):
     def __init__(self, dim, dropout=0.0):
@@ -37,44 +96,97 @@ class ResBlock(nn.Module):
 
 
 class VelocityPredictor(nn.Module):
-    """Big residual MLP with no-slip BC. Simple but with maximum capacity.
+    """Multi-resolution model: pointwise encoder → subsample → GNN → upsample → refine.
 
-    Keep it simple: the model processes each point independently but with
-    a very large network to maximize per-point prediction quality.
+    1. Encode per-point features with MLP
+    2. Random subsample to n_sub points
+    3. Apply GNN message passing on subsampled points
+    4. Interpolate GNN features back to all points (inverse distance weighting)
+    5. Combine with pointwise features and predict
     """
 
-    def __init__(self, hidden=512, n_blocks=12, dropout=0.05):
+    def __init__(self, hidden=256, n_point_blocks=4, n_gnn_layers=4,
+                 n_refine_blocks=3, n_sub=5000, k=16, dropout=0.05):
         super().__init__()
-        # Features: pos(3) + vel_in(15) + vel_diff(12) + vel_stats(9) = 39
-        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + 9
-        out_dim = T_OUT * 3
+        self.n_sub = n_sub
+        in_dim = 3 + T_IN * 3 + (T_IN - 1) * 3 + 9  # 39
+        out_dim = T_OUT * 3  # 15
 
+        # Pointwise encoder
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_blocks)])
+        self.point_blocks = nn.Sequential(*[ResBlock(hidden, dropout) for _ in range(n_point_blocks)])
+
+        # GNN on subsampled points
+        self.gnn = MultiResGNN(hidden, n_layers=n_gnn_layers, k=k)
+
+        # Refinement after upsampling
+        self.refine = nn.Sequential(
+            nn.Linear(hidden * 2, hidden),  # concat pointwise + GNN features
+            *[ResBlock(hidden, dropout) for _ in range(n_refine_blocks)],
+        )
+
         self.norm_out = nn.LayerNorm(hidden)
         self.proj_out = nn.Linear(hidden, out_dim)
+
+    def _subsample_and_upsample(self, point_feat, pos, n_sub):
+        """Subsample, apply GNN, interpolate back.
+        point_feat: [B, N, D], pos: [B, N, 3]
+        Returns: gnn_feat [B, N, D]
+        """
+        B, N, D = point_feat.shape
+        n_sub = min(n_sub, N)
+
+        all_gnn_feat = []
+        for b in range(B):
+            # Random subsample
+            idx = torch.randperm(N, device=pos.device)[:n_sub]
+            sub_feat = point_feat[b, idx]  # [n_sub, D]
+            sub_pos = pos[b, idx]  # [n_sub, 3]
+
+            # GNN on subsampled points
+            sub_feat = self.gnn(sub_feat, sub_pos)  # [n_sub, D]
+
+            # Interpolate back to all points using k=3 nearest neighbors + IDW
+            dist = torch.cdist(pos[b], sub_pos)  # [N, n_sub]
+            _, nn_idx = dist.topk(3, dim=1, largest=False)  # [N, 3]
+            nn_dist = torch.gather(dist, 1, nn_idx)  # [N, 3]
+
+            # Inverse distance weights
+            w = 1.0 / (nn_dist + 1e-6)  # [N, 3]
+            w = w / w.sum(dim=1, keepdim=True)  # [N, 3]
+
+            # Weighted sum of neighbor features
+            nn_feat = sub_feat[nn_idx.reshape(-1)].reshape(N, 3, D)  # [N, 3, D]
+            gnn_feat = (nn_feat * w.unsqueeze(-1)).sum(dim=1)  # [N, D]
+            all_gnn_feat.append(gnn_feat)
+
+        return torch.stack(all_gnn_feat)  # [B, N, D]
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         last_vel = velocity_in[:, -1]
 
-        # Rich per-point features
-        vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]  # [B, 4, N, 3]
+        vel_diff = velocity_in[:, 1:] - velocity_in[:, :-1]
         vel_flat = velocity_in.reshape(B, N, T * C)
         diff_flat = vel_diff.reshape(B, N, (T - 1) * C)
-
-        # Per-point temporal statistics
-        vel_mean = velocity_in.mean(dim=1)  # [B, N, 3]
-        vel_std = velocity_in.std(dim=1)     # [B, N, 3]
-        vel_trend = velocity_in[:, -1] - velocity_in[:, 0]  # [B, N, 3]
+        vel_mean = velocity_in.mean(dim=1)
+        vel_std = velocity_in.std(dim=1)
+        vel_trend = velocity_in[:, -1] - velocity_in[:, 0]
 
         x = torch.cat([pos, vel_flat, diff_flat, vel_mean, vel_std, vel_trend], dim=-1)
 
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
+        # Pointwise encoding
+        point_feat = self.proj_in(x)
+        point_feat = self.point_blocks(point_feat)  # [B, N, hidden]
 
-        # Residual prediction
+        # Multi-resolution GNN
+        gnn_feat = self._subsample_and_upsample(point_feat, pos, self.n_sub)
+
+        # Combine and refine
+        combined = torch.cat([point_feat, gnn_feat], dim=-1)  # [B, N, 2*hidden]
+        x = self.refine(combined)
+
+        delta = self.proj_out(self.norm_out(x)).reshape(B, T_OUT, N, 3)
         out = delta + last_vel.unsqueeze(1)
 
         # No-slip BC
@@ -155,8 +267,12 @@ if __name__ == "__main__":
         wandb_name: str | None = None
         agent: str | None = None
         debug: bool = False
-        hidden: int = 512
-        n_blocks: int = 12
+        hidden: int = 256
+        n_point_blocks: int = 4
+        n_gnn_layers: int = 4
+        n_refine_blocks: int = 3
+        n_sub: int = 5000
+        k: int = 16
         dropout: float = 0.05
 
     cfg = sp.parse(Config)
@@ -175,7 +291,9 @@ if __name__ == "__main__":
     }
 
     model = VelocityPredictor(
-        hidden=cfg.hidden, n_blocks=cfg.n_blocks, dropout=cfg.dropout,
+        hidden=cfg.hidden, n_point_blocks=cfg.n_point_blocks,
+        n_gnn_layers=cfg.n_gnn_layers, n_refine_blocks=cfg.n_refine_blocks,
+        n_sub=cfg.n_sub, k=cfg.k, dropout=cfg.dropout,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -208,7 +326,9 @@ if __name__ == "__main__":
     model_path = model_dir / "checkpoint.pt"
 
     model_cfg_dict = {
-        "hidden": cfg.hidden, "n_blocks": cfg.n_blocks, "dropout": cfg.dropout,
+        "hidden": cfg.hidden, "n_point_blocks": cfg.n_point_blocks,
+        "n_gnn_layers": cfg.n_gnn_layers, "n_refine_blocks": cfg.n_refine_blocks,
+        "n_sub": cfg.n_sub, "k": cfg.k, "dropout": cfg.dropout,
     }
     torch.save(model_cfg_dict, model_dir / "config.pt")
 
