@@ -22,72 +22,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
-
-
-# ---------------------------------------------------------------------------
-# Baseline MLP — replace with your own architecture
-#
-# Model contract:
-#   Input:  velocity_in [B, 5, N, 3], pos [B, N, 3], t [B, 10], idcs_airfoil list[tensor]
-#   Output: velocity_out [B, 5, N, 3]  (predicted future velocity field)
-#
-# Note: the real competition uses model(t, pos, idcs_airfoil, velocity_in) —
-#       different arg order. If you submit to the real comp, wrap accordingly.
-# ---------------------------------------------------------------------------
-
-
-class ResBlock(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
-            nn.GELU(),
-            nn.Linear(dim * 2, dim),
-        )
-
-    def forward(self, x):
-        return x + self.net(x)
-
-
-class ResidualMLP(nn.Module):
-    """Predict residual from last-input velocity, with normalization and no-slip BC.
-
-    Key ideas:
-      * Normalize velocity_in by dataset stats to stabilize training.
-      * Predict a per-timestep delta on top of velocity_in[:, -1] (strong prior).
-      * Hard-zero the prediction at airfoil surface indices (no-slip).
-    """
-
-    def __init__(self, hidden=384, n_blocks=8, vel_mean=None, vel_std=None):
-        super().__init__()
-        in_dim = 3 + T_IN * 3  # pos(3) + normalized velocity_in(15)
-        out_dim = T_OUT * 3
-        self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
-
-        if vel_mean is None:
-            vel_mean = torch.zeros(3)
-        if vel_std is None:
-            vel_std = torch.ones(3)
-        self.register_buffer("vel_mean", vel_mean.float().view(1, 1, 1, 3))
-        self.register_buffer("vel_std", vel_std.float().view(1, 1, 1, 3))
-
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
-        B, T, N, C = velocity_in.shape
-        v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
-        x = torch.cat([pos, v_norm.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
-        # Predict as residual on top of the last input velocity step.
-        last = velocity_in[:, -1:, :, :]  # [B, 1, N, 3]
-        pred = last + delta * self.vel_std
-        # Hard no-slip: zero velocity at airfoil surface points.
-        for b, idx in enumerate(idcs_airfoil):
-            pred[b, :, idx, :] = 0.0
-        return pred
+from model import ResidualMLP
 
 
 # ---------------------------------------------------------------------------
