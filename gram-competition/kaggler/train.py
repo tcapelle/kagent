@@ -8,6 +8,7 @@ Run:
 """
 
 import os
+import shutil
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -185,9 +186,14 @@ wandb.define_metric("global_step")
 wandb.define_metric("train/*", step_metric="global_step")
 wandb.define_metric("val/*", step_metric="global_step")
 
-model_dir = Path(f"models/model-{run.id}")
-model_dir.mkdir(parents=True)
-model_path = model_dir / "checkpoint.pt"
+KAGGLER_NAME = os.environ.get("KAGGLER_NAME", cfg.agent or "local")
+pvc_dir = Path(f"/mnt/new-pvc/kagent/{RESEARCH_TAG}/{KAGGLER_NAME}/checkpoints/model-{run.id}")
+pvc_dir.mkdir(parents=True, exist_ok=True)
+model_path = pvc_dir / "checkpoint.pt"
+
+# Git-tracked mirror of the best checkpoint (un-ignored in .gitignore).
+git_ckpt_path = Path("checkpoints/best.pt")
+git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +250,7 @@ for epoch in range(MAX_EPOCHS):
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
         torch.save(model.state_dict(), model_path)
+        shutil.copyfile(model_path, git_ckpt_path)
         tag = " *"
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0

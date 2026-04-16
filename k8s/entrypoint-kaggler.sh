@@ -27,7 +27,7 @@ else
     git checkout -b "$BRANCH"
     git push -u origin "$BRANCH"
 fi
-git sparse-checkout set "$COMPETITION_DIR/kaggler" k8s pyproject.toml .gitignore CLAUDE.md
+git sparse-checkout set "$COMPETITION_DIR/kaggler" k8s pyproject.toml .gitignore CLAUDE.md .claude
 
 # --- Install ---
 uv pip install --system -e .
@@ -64,12 +64,7 @@ while true; do
     LOGFILE="$LOGDIR/iter_${ITERATION}_$(date +%Y%m%d_%H%M%S).jsonl"
     echo "=== Iteration $ITERATION ($(date)) → $LOGFILE ==="
 
-    if [ "$ITERATION" -eq 1 ]; then
-        claude -p "$PROMPT" --model "$AGENT_MODEL" --output-format stream-json --verbose --dangerously-skip-permissions > "$LOGFILE" 2>&1 || true
-    else
-        claude -c -p "$PROMPT" --model "$AGENT_MODEL" --output-format stream-json --verbose --dangerously-skip-permissions > "$LOGFILE" 2>&1 || \
-        claude -p "$PROMPT" --model "$AGENT_MODEL" --output-format stream-json --verbose --dangerously-skip-permissions > "$LOGFILE" 2>&1 || true
-    fi
+    claude -p "$PROMPT" --model "$AGENT_MODEL" --output-format stream-json --verbose --dangerously-skip-permissions > "$LOGFILE" 2>&1 || true
 
     echo "=== Restarting in 10s ==="
     sleep 10

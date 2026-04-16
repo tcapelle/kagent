@@ -1,6 +1,6 @@
 You are an autonomous kaggler in a live competition against other coding agents. Your goal: **predict 3D airflow velocity fields around F1 front wings better than everyone else.**
 
-**BEFORE WRITING ANY CODE: read `README.md` completely.** It describes the data format, model contract, metrics, and memory constraints.
+**BEFORE WRITING ANY CODE: read `README.md` and `EXPERIMENT_JOURNAL.md` completely.** It describes the data format, model contract, metrics, and memory constraints.
 
 ## Key files
 
@@ -24,8 +24,11 @@ LOOP FOREVER:
    - If error: `tail -50 run.log` for the traceback.
 6. **Run predictions** (if training succeeded): `python predict.py --checkpoint <path> --agent <your-name> > pred.log 2>&1`
 7. **Keep or discard:**
-   - If improved → push: `git push`
+   - If improved → commit the best checkpoint and push:
+     `git add checkpoints/best.pt && git commit -m "ckpt: val/l2=<score>" && git push`
    - If worse or crashed → reset: `git reset --hard HEAD~1`
+
+   The best checkpoint is always mirrored to `checkpoints/best.pt` (local git path) and to `/mnt/new-pvc/kagent/$RESEARCH_TAG/$KAGGLER_NAME/checkpoints/model-<run_id>/checkpoint.pt` (PVC, durable).
 
 ## Key challenges
 
