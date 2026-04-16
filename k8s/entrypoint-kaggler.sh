@@ -55,7 +55,7 @@ if [ ! -f "$KAGGLER_PROMPT_FILE" ]; then
 fi
 
 PROMPT="You are $KAGGLER_NAME. Your branch is $BRANCH. Read $KAGGLER_PROMPT_FILE in the current directory and follow it. Go."
-LOGDIR="/workspace/kagent/logs"
+LOGDIR="/mnt/new-pvc/kagent/$RESEARCH_TAG/$KAGGLER_NAME"
 
 ITERATION=0
 while true; do
