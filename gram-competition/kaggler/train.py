@@ -64,15 +64,98 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
+def sdpa(q, k, v):
+    """Scaled-dot-product attention using PyTorch's fused kernel (Flash on CUDA).
+
+    Shapes: q [B, H, Lq, D], k [B, H, Lk, D], v [B, H, Lk, D] -> [B, H, Lq, D].
+    """
+    return torch.nn.functional.scaled_dot_product_attention(q, k, v)
+
+
+class PerceiverBlock(nn.Module):
+    """Global-context block: N points <-> M learned latent tokens via cross-attention.
+
+    Cost is O(N*M) not O(N^2). Gives every point access to a sample-wide summary
+    without explicit spatial kNN. Uses Flash Attention on CUDA for memory efficiency.
+    """
+
+    def __init__(self, dim: int, n_latents: int = 256, n_heads: int = 8):
+        super().__init__()
+        assert dim % n_heads == 0
+        self.dim = dim
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
+        self.n_latents = n_latents
+        self.latents = nn.Parameter(torch.randn(n_latents, dim) * 0.02)
+
+        # ln + qkv projections for each attention step
+        self.ln_q1 = nn.LayerNorm(dim)
+        self.ln_kv1 = nn.LayerNorm(dim)
+        self.to_q1 = nn.Linear(dim, dim, bias=False)
+        self.to_kv1 = nn.Linear(dim, 2 * dim, bias=False)
+        self.proj1 = nn.Linear(dim, dim)
+
+        self.ln_s = nn.LayerNorm(dim)
+        self.to_qkv_s = nn.Linear(dim, 3 * dim, bias=False)
+        self.proj_s = nn.Linear(dim, dim)
+
+        self.ln_s2 = nn.LayerNorm(dim)
+        self.ffn_s = nn.Sequential(nn.Linear(dim, dim * 4), nn.GELU(), nn.Linear(dim * 4, dim))
+
+        self.ln_q2 = nn.LayerNorm(dim)
+        self.ln_kv2 = nn.LayerNorm(dim)
+        self.to_q2 = nn.Linear(dim, dim, bias=False)
+        self.to_kv2 = nn.Linear(dim, 2 * dim, bias=False)
+        self.proj2 = nn.Linear(dim, dim)
+
+    def _reshape(self, x):
+        # x: [B, L, D] -> [B, H, L, Dh]
+        B, L, D = x.shape
+        return x.reshape(B, L, self.n_heads, self.head_dim).transpose(1, 2)
+
+    def _merge(self, x):
+        # x: [B, H, L, Dh] -> [B, L, D]
+        B, H, L, Dh = x.shape
+        return x.transpose(1, 2).reshape(B, L, H * Dh)
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        # h: [B, N, D]
+        B, N, D = h.shape
+        latents = self.latents.unsqueeze(0).expand(B, -1, -1)  # [B, M, D]
+
+        # 1) Latents cross-attend to points (encode).
+        q = self._reshape(self.to_q1(self.ln_q1(latents)))
+        kv = self.to_kv1(self.ln_kv1(h))
+        k, v = kv.chunk(2, dim=-1)
+        k = self._reshape(k); v = self._reshape(v)
+        s = latents + self.proj1(self._merge(sdpa(q, k, v)))
+
+        # 2) Self-attend + FFN on slice tokens.
+        qkv = self.to_qkv_s(self.ln_s(s))
+        q, k, v = qkv.chunk(3, dim=-1)
+        q = self._reshape(q); k = self._reshape(k); v = self._reshape(v)
+        s = s + self.proj_s(self._merge(sdpa(q, k, v)))
+        s = s + self.ffn_s(self.ln_s2(s))
+
+        # 3) Points cross-attend to updated latents (decode).
+        q = self._reshape(self.to_q2(self.ln_q2(h)))
+        kv = self.to_kv2(self.ln_kv2(s))
+        k, v = kv.chunk(2, dim=-1)
+        k = self._reshape(k); v = self._reshape(v)
+        return h + self.proj2(self._merge(sdpa(q, k, v)))
+
+
 class BaselineMLP(nn.Module):
-    """Residual per-point ResMLP with Fourier pos encoding and temporal-diff features.
+    """Residual per-point ResMLP with Fourier pos, temporal diffs, and Perceiver context.
 
     Tricks vs. the raw baseline:
       - Fourier (NeRF) encoding of positions.
       - Normalized velocity + normalized inter-step diffs (acceleration proxy) as input.
       - Predict delta = v_out - v_in[-1]; add v_in[-1] back.
       - Hard no-slip BC: zero velocity at airfoil indices.
-      - Wider/deeper: hidden=384, n_blocks=8 (still fast, per-point).
+      - Wider/deeper: hidden=384, n_blocks=8.
+      - Perceiver-style latent cross-attention (M=256 tokens) for global spatial context
+        at O(N*M) cost. Interleaved between ResBlocks.
     """
 
     def __init__(
@@ -80,18 +163,26 @@ class BaselineMLP(nn.Module):
         hidden: int = 384,
         n_blocks: int = 8,
         n_pos_freqs: int = 6,
+        n_latents: int = 256,
+        n_heads: int = 8,
+        perceiver_every: int = 4,
         vel_mean: torch.Tensor | None = None,
         vel_std: torch.Tensor | None = None,
     ):
         super().__init__()
         self.n_pos_freqs = n_pos_freqs
+        self.perceiver_every = perceiver_every
         pos_feat_dim = 3 + 3 * 2 * n_pos_freqs      # 39
         vel_feat_dim = T_IN * 3 + (T_IN - 1) * 3     # 15 + 12 = 27
         in_dim = pos_feat_dim + vel_feat_dim         # 66
         out_dim = T_OUT * 3                          # 15
 
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.res_blocks = nn.ModuleList([ResBlock(hidden) for _ in range(n_blocks)])
+        n_perceivers = n_blocks // perceiver_every  # 8 // 3 = 2
+        self.perceiver_blocks = nn.ModuleList(
+            [PerceiverBlock(hidden, n_latents=n_latents, n_heads=n_heads) for _ in range(n_perceivers)]
+        )
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
         if vel_mean is None:
@@ -115,7 +206,14 @@ class BaselineMLP(nn.Module):
         x = torch.cat([pos_feat, vel_feat], dim=-1)             # [B, N, 66]
 
         x = self.proj_in(x)
-        x = self.blocks(x)
+        p_iter = iter(self.perceiver_blocks)
+        for i, block in enumerate(self.res_blocks):
+            x = block(x)
+            # After every `perceiver_every` ResBlocks, run a global-context block.
+            if (i + 1) % self.perceiver_every == 0:
+                pb = next(p_iter, None)
+                if pb is not None:
+                    x = pb(x)
         delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
         out = v_last.unsqueeze(1) + delta
         for b in range(B):
@@ -144,7 +242,8 @@ def validate(model, val_loaders, device, global_step):
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    pred = model(v_in, pos, t, idcs).float()  # [B, 5, N, 3]
 
                 # L2 velocity error (competition hint metric)
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))  # [B]
@@ -270,9 +369,10 @@ def main():
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-            # L2-per-point loss: matches the val metric; less outlier-dominated than MSE.
-            loss = (pred - v_out).norm(dim=3).mean()
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                # L2-per-point loss: matches the val metric; less outlier-dominated than MSE.
+                loss = (pred - v_out).norm(dim=3).mean()
 
             optimizer.zero_grad()
             loss.backward()
