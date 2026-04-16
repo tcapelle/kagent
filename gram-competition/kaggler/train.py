@@ -16,6 +16,7 @@ from pathlib import Path
 import simple_parsing as sp
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import wandb
 import yaml
 from torch.utils.data import DataLoader
@@ -25,14 +26,15 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Baseline MLP — replace with your own architecture
+# Model — residual prediction + voxel-grid spatial mixer
 #
-# Model contract:
-#   Input:  velocity_in [B, 5, N, 3], pos [B, N, 3], t [B, 10], idcs_airfoil list[tensor]
-#   Output: velocity_out [B, 5, N, 3]  (predicted future velocity field)
+# Contract: model(velocity_in [B,5,N,3], pos [B,N,3], t [B,10], idcs_airfoil list[Tensor]) -> [B,5,N,3]
 #
-# Note: the real competition uses model(t, pos, idcs_airfoil, velocity_in) —
-#       different arg order. If you submit to the real comp, wrap accordingly.
+# Key design:
+#   - Predict delta from last input frame (residual), in normalized space.
+#   - Spatial context via voxel-grid pooling + 3D conv + trilinear gather.
+#   - Per-point ResMLP blocks alternate with VoxelMixer blocks.
+#   - Hard no-slip: zero velocity on airfoil indices.
 # ---------------------------------------------------------------------------
 
 
@@ -46,41 +48,108 @@ class ResBlock(nn.Module):
             nn.Linear(dim * 2, dim),
         )
 
-    def forward(self, x):
+    def forward(self, x, pos=None):
         return x + self.net(x)
 
 
-class BaselineMLP(nn.Module):
-    """Predict residual delta from last input frame, with normalization + no-slip.
+class VoxelMixer(nn.Module):
+    """Pool point features onto a 3D voxel grid, mix via 3D conv, gather back.
 
-    Output = velocity_in[-1] + delta, with delta predicted in normalized space.
-    Velocity is clamped to 0 on airfoil surface (no-slip).
+    Uses per-sample bbox normalization so the grid covers each geometry tightly.
+    Scatter-average pooling, then 2-layer 3D conv with residual, then trilinear
+    grid_sample to recover per-point features.
     """
 
-    def __init__(self, hidden=384, n_blocks=8, vel_mean=None, vel_std=None):
+    def __init__(self, dim, grid_size=32):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + normalized velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # normalized delta (5*3=15)
+        self.G = grid_size
+        self.norm = nn.LayerNorm(dim)
+        self.conv = nn.Sequential(
+            nn.Conv3d(dim, dim, 3, padding=1),
+            nn.GELU(),
+            nn.Conv3d(dim, dim, 3, padding=1),
+        )
+
+    def forward(self, x, pos):
+        B, N, D = x.shape
+        G = self.G
+        h = self.norm(x)
+
+        p_min = pos.amin(dim=1, keepdim=True)
+        p_max = pos.amax(dim=1, keepdim=True)
+        p_norm = (pos - p_min) / (p_max - p_min).clamp(min=1e-6)  # [B, N, 3] in [0,1]
+
+        v_idx = (p_norm * G).long().clamp(0, G - 1)
+        flat_idx = v_idx[..., 0] * G * G + v_idx[..., 1] * G + v_idx[..., 2]
+
+        voxel_feat = torch.zeros(B, G ** 3, D, device=x.device, dtype=x.dtype)
+        count = torch.zeros(B, G ** 3, device=x.device, dtype=x.dtype)
+        voxel_feat.scatter_add_(1, flat_idx.unsqueeze(-1).expand(-1, -1, D), h)
+        count.scatter_add_(1, flat_idx, torch.ones_like(flat_idx, dtype=x.dtype))
+        voxel_feat = voxel_feat / count.unsqueeze(-1).clamp(min=1.0)
+
+        vf = voxel_feat.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
+        vf = vf + self.conv(vf)
+
+        # Trilinear gather. grid_sample with 5D input [B, C, D, H, W]:
+        # grid last dim is (x, y, z) mapping to (W, H, D).
+        # Our voxel axes are (pos_x=D, pos_y=H, pos_z=W), so grid = (p_z, p_y, p_x).
+        grid = (p_norm * 2 - 1)[:, :, [2, 1, 0]].view(B, 1, 1, N, 3)
+        sampled = F.grid_sample(vf, grid, mode="bilinear",
+                                align_corners=True, padding_mode="border")
+        sampled = sampled.squeeze(2).squeeze(2).permute(0, 2, 1)  # [B, N, D]
+        return x + sampled
+
+
+class BaselineMLP(nn.Module):
+    """Residual MLP + voxel-grid spatial mixer, predicts delta in normalized space."""
+
+    def __init__(self, hidden=256, n_blocks=4, grid_size=32,
+                 vel_mean=None, vel_std=None, n_fourier=8):
+        super().__init__()
+        self.n_fourier = n_fourier
+        fourier_dim = 3 * n_fourier * 2
+        in_dim = 3 + fourier_dim + T_IN * 3
+        out_dim = T_OUT * 3
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+
+        blocks = []
+        for _ in range(n_blocks):
+            blocks.append(ResBlock(hidden))
+            blocks.append(VoxelMixer(hidden, grid_size=grid_size))
+        blocks.append(ResBlock(hidden))
+        self.blocks = nn.ModuleList(blocks)
+
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
         vel_mean = torch.zeros(3) if vel_mean is None else vel_mean
         vel_std = torch.ones(3) if vel_std is None else vel_std
         self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
         self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
+
+        freqs = 2.0 ** torch.arange(n_fourier) * torch.pi
+        self.register_buffer("fourier_freqs", freqs)
+
         nn.init.zeros_(self.proj_out[-1].weight)
         nn.init.zeros_(self.proj_out[-1].bias)
+
+    def _fourier(self, pos):
+        p = pos.unsqueeze(-1) * self.fourier_freqs  # [B, N, 3, K]
+        return torch.cat([p.sin(), p.cos()], dim=-1).reshape(pos.shape[0], pos.shape[1], -1)
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, 5, N, 3]
-        feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
-        x = torch.cat([pos, feat], dim=-1)  # [B, N, 18]
+        v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
+        fpos = self._fourier(pos)
+        x = torch.cat([pos, fpos, v_feat], dim=-1)
         x = self.proj_in(x)
-        x = self.blocks(x)
-        delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)  # [B,T,N,3]
+
+        for blk in self.blocks:
+            x = blk(x, pos)
+
+        delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
         delta = delta_norm * self.vel_std
-        pred = velocity_in[:, -1:] + delta  # residual from last frame
+        pred = velocity_in[:, -1:] + delta
         for b in range(B):
             pred[b, :, idcs_airfoil[b]] = 0.0
         return pred
@@ -91,7 +160,6 @@ class BaselineMLP(nn.Module):
 # ---------------------------------------------------------------------------
 
 def validate(model, val_loaders, device, global_step):
-    """Run validation, log to W&B. Returns mean val metric (L2 velocity error)."""
     model.eval()
     val_metrics: dict[str, dict] = {}
 
@@ -107,14 +175,12 @@ def validate(model, val_loaders, device, global_step):
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                pred = model(v_in, pos, t, idcs)
 
-                # L2 velocity error (competition hint metric)
-                l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))  # [B]
+                l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
                 total_l2 += l2_err.sum().item()
 
-                # Per-component MAE
-                mae = (pred - v_out).abs().mean(dim=(1, 2))  # [B, 3]
+                mae = (pred - v_out).abs().mean(dim=(1, 2))
                 total_mae += mae.double().sum(dim=0)
                 n_samples += v_in.shape[0]
 
@@ -139,7 +205,7 @@ def validate(model, val_loaders, device, global_step):
 
 
 # ---------------------------------------------------------------------------
-# Config + data loading
+# Config + training entrypoint
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
@@ -156,149 +222,150 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    hidden: int = 256
+    n_blocks: int = 4
+    grid_size: int = 32
+    n_fourier: int = 8
+    grad_clip: float = 1.0
 
 
-cfg = sp.parse(Config)
-MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
+def main():
+    cfg = sp.parse(Config)
+    MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 
-train_ds, val_splits, stats = load_data(cfg.splits_dir, debug=cfg.debug)
+    train_ds, val_splits, stats = load_data(cfg.splits_dir, debug=cfg.debug)
 
-loader_kwargs = dict(collate_fn=collate_fn, num_workers=2, pin_memory=True)
+    loader_kwargs = dict(collate_fn=collate_fn, num_workers=2, pin_memory=True)
 
-train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **loader_kwargs)
-val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
-    for name, ds in val_splits.items()
-}
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **loader_kwargs)
+    val_loaders = {
+        name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+        for name, ds in val_splits.items()
+    }
 
-model = BaselineMLP(
-    hidden=384,
-    n_blocks=8,
-    vel_mean=stats["vel_mean"],
-    vel_std=stats["vel_std"],
-).to(device)
+    model = BaselineMLP(
+        hidden=cfg.hidden,
+        n_blocks=cfg.n_blocks,
+        grid_size=cfg.grid_size,
+        n_fourier=cfg.n_fourier,
+        vel_mean=stats["vel_mean"],
+        vel_std=stats["vel_std"],
+    ).to(device)
 
-n_params = sum(p.numel() for p in model.parameters())
-optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    n_params = sum(p.numel() for p in model.parameters())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
-RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
+    RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
-# ---------------------------------------------------------------------------
-# W&B setup (do not remove)
-# ---------------------------------------------------------------------------
-
-run = wandb.init(
-    entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
-    project=os.environ.get("WANDB_PROJECT", "kagent-gram"),
-    group=cfg.wandb_group or RESEARCH_TAG,
-    name=cfg.wandb_name,
-    tags=[t for t in [cfg.agent, RESEARCH_TAG] if t],
-    config={**asdict(cfg), "n_params": n_params,
-            "train_samples": len(train_ds),
-            "val_samples": {k: len(v) for k, v in val_splits.items()}},
-    mode=os.environ.get("WANDB_MODE", "online"),
-)
-
-wandb.define_metric("global_step")
-wandb.define_metric("train/*", step_metric="global_step")
-wandb.define_metric("val/*", step_metric="global_step")
-
-KAGGLER_NAME = os.environ.get("KAGGLER_NAME", cfg.agent or "local")
-pvc_dir = Path(f"/mnt/new-pvc/kagent/{RESEARCH_TAG}/{KAGGLER_NAME}/checkpoints/model-{run.id}")
-pvc_dir.mkdir(parents=True, exist_ok=True)
-model_path = pvc_dir / "checkpoint.pt"
-
-# Git-tracked mirror of the best checkpoint (un-ignored in .gitignore).
-git_ckpt_path = Path("checkpoints/best.pt")
-git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
-
-
-# ---------------------------------------------------------------------------
-# Training loop
-# ---------------------------------------------------------------------------
-
-best_val = float("inf")
-best_metrics: dict = {}
-global_step = 0
-train_start = time.time()
-
-for epoch in range(MAX_EPOCHS):
-    if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
-        print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
-        break
-
-    t0 = time.time()
-    model.train()
-    epoch_loss = 0.0
-    n_batches = 0
-
-    for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
-        v_in = v_in.to(device, non_blocking=True)
-        v_out = v_out.to(device, non_blocking=True)
-        pos = pos.to(device, non_blocking=True)
-        t = t.to(device, non_blocking=True)
-
-        pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-        vel_std = model.vel_std
-        loss = ((pred - v_out) / vel_std).pow(2).mean()
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        global_step += 1
-        wandb.log({"train/loss": loss.item(), "global_step": global_step})
-
-        epoch_loss += loss.item()
-        n_batches += 1
-
-    scheduler.step()
-    epoch_loss /= n_batches
-
-    # --- Validate ---
-    mean_val, split_metrics = validate(model, val_loaders, device, global_step)
-    dt = time.time() - t0
-
-    wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
-               "epoch_time_s": dt, "global_step": global_step})
-
-    tag = ""
-    if mean_val < best_val:
-        best_val = mean_val
-        best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
-        for sm in split_metrics.values():
-            best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-        torch.save(model.state_dict(), model_path)
-        shutil.copyfile(model_path, git_ckpt_path)
-        tag = " *"
-
-    peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
-    print(
-        f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
-        f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+    run = wandb.init(
+        entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
+        project=os.environ.get("WANDB_PROJECT", "kagent-gram"),
+        group=cfg.wandb_group or RESEARCH_TAG,
+        name=cfg.wandb_name,
+        tags=[t for t in [cfg.agent, RESEARCH_TAG] if t],
+        config={**asdict(cfg), "n_params": n_params,
+                "train_samples": len(train_ds),
+                "val_samples": {k: len(v) for k, v in val_splits.items()}},
+        mode=os.environ.get("WANDB_MODE", "online"),
     )
 
-# --- Final ---
-total_time = (time.time() - train_start) / 60.0
-print(f"\nDone ({total_time:.1f} min)")
+    wandb.define_metric("global_step")
+    wandb.define_metric("train/*", step_metric="global_step")
+    wandb.define_metric("val/*", step_metric="global_step")
 
-if best_metrics:
-    print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
-    wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
+    KAGGLER_NAME = os.environ.get("KAGGLER_NAME", cfg.agent or "local")
+    pvc_dir = Path(f"/mnt/new-pvc/kagent/{RESEARCH_TAG}/{KAGGLER_NAME}/checkpoints/model-{run.id}")
+    pvc_dir.mkdir(parents=True, exist_ok=True)
+    model_path = pvc_dir / "checkpoint.pt"
 
-# --- Auto-submit predictions ---
-if best_metrics and not cfg.debug:
-    import subprocess
-    print("\nGenerating test predictions...")
-    pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
-    if cfg.agent:
-        pred_cmd += ["--agent", cfg.agent]
-    result = subprocess.run(pred_cmd, capture_output=True, text=True)
-    print(result.stdout)
-    if result.returncode != 0:
-        print(f"predict.py failed:\n{result.stderr[-500:]}")
+    git_ckpt_path = Path("checkpoints/best.pt")
+    git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
-wandb.finish()
+    best_val = float("inf")
+    best_metrics: dict = {}
+    global_step = 0
+    train_start = time.time()
+
+    for epoch in range(MAX_EPOCHS):
+        if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
+            print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
+            break
+
+        t0 = time.time()
+        model.train()
+        epoch_loss = 0.0
+        n_batches = 0
+
+        for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+            v_in = v_in.to(device, non_blocking=True)
+            v_out = v_out.to(device, non_blocking=True)
+            pos = pos.to(device, non_blocking=True)
+            t = t.to(device, non_blocking=True)
+
+            pred = model(v_in, pos, t, idcs)
+            vel_std = model.vel_std
+            loss = ((pred - v_out) / vel_std).pow(2).mean()
+
+            optimizer.zero_grad()
+            loss.backward()
+            if cfg.grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+            optimizer.step()
+            global_step += 1
+            wandb.log({"train/loss": loss.item(), "global_step": global_step})
+
+            epoch_loss += loss.item()
+            n_batches += 1
+
+        scheduler.step()
+        epoch_loss /= n_batches
+
+        mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+        dt = time.time() - t0
+
+        wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
+                   "epoch_time_s": dt, "global_step": global_step})
+
+        tag = ""
+        if mean_val < best_val:
+            best_val = mean_val
+            best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
+            for sm in split_metrics.values():
+                best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+            torch.save(model.state_dict(), model_path)
+            shutil.copyfile(model_path, git_ckpt_path)
+            tag = " *"
+
+        peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+        print(
+            f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
+            f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+        )
+
+    total_time = (time.time() - train_start) / 60.0
+    print(f"\nDone ({total_time:.1f} min)")
+
+    if best_metrics:
+        print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
+        wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
+
+    if best_metrics and not cfg.debug:
+        import subprocess
+        print("\nGenerating test predictions...")
+        pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
+        if cfg.agent:
+            pred_cmd += ["--agent", cfg.agent]
+        result = subprocess.run(pred_cmd, capture_output=True, text=True)
+        print(result.stdout)
+        if result.returncode != 0:
+            print(f"predict.py failed:\n{result.stderr[-500:]}")
+
+    wandb.finish()
+
+
+if __name__ == "__main__":
+    main()
