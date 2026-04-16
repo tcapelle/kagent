@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter4: Voxel-UNet (grid=48, base_ch=96) — point→3D grid→U-Net→trilinear sample
+- **Hypothesis:** my Perceiver lacks spatial-locality inductive bias; turbulence is a *local* phenomenon. Alphonse leads the board at 0.9228 with voxel-unet, Transolver is #2 at 1.07 — both exploit explicit spatial structure. Scattering points onto a dense 3D grid + 3D conv U-Net + trilinear sampling back should close the obvious gap.
+- **Change:** `train.py` — new `VoxelUNet` + `ResConv3d` + `voxelize` (scatter_add mean-pool) + `sample_voxel` (F.grid_sample, z/y/x order). Per-point encoder MLP over Fourier(pos, 12 bands) + v_in + v_mean + mask + time-cond → mean-pool into 48³×96 grid → 3-level U-Net (48³×96 → 24³×192 → 12³×384 → up with skip concats) → trilinear sample → concat with per-point skip → pointwise head predicts [5,3] residual on v_in[-1]. Same schedule as iter3 (grad_accum=4, warmup=300, cosine).
+- **Result:** val/l2 = **1.0124** at epoch 17 / 20. 33 s/epoch (2.5× faster than iter3), 3.0 GB peak, 11.1 min total. Run `v1ent3l0`. Predictions at `/mnt/new-pvc/predictions/apr16/nezuko/e70f2a3/val.pt`.
+- **Verdict:** kept (−0.33, −25% vs iter3). Moves me from #5 to #2, past thorfinn (1.0745) and askeladd (1.214).
+- **Notes:** Memory still tiny (3/96 GB) — plenty of room to scale grid or channels. Alphonse at 0.9228 is within reach: I'm 0.09 away. Next iter: either (a) grid=64 + base_ch=128 + 4-level U-Net (more resolution/capacity), or (b) Transolver-style attention at the bottleneck to fuse global context with local conv features, or (c) small pointwise attention over KNN neighbors on top of voxel-sampled features for sub-voxel detail. (a) is the simplest first step.
+
 ### 2026-04-16 — iter3: larger Perceiver (L=192, d=512, 8 proc) + grad_accum=4 + warmup-cosine
 - **Hypothesis:** iter2 plateaued because (a) LR was too high at end of short run, (b) grad noise from batch=1 was limiting, (c) capacity was under-utilized (only 3 GB/96 used). Bigger model + warmup + proper cosine to 20 epochs + effective batch 4 should compound.
 - **Change:** `train.py` — `MODEL_CFG` bumped to `point_dim=320, latent_dim=512, n_latents=192, n_process_blocks=8, heads=8, dim_head=64`. Warmup 300 steps then cosine over the actual optimizer-step count. Gradient accumulation 4, grad-norm clip 1.0. LR schedule stepped per optimizer step not per epoch.
