@@ -22,52 +22,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
-
-
-# ---------------------------------------------------------------------------
-# Baseline MLP — replace with your own architecture
-#
-# Model contract:
-#   Input:  velocity_in [B, 5, N, 3], pos [B, N, 3], t [B, 10], idcs_airfoil list[tensor]
-#   Output: velocity_out [B, 5, N, 3]  (predicted future velocity field)
-#
-# Note: the real competition uses model(t, pos, idcs_airfoil, velocity_in) —
-#       different arg order. If you submit to the real comp, wrap accordingly.
-# ---------------------------------------------------------------------------
-
-
-class ResBlock(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
-            nn.GELU(),
-            nn.Linear(dim * 2, dim),
-        )
-
-    def forward(self, x):
-        return x + self.net(x)
-
-
-class BaselineMLP(nn.Module):
-    """Concat pos + velocity_in per point, predict velocity_out through ResMLP."""
-
-    def __init__(self, hidden=256, n_blocks=6):
-        super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
-        self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
-
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
-        B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        return out.reshape(B, T_OUT, N, 3)
+from model import build_model
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +113,7 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+model = build_model(stats, hidden=384, n_blocks=8, expand=4, dropout=0.0).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)

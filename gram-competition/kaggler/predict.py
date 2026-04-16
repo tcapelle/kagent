@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from torch.utils.data import DataLoader
 
-from data import GRAMDataset, collate_fn
+from data import GRAMDataset, collate_fn, load_data
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -38,8 +38,9 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+_, _, stats = load_data(cfg.splits_dir)
+from model import build_model
+model = build_model(stats, hidden=384, n_blocks=8, expand=4, dropout=0.0).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
