@@ -269,6 +269,10 @@ class Config:
     num_vel_freqs: int = 3
     num_dist_freqs: int = 6
     dropout: float = 0.0
+    # Random y-axis reflection augmentation (wing is y-symmetric).
+    yflip_aug: bool = False
+    # Optional warm-start from a checkpoint file before training.
+    init_from: str | None = None
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -354,6 +358,11 @@ def main():
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model: {n_params/1e6:.2f}M params")
 
+    if cfg.init_from:
+        sd = torch.load(cfg.init_from, map_location=device, weights_only=True)
+        model.load_state_dict(sd)
+        print(f"Warm-started from {cfg.init_from}")
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
@@ -409,6 +418,12 @@ def main():
                 v_in, v_out, pos, idcs, dist, cfg.subsample_points
             )
 
+            # y-flip: wing is symmetric about y=0. Distance-to-airfoil is invariant.
+            if cfg.yflip_aug and torch.rand(1).item() < 0.5:
+                pos_s = pos_s.clone(); pos_s[..., 1] = -pos_s[..., 1]
+                v_in_s = v_in_s.clone(); v_in_s[..., 1] = -v_in_s[..., 1]
+                v_out_s = v_out_s.clone(); v_out_s[..., 1] = -v_out_s[..., 1]
+
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 pred = model(v_in_s, pos_s, t, idcs_s, dist_s)
                 loss = (pred.float() - v_out_s).pow(2).mean()
@@ -461,6 +476,8 @@ def main():
         pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
         if cfg.agent:
             pred_cmd += ["--agent", cfg.agent]
+        if cfg.yflip_aug:
+            pred_cmd += ["--yflip_tta", "True"]
         result = subprocess.run(pred_cmd, capture_output=True, text=True)
         print(result.stdout)
         if result.returncode != 0:

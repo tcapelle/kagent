@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter6: y-flip train augmentation + y-flip test-time averaging
+- **Hypothesis:** F1 wings are y-symmetric. Training a model invariant under y-reflection via random y-flip aug should (a) effectively double data diversity and (b) enable TTA at inference. TTA on iter5 alone HURT (1.28 direct → 1.35 TTA on one batch) because iter5 isn't y-equivariant.
+- **Change:** train.py — added `yflip_aug: bool = True` that, after subsampling, with prob 0.5 negates `pos[...,1]`, `v_in[...,1]`, `v_out[...,1]` (distance-to-airfoil is y-invariant, so dist_s unchanged). predict.py — adds flipped forward pass, negates Uy of output, averages with direct.
+- **Result:** Direct val/l2=**1.1088** at epoch 118/120 (iter5 was 1.0554). With TTA: 1.0928 on local eval. Flipped-only=1.1087 ≈ direct=1.1080 → model IS now y-equivariant (iter5 had gap 1.28 vs 1.67 = 0.4).
+- **Verdict:** DISCARDED. iter6+TTA (1.0928) still 0.037 worse than iter5 direct (1.0554). Augmentation + 30-min budget undertrains: model spends capacity learning equivariance that iter5 didn't need.
+- **Notes:** Aug worked (equivariance learned), TTA gave 0.015 improvement as predicted, but from-scratch convergence too slow in fixed budget. Right move = fine-tune iter5 with aug (warm-start saves the 'learning equivariance' cost). Iter7 plan: init from iter5 checkpoint, low LR (3e-4), 60 epochs + yflip aug + TTA.
+
 ### 2026-04-16 — iter5: distance-to-airfoil feature (cached per geometry)
 - **Hypothesis:** Airfoil proximity is a strong physical prior — boundary layer thickness and wake intensity scale with distance. Adding a signed-distance-ish feature (unsigned min-distance to airfoil points) should help the model modulate turbulence amplitude without extra layers.
 - **Change:** train.py/predict.py — added `compute_dist_to_airfoil(pos, idcs)` (chunked cdist + min). Fed raw `d`, `log1p(d)`, and 6 Fourier pairs of `log1p(d)` as point features. Cached per-geometry via a cheap pos-fingerprint → 162 unique geoms cached once, reused across 810 samples. Kept iter2 backbone (d=256, 6 blocks, 64 slices). `num_dist_freqs=6`.

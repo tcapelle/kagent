@@ -32,6 +32,9 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
+    # Average predictions with y-flipped input (wing is y-symmetric).
+    # Only helps if model was trained with y-flip augmentation.
+    yflip_tta: bool = False
 
 
 cfg = sp.parse(Config)
@@ -79,6 +82,14 @@ for split in TEST_SPLITS:
 
             dist = compute_dist_to_airfoil(pos, idcs)
             pred = model(v_in, pos, t, idcs, dist)  # [B, 5, N, 3]
+
+            if cfg.yflip_tta:
+                pos_f = pos.clone(); pos_f[..., 1] = -pos_f[..., 1]
+                v_in_f = v_in.clone(); v_in_f[..., 1] = -v_in_f[..., 1]
+                pred_f = model(v_in_f, pos_f, t, idcs, dist)
+                pred_f[..., 1] = -pred_f[..., 1]
+                pred = 0.5 * (pred + pred_f)
+
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
