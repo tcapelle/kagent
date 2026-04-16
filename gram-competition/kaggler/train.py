@@ -1,7 +1,7 @@
 """Train a 3D airflow velocity predictor.
 
-Template — fill in your model architecture.
-The training loop, loss, validation, and W&B logging are provided.
+Current model: residual-prediction ResMLP with normalization, time conditioning,
+airfoil-mask feature, and hard no-slip BC enforcement.
 
 Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
@@ -17,7 +17,6 @@ import simple_parsing as sp
 import torch
 import torch.nn as nn
 import wandb
-import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -25,14 +24,17 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 # ---------------------------------------------------------------------------
-# Baseline MLP — replace with your own architecture
+# Model: residual ResMLP with time FiLM + airfoil mask + hard no-slip BC
 #
-# Model contract:
-#   Input:  velocity_in [B, 5, N, 3], pos [B, N, 3], t [B, 10], idcs_airfoil list[tensor]
-#   Output: velocity_out [B, 5, N, 3]  (predicted future velocity field)
-#
-# Note: the real competition uses model(t, pos, idcs_airfoil, velocity_in) —
-#       different arg order. If you submit to the real comp, wrap accordingly.
+# Key design choices versus baseline:
+#   * Predict normalized delta from v_in[-1] (residual). Residual magnitudes
+#     are ~14x smaller than absolute velocities on this dataset.
+#   * Normalize v_in with dataset (mean, std).
+#   * Pass an airfoil-indicator feature per point so the model knows where
+#     the no-slip BC applies.
+#   * Global time embedding (input/output t values + per-step offsets)
+#     broadcast-added to hidden features.
+#   * Hard post-processing: zero the prediction at airfoil indices.
 # ---------------------------------------------------------------------------
 
 
@@ -50,24 +52,65 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class BaselineMLP(nn.Module):
-    """Concat pos + velocity_in per point, predict velocity_out through ResMLP."""
-
-    def __init__(self, hidden=256, n_blocks=6):
+class ResidualMLP(nn.Module):
+    def __init__(self, vel_mean, vel_std, hidden=512, n_blocks=8):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
+        self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
+        self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
+
+        in_dim = 3 + T_IN * 3 + 1  # pos(3) + v_in_norm flat(15) + airfoil_mask(1)
+        out_dim = T_OUT * 3
+
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        self.blocks = nn.ModuleList([ResBlock(hidden) for _ in range(n_blocks)])
+        self.out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+
+        # Global time-conditioning MLP (input t, output t, dt offsets from last input)
+        t_dim = T_IN + T_OUT + T_OUT
+        self.t_mlp = nn.Sequential(
+            nn.Linear(t_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, hidden),
+        )
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        return out.reshape(B, T_OUT, N, 3)
+        device = velocity_in.device
+
+        # Normalize velocities per-component.
+        v_in_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B,T,N,3]
+        v_in_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
+
+        # Airfoil mask (1 at surface points, 0 elsewhere).
+        mask = torch.zeros(B, N, 1, device=device)
+        for i, idc in enumerate(idcs_airfoil):
+            mask[i, idc.to(device), 0] = 1.0
+
+        x = torch.cat([pos, v_in_flat, mask], dim=-1)  # [B,N,in_dim]
+        h = self.proj_in(x)
+
+        # Global time features. dt = t_out - t_in[-1].
+        t_in = t[:, :T_IN]
+        t_out = t[:, T_IN:]
+        dt = t_out - t[:, T_IN - 1 : T_IN]
+        t_feat = torch.cat([t_in, t_out, dt], dim=-1)
+        t_emb = self.t_mlp(t_feat).unsqueeze(1)  # [B,1,hidden]
+        h = h + t_emb
+
+        for blk in self.blocks:
+            h = blk(h)
+
+        delta_norm = self.out(h).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3).contiguous()
+
+        last_norm = v_in_norm[:, -1:].expand(-1, T_OUT, -1, -1)  # [B,T_OUT,N,3]
+        pred_norm = last_norm + delta_norm
+        pred = pred_norm * self.vel_std + self.vel_mean
+
+        # Hard no-slip BC: zero at airfoil indices.
+        for i, idc in enumerate(idcs_airfoil):
+            pred[i, :, idc.to(device), :] = 0.0
+
+        return pred
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +118,6 @@ class BaselineMLP(nn.Module):
 # ---------------------------------------------------------------------------
 
 def validate(model, val_loaders, device, global_step):
-    """Run validation, log to W&B. Returns mean val metric (L2 velocity error)."""
     model.eval()
     val_metrics: dict[str, dict] = {}
 
@@ -91,14 +133,12 @@ def validate(model, val_loaders, device, global_step):
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                pred = model(v_in, pos, t, idcs)
 
-                # L2 velocity error (competition hint metric)
-                l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))  # [B]
+                l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
                 total_l2 += l2_err.sum().item()
 
-                # Per-component MAE
-                mae = (pred - v_out).abs().mean(dim=(1, 2))  # [B, 3]
+                mae = (pred - v_out).abs().mean(dim=(1, 2))
                 total_mae += mae.double().sum(dim=0)
                 n_samples += v_in.shape[0]
 
@@ -135,6 +175,8 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 1
     epochs: int = 50
+    hidden: int = 512
+    n_blocks: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -158,7 +200,12 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+model = ResidualMLP(
+    vel_mean=stats["vel_mean"],
+    vel_std=stats["vel_std"],
+    hidden=cfg.hidden,
+    n_blocks=cfg.n_blocks,
+).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -191,7 +238,6 @@ pvc_dir = Path(f"/mnt/new-pvc/kagent/{RESEARCH_TAG}/{KAGGLER_NAME}/checkpoints/m
 pvc_dir.mkdir(parents=True, exist_ok=True)
 model_path = pvc_dir / "checkpoint.pt"
 
-# Git-tracked mirror of the best checkpoint (un-ignored in .gitignore).
 git_ckpt_path = Path("checkpoints/best.pt")
 git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -221,8 +267,10 @@ for epoch in range(MAX_EPOCHS):
         pos = pos.to(device, non_blocking=True)
         t = t.to(device, non_blocking=True)
 
-        pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-        loss = (pred - v_out).pow(2).mean()
+        pred = model(v_in, pos, t, idcs)
+        # Loss in normalized space (scale components to unit std); gives balanced gradient
+        err_norm = (pred - v_out) / model.vel_std
+        loss = err_norm.pow(2).mean()
 
         optimizer.zero_grad()
         loss.backward()
@@ -236,7 +284,6 @@ for epoch in range(MAX_EPOCHS):
     scheduler.step()
     epoch_loss /= n_batches
 
-    # --- Validate ---
     mean_val, split_metrics = validate(model, val_loaders, device, global_step)
     dt = time.time() - t0
 
@@ -259,7 +306,6 @@ for epoch in range(MAX_EPOCHS):
         f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
     )
 
-# --- Final ---
 total_time = (time.time() - train_start) / 60.0
 print(f"\nDone ({total_time:.1f} min)")
 
@@ -267,7 +313,6 @@ if best_metrics:
     print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-# --- Auto-submit predictions ---
 if best_metrics and not cfg.debug:
     import subprocess
     print("\nGenerating test predictions...")

@@ -38,9 +38,21 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+from train import ResidualMLP
+from data import load_data
+
+_, _, stats = load_data(cfg.splits_dir)
+state = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
+# Infer hidden size from checkpoint (proj_in weight is [hidden, in_dim]).
+hidden = state["proj_in.weight"].shape[0]
+n_blocks = sum(1 for k in state.keys() if k.endswith(".net.1.weight") and k.startswith("blocks."))
+model = ResidualMLP(
+    vel_mean=stats["vel_mean"],
+    vel_std=stats["vel_std"],
+    hidden=hidden,
+    n_blocks=n_blocks,
+).to(device)
+model.load_state_dict(state)
 
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
