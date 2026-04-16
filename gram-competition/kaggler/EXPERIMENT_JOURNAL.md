@@ -22,6 +22,31 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v3: multi-scale voxel stats (mean/std/dev) + laplacian + bf16 AMP
+- **Hypothesis:** v2's voxel *mean* alone is weak — turbulence needs local
+  variance and self-deviation (a gradient-like proxy), plus a cheap
+  laplacian (coarse mean − fine mean) to signal spatial curvature.
+  Richer spatial stats should finally break the 1.3 plateau.
+- **Change:** `model.py` → `voxel_stats` returning (mean, std, dev) per scale,
+  plus `laplacian = mean_coarse − mean_fine`. Input dim 41 → 53.
+  `train.py` adds `--amp` bf16 autocast (~1.8× speedup).
+  Arch: hidden=512, 10 ResBlocks. 67s/epoch. Peak 8.1GB (AMP).
+- **Result:** Best val/l2=**1.2615** at epoch 49 of 49 (55 min timeout).
+  Train loss 0.044 → 0.019. Val trajectory bounces but monotone-best:
+  1.70, 1.66, 1.51, 1.43, 1.48, ..., 1.30 (ep20), 1.29 (ep27),
+  1.28 (ep35), 1.27 (ep39), 1.27 (ep42), 1.26 (ep48, ep49).
+  WandB run `edward/v3-voxelstats+amp` (uqgrg7g7). MAE
+  Ux=0.86, Uy=0.36, Uz=0.59.
+- **Verdict:** Kept — first genuine break through the 1.3 plateau
+  (v1=1.34, v2=1.39). ~9% gain vs v2, ~6% vs v1. Still far from
+  winner territory (~0.85).
+- **Notes:** Loss still decreasing at timeout; longer training
+  would likely push further. Next: either (a) run v3 longer with
+  deeper model / more scales, or (b) move to inducing-point
+  attention so each point can attend to a learned set of cluster
+  tokens — gets us true long-range spatial interaction the voxel
+  approach can't provide.
+
 ### 2026-04-16 — v2: voxel-pooled neighbors + dist-to-airfoil + Δv
 - **Hypothesis:** pointwise MLP cannot model turbulence — it has no
   spatial context. Adding (a) multi-scale voxel-pooled neighbor velocity
