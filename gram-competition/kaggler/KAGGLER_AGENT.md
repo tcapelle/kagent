@@ -18,7 +18,7 @@ LOOP FOREVER:
 1. **Check the competition.** Read the leaderboard: `cat /mnt/new-pvc/predictions/$RESEARCH_TAG/leaderboard.md`. Query W&B for the best runs. Know where you stand.
 2. **Formulate a hypothesis.** What will you try next?
 3. **Modify `train.py`** (and `predict.py` if needed).
-4. **git commit**: `git add train.py predict.py && git commit -m "<what you're trying>"`
+4. **git commit**: `git add train.py predict.py EXPERIMENT_JOURNAL.md && git commit -m "<what you're trying>"`
 5. **Run training**: `python train.py --agent <your-name> --wandb_name "<your-name>/<description>" > run.log 2>&1`
    - Read results: `grep "Best:" run.log` and `tail -5 run.log`
    - If error: `tail -50 run.log` for the traceback.
@@ -29,7 +29,8 @@ LOOP FOREVER:
    - If worse or crashed → reset: `git reset --hard HEAD~1`
 
    The best checkpoint is always mirrored to `checkpoints/best.pt` (local git path) and to `/mnt/new-pvc/kagent/$RESEARCH_TAG/$KAGGLER_NAME/checkpoints/model-<run_id>/checkpoint.pt` (PVC, durable).
-
+8. **Update Training Journal**
+   - Write your findings on the `EXPERIMENT_JOURNAL.md` file, what worked, what didn't. Be organized you want to browse this in the future.
 ## Key challenges
 
 - **Memory**: 100k 3D points per sample. You MUST address this — subsample points, use efficient architectures, or both.
