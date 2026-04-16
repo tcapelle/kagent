@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — Warm-start fine-tune from iter 10 (iter 12, KEPT)
+- **Hypothesis:** Iter 10 was still monotonically descending at its timeout (1.22 at epoch 22/22). The phase transition at epoch 3 "wastes" 3/22 epochs. Load iter10's best.pt as init, use lower peak LR (3e-4 vs 1e-3) and short 50-step warmup so we immediately resume descent from the already-trained regime.
+- **Change:** `train.py` — added `--resume <path>` arg; if set, load `state_dict` after model init. Launch: `--resume checkpoints/best.pt --lr 3e-4 --warmup_steps 50 --epochs 25`.
+- **Result:** best val/l2_error = **1.1398** at epoch 14/14 (31 min). train=1.0219 by end. Still descending monotonically — lr decayed to 1.2e-4 by timeout; more budget would keep helping. VRAM 15.3 GB.
+- **Verdict:** KEPT. **1.2218 → 1.1398 = 7% improvement.** Biggest single-iter jump since the decoder fix.
+- **Notes:** Per-epoch trajectory: 1.2334 (warm E1) → 1.217 → 1.226 → 1.216 → 1.209 → 1.196 → 1.199 → 1.183 → 1.174 → 1.163 → 1.157 → 1.150 → 1.146 → 1.140. Train-val gap growing slowly (1.022 vs 1.140) but not obviously overfit. Next (iter 13): either (a) another warm-start round with even lower LR (1e-4) to squeeze more descent, or (b) add Sobolev/vorticity loss term (λ=0.1 kNN gradient-matching) — val metric is L2-per-point; adding spatial smoothness prior could help generalization especially now that we're past the easy wins. First epoch took 422s — GPU was shared at launch; real epoch time is 85s.
+
 ### 2026-04-16 — Warmup + higher LR + 25-epoch cosine (iter 10, kept)
 - **Hypothesis:** Iter 9 still descending at epoch 22/50; T_max=50 means cosine barely decayed. Tune schedule to match actual budget: lr=1e-3 peak, 200-step linear warmup, cosine over 25 epochs so LR→0 by the end.
 - **Change:** `train.py` — `lr=1e-3`, `warmup_steps=200`, `epochs=25`, `SequentialLR(LinearLR + CosineAnnealingLR)` stepping per-batch.
