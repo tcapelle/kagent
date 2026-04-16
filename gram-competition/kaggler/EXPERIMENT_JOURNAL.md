@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter7: TTA y-flip averaging on iter5 checkpoint (no retrain)
+- **Hypothesis:** averaging `f(x)` and `flip(f(flip(x)))` gives a free ensemble with uncorrelated errors; should improve over iter5's 0.9867 without any retraining cost.
+- **Change:** `predict.py` — replace single forward with `0.5 * (p1 + flip(p2))` over y. Training-loop y-flip aug reverted (was only in iter6).
+- **Result:** val/l2 = **1.0504** vs iter5's 0.9867 — **TTA hurts by +0.064**. MAE: Ux 0.68 (was 0.63), Uy 0.35 (was 0.33), Uz 0.50 (was 0.47). All components worse.
+- **Verdict:** discarded. TTA on a non-aug-trained model is worse because the flipped input is out-of-distribution; the flipped prediction is bad and averaging it in pulls quality down.
+- **Notes:** Confirms that iter6's training-time aug is the right direction — model needs to learn the symmetry in training, not assume it at inference. Next iter: y-flip aug + 30 epochs + TTA (aug-trained model should tolerate flipped input, so TTA becomes beneficial again).
+
 ### 2026-04-16 — iter6: y-flip data augmentation (undertrained)
 - **Hypothesis:** F1 front wing has approximate y-axis symmetry; 50% random flip of pos_y + Uy (in/out) should double effective data and close the Uy MAE gap (0.33 → 0.29 like alphonse).
 - **Change:** `train.py` training loop — `if rand < 0.5: v_in[...,1].neg_(); v_out[...,1].neg_(); pos[...,1].neg_()`. Rest of iter5 config unchanged.
