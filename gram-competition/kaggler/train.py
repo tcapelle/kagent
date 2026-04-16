@@ -252,7 +252,7 @@ class Config:
     agent: str | None = None
     debug: bool = False
     hidden: int = 256
-    n_blocks: int = 4
+    n_blocks: int = 6
     grid_size: int = 32
     n_fourier: int = 8
     grad_clip: float = 1.0

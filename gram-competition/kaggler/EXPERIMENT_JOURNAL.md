@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-16 — exp4: exp2 arch + bf16 + SDF-to-airfoil
-- **Hypothesis:** Exp2 train loss still dropping at timeout → need more epochs, not more params (exp3 disproved scale-up). bf16 autocast at exp2 sizes halves step time (48→47ms bench) → ~50 epochs in 30min vs exp2's 38. Also add a strong physics prior: signed distance to nearest airfoil point + is_airfoil binary. No-slip BC is a hard constraint near the airfoil; giving the model a distance signal should help it learn wake/boundary-layer structure.
-- **Change:** Revert to hidden=256/n_blocks=4/grid=32 (exp2 sizes). Added bf16 autocast around forward+loss. Added `_geom_features()` in BaselineMLP: chunked cdist to 1024-sample airfoil subset → normalized SDF + is_airfoil indicator, both appended to input features (+2 channels). Fixed VoxelMixer dtype bug (h.dtype not x.dtype) for autocast safety.
-- **Result:** TBD. Bench: 47ms/step bf16 (vs exp2 fp32 ~65ms/step), peak 3.2GB.
+### 2026-04-16 — exp5: n_blocks 4→6 on exp4 base
+- **Hypothesis:** Exp4 fully converged at 1.060 (train=0.010, same as exp2) — this is the architecture's ceiling with 4 blocks. Exp3 showed 3.3x scale (52M) under-trains in 30min. Try a moderate depth bump: n_blocks 4→6 (hidden=256 unchanged, 23M params, 1.5x). bf16 gives headroom — bench 68ms/step → ~36 epochs.
+- **Change:** Config.n_blocks=6 (train.py + predict.py). All else identical to exp4 (SDF + is_airfoil + bf16 + voxel mixer).
+- **Result:** TBD. Bench: 68ms/step, 4.4GB peak.
 - **Verdict:** TBD
-- **Notes:** SDF computed per-sample each fwd (no caching). sdf_samples=1024 keeps cdist cheap (chunked over 20k pts). is_airfoil is exact (from idcs_airfoil). Target: beat exp2 1.0595.
+- **Notes:** Going deep not wide. Each added ResBlock+VoxelMixer pair re-pools spatial features → more rounds of spatial mixing at same grid.
+
+### 2026-04-16 — exp4: exp2 arch + bf16 + SDF-to-airfoil
+- **Hypothesis:** bf16 autocast at exp2 sizes halves step time → ~50 epochs vs exp2's 38. Add SDF-to-nearest-airfoil + is_airfoil binary as physics priors.
+- **Change:** Revert to hidden=256/n_blocks=4/grid=32. Added bf16 autocast. Added `_geom_features()`: chunked cdist to 1024-sample airfoil subset → normalized SDF + is_airfoil indicator (+2 channels). Fixed VoxelMixer dtype bug (h.dtype not x.dtype) for autocast.
+- **Result:** val/l2=1.0600 @ epoch 50 (27.6 min, fully converged — train=0.0103 matched exp2 exactly).
+- **Verdict:** Tied exp2 (1.0595 vs 1.0600, within noise). Kept base changes (SDF + bf16 + dtype fix) for exp5 since they enable faster iteration.
+- **Notes:** SDF + voxel grid seem redundant — grid already encodes geometry. Real gains need architectural change, not more features. Clear convergence plateau confirms arch ceiling at ~1.06.
 
 ### 2026-04-16 — exp3: scale up hidden=384/n_blocks=6 + bf16 (DISCARDED)
 - **Hypothesis:** Exp2 underfit — scale hidden 256→384 and n_blocks 4→6 (52M params, 3.3x). Add bf16 so bigger model still trains in 30min.
