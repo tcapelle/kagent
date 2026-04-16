@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v2 voxel-UNet spatial context (64³)
+- **Hypothesis:** v1 was a per-point MLP — zero spatial interaction. Near-wall flow depends on neighbors (wakes, pressure coupling). A 3D voxel-UNet (scatter-mean features into 64³ grid, run UNet, trilinear scatter-back) gives every point global+local context with the bottleneck giving receptive field ≫ wing chord. Residual around v1's per-point backbone so spatial block only needs to learn the correction.
+- **Change:** `train.py` — added `VoxelSpatial` (scatter/gather + 3-level UNet3D, GroupNorm), inserted between 2 pre-blocks and 4 post-blocks of ResMLP. Zero-init UNet output conv → block starts as identity. Axis permutation `[2,1,0]` on grid_sample coords to match (x,y,z)↔(W,H,D). `hidden=256, voxel_res=64, voxel_mid=64`. Moved training code into `main()` so predict.py import doesn't trigger `sp.parse`. 7.69M params.
+- **Result:** val/l2 = **0.9228** at epoch 31 (timeout cut), mae (Ux,Uy,Uz)=(0.624, 0.286, 0.419). 27.1 min, 52s/epoch, peak 6.1 GB. W&B run `eji6edpc`. Predictions at `predictions/apr16/alphonse/cde4a6b`.
+- **Verdict:** kept — **30% improvement over v1** (1.3200 → 0.9228). Mae dropped across all components; largest in Ux (0.884 → 0.624), the hardest/largest-std axis.
+- **Notes:** Smooth descent, still dropping at timeout (epoch 30: 0.9303, 31: 0.9228) — more epochs would keep winning. Val noise persists (batch_size=1). Next (v3): give it more time. Easy wins: larger unet_mid=96, per-point kNN for fine detail the 64³ voxel misses (airfoil is only ~5 voxels wide in some axes), EMA weights, 60-epoch budget with smaller MAX_TIMEOUT overhead.
+
+
 ### 2026-04-16 — v1 residual ResMLP + no-slip + normalized loss
 - **Hypothesis:** baseline predicts absolute velocity from scratch — a residual around `velocity_in[-1]` is a much stronger starting point because frame-to-frame changes are small relative to the mean flow (~35 m/s mean Ux). Hard no-slip BC guarantees zero at airfoil. Normalized MSE loss stops the ~20 m/s Ux std from dominating the gradient.
 - **Change:** `train.py` — `ResidualPointMLP` (hidden=384, n_blocks=8). Input features: normalized velocity_in (15) + pos (3) + airfoil mask (1) = 19. Output: delta in normalized space; denormalize and add to last input frame. Zero-init last linear → starts at exact persistence. Post-process no-slip mask. Loss is MSE on (pred - gt)/vel_std. Grad clip 1.0.
