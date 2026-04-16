@@ -38,11 +38,12 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import ResidualPointMLP
+from train import VoxelResidualModel
 from data import load_data
 _, _, stats = load_data(cfg.splits_dir)
-model = ResidualPointMLP(
-    vel_mean=stats["vel_mean"], vel_std=stats["vel_std"], hidden=384, n_blocks=8
+model = VoxelResidualModel(
+    vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
+    hidden=256, voxel_res=64, voxel_mid=64,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
