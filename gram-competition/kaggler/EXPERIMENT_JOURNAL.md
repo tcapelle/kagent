@@ -23,11 +23,11 @@ Keep entries short. Link W&B run URLs when useful.
 ## Entries
 
 ### 2026-04-16 — exp5: n_blocks 4→6 on exp4 base
-- **Hypothesis:** Exp4 fully converged at 1.060 (train=0.010, same as exp2) — this is the architecture's ceiling with 4 blocks. Exp3 showed 3.3x scale (52M) under-trains in 30min. Try a moderate depth bump: n_blocks 4→6 (hidden=256 unchanged, 23M params, 1.5x). bf16 gives headroom — bench 68ms/step → ~36 epochs.
-- **Change:** Config.n_blocks=6 (train.py + predict.py). All else identical to exp4 (SDF + is_airfoil + bf16 + voxel mixer).
-- **Result:** TBD. Bench: 68ms/step, 4.4GB peak.
-- **Verdict:** TBD
-- **Notes:** Going deep not wide. Each added ResBlock+VoxelMixer pair re-pools spatial features → more rounds of spatial mixing at same grid.
+- **Hypothesis:** Exp4 fully converged at 1.060 — architecture ceiling with 4 blocks. Try moderate depth bump: n_blocks 4→6, hidden=256 (23M params, 1.5x exp4). bf16 gives 68ms/step budget.
+- **Change:** Config.n_blocks=6 (train.py + predict.py). All else identical to exp4.
+- **Result:** val/l2=**1.0430** @ epoch 38 (30.2 min). train=0.0091, 4.4GB peak. run wu0jb4c0.
+- **Verdict:** KEPT — beats exp2 (1.0595) by 0.016. Confirms depth helps where width (exp3) didn't: more rounds of spatial mixing at same grid > larger features per point.
+- **Notes:** Train loss still dropping (0.0091 vs exp4 0.0103), could benefit from longer training or an even deeper net. Next: try n_blocks=8 or multi-scale voxel.
 
 ### 2026-04-16 — exp4: exp2 arch + bf16 + SDF-to-airfoil
 - **Hypothesis:** bf16 autocast at exp2 sizes halves step time → ~50 epochs vs exp2's 38. Add SDF-to-nearest-airfoil + is_airfoil binary as physics priors.
