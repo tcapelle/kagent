@@ -38,8 +38,17 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+import json as _json
+with open(Path(cfg.splits_dir) / "stats.json") as _f:
+    _stats_raw = _json.load(_f)
+_vel_mean = torch.tensor(_stats_raw["vel_mean"], dtype=torch.float32)
+_vel_std = torch.tensor(_stats_raw["vel_std"], dtype=torch.float32)
+
+from train import ResidualMLP
+model = ResidualMLP(
+    hidden=512, n_blocks=8, num_pos_freqs=10, num_vel_freqs=4,
+    vel_mean=_vel_mean, vel_std=_vel_std,
+).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
