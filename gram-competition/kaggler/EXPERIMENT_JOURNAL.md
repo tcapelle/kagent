@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — exp12: chained warm-start from exp11 + lr=5e-5
+- **Hypothesis:** Exp11 val oscillated 0.968-0.977 mid-run, best at E23 (0.9681). LR=1e-4 still too high for fine-tuning. Half again to 5e-5, warm-start from exp11. Expected gain ~0.004 (diminishing chain).
+- **Change:** Run with --warm_start=<exp11 ckpt> --lr=5e-5.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** If saturated, switch to arch changes (parallel multi-scale, attention).
+
 ### 2026-04-16 — exp11: chained warm-start from exp10 + lr=1e-4
 - **Hypothesis:** Exp10 (0.9742) hit minimum mid-run (E36) then slowly climbed — the 2e-4 cosine was slightly too high late, allowing oscillation. Chain another warm-start from exp10 with lr=1e-4 (half), adds 30 more min of fine annealing. Train=0.0070 suggests capacity room remains. Each warm-start cycle has diminishing returns but should add 10-20% improvement per run until plateau.
 - **Change:** Run train.py with --warm_start=<exp10 ckpt> --lr=1e-4.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** If val plateaus before E40, try yet lower LR 5e-5. If val continues to drop, keep chaining.
+- **Result:** val/l2=**0.9681** @ epoch 23 (30.3 min). train=0.0062. 3.6GB peak. run dyjblcu8.
+- **Verdict:** KEPT — +0.006 over exp10. Val plateaued in 0.968-0.977 range after E20 (minimum at E23 then oscillation). Chain is working but diminishing.
+- **Notes:** LR=1e-4 was too high for late-cycle refinement — val kept oscillating at end. Next chain at lr=5e-5 should extract remaining fine-tuning gains.
 
 ### 2026-04-16 — exp10: warm-start from exp8 + 30 more min
 - **Hypothesis:** Exp8 val was still dropping linearly at 30min timeout (best 1.0137). Rather than architectural change, reload exp8 ckpt and train another 30min with a fresh cosine LR schedule at lower peak (2e-4 vs 5e-4). Effectively doubles training budget without needing arch changes. SGDR-style warm restart: new annealing cycle may find better minima from a pre-trained init.
