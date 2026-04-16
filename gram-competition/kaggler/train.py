@@ -258,6 +258,7 @@ class Config:
     grad_clip: float = 1.0
     bf16: bool = True
     subsample_train: int = 50000
+    warm_start: str | None = None
 
 
 def main():
@@ -285,6 +286,12 @@ def main():
         vel_mean=stats["vel_mean"],
         vel_std=stats["vel_std"],
     ).to(device)
+
+    if cfg.warm_start:
+        state = torch.load(cfg.warm_start, map_location=device, weights_only=True)
+        state = {k: v.float() if v.is_floating_point() else v for k, v in state.items()}
+        model.load_state_dict(state)
+        print(f"Warm-started from {cfg.warm_start}")
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)

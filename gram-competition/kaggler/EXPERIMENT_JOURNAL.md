@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — exp10: warm-start from exp8 + 30 more min
+- **Hypothesis:** Exp8 val was still dropping linearly at 30min timeout (best 1.0137). Rather than architectural change, reload exp8 ckpt and train another 30min with a fresh cosine LR schedule at lower peak (2e-4 vs 5e-4). Effectively doubles training budget without needing arch changes. SGDR-style warm restart: new annealing cycle may find better minima from a pre-trained init.
+- **Change:** train.py: Added `warm_start: str | None` to Config; loads state_dict post model init. Set cfg.lr=2e-4 for fine-tune run.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Risk: 2nd cycle overfits on train (with fp32 weights, not fp16 from git — load from PVC). If val degrades from warm start, next try higher fine-tune LR (3e-4) or train from scratch with longer cosine.
+
+### 2026-04-16 — exp9: subsample 50k→30k (DISCARDED)
+- **Hypothesis:** Exp8 (n_blocks=8) was still dropping val at timeout. Subsample 50k→30k saves step time → more epochs to finish the cosine schedule.
+- **Change:** subsample_train 50000→30000.
+- **Result:** val/l2=1.0141 @ epoch 50 (29.9 min). train=0.0109, 2.6GB peak. run oxfbajwq. 36s/epoch (all 50 epochs fit).
+- **Verdict:** DISCARDED — tied exp8 (1.0137) within noise. The extra subsampling regularized too much: train loss only reached 0.0109 vs exp8's 0.0100. More epochs + more regularization ≈ same effective learning. Need different mechanism to beat exp8.
+- **Notes:** Lesson: aggressive subsampling acts as a regularizer ceiling. Future "buy more epochs" attempts should look at reducing other costs (grid_size, n_fourier) rather than subsample further.
+
 ### 2026-04-16 — exp8: n_blocks 6→8 on exp7 base
 - **Hypothesis:** Exp7 val (1.0189) plateaued around E45-50 with train still dropping; exp5 showed depth 4→6 gained 0.016. Try 6→8 with subsample=50k to keep per-step fast. Expect ~47s/epoch → 38 epochs. More rounds of voxel mixing at same grid should extract more spatial structure, which has been our best lever so far.
 - **Change:** Config.n_blocks 6→8 (train.py + predict.py). All else identical to exp7.
