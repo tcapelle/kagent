@@ -1,8 +1,11 @@
-"""v2 — residual point MLP + voxel-UNet spatial context.
+"""v5 — v2 + signed-distance-to-airfoil feature.
 
-Spatial module: scatter points into a 64^3 voxel grid by per-sample bbox,
-mean-pool features per voxel, 3D UNet, trilinear-sample back to each point,
-residual add. Point-wise branch is kept for near-wall detail.
+For each point, precompute the Euclidean distance to the nearest airfoil
+point. That scalar is passed as an input feature so the model has an explicit
+wall-distance prior — critical for boundary-layer physics.
+
+SDF is computed once per sample on the GPU (chunked `cdist`), cached in
+RAM, and re-used across all epochs.
 
 Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
@@ -19,10 +22,46 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from data import N_POINTS, T_IN, T_OUT, collate_fn, load_data
+from data import N_POINTS, T_IN, T_OUT, load_data
+
+
+def compute_sdf(pos, airfoil_idcs, device, chunk=2048):
+    """Per-point Euclidean distance to the nearest airfoil point."""
+    pos_g = pos.to(device)
+    a = pos_g[airfoil_idcs.to(device)]
+    sdf = torch.full((pos.shape[0],), float("inf"), device=device)
+    for s in range(0, a.shape[0], chunk):
+        d = torch.cdist(pos_g, a[s:s + chunk]).min(dim=-1).values
+        sdf = torch.minimum(sdf, d)
+    return sdf.cpu()
+
+
+class SDFDataset(Dataset):
+    def __init__(self, base, sdfs):
+        self.base = base
+        self.sdfs = sdfs
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        v_in, v_out, pos, t, idcs = self.base[idx]
+        return v_in, v_out, pos, t, idcs, self.sdfs[idx]
+
+
+def collate_sdf(batch):
+    v_in, v_out, pos, t, idcs, sdf = zip(*batch)
+    return (
+        torch.stack(v_in),
+        torch.stack(v_out),
+        torch.stack(pos),
+        torch.stack(t),
+        list(idcs),
+        torch.stack(sdf),
+    )
 
 
 class ResBlock(nn.Module):
@@ -121,7 +160,7 @@ class VoxelSpatial(nn.Module):
 
 
 class VoxelResidualModel(nn.Module):
-    """Residual-from-last-frame + per-point ResMLP + voxel-UNet spatial context."""
+    """Residual-from-last-frame + per-point ResMLP + voxel-UNet spatial context + SDF."""
 
     def __init__(
         self,
@@ -134,7 +173,7 @@ class VoxelResidualModel(nn.Module):
         voxel_mid=64,
     ):
         super().__init__()
-        in_dim = T_IN * 3 + 3 + 1
+        in_dim = T_IN * 3 + 3 + 1 + 2  # velocities + pos + airfoil-mask + (sdf, log1p(sdf))
         out_dim = T_OUT * 3
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks_pre = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks_pre)])
@@ -147,7 +186,7 @@ class VoxelResidualModel(nn.Module):
         self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
         self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
+    def forward(self, velocity_in, pos, t, idcs_airfoil, sdf):
         B, T, N, C = velocity_in.shape
         v_norm = (velocity_in - self.vel_mean) / self.vel_std
         v_feat = v_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
@@ -156,7 +195,10 @@ class VoxelResidualModel(nn.Module):
         for b, idcs in enumerate(idcs_airfoil):
             mask[b, idcs.to(mask.device), 0] = 1.0
 
-        x = torch.cat([v_feat, pos, mask], dim=-1)
+        sdf_raw = (sdf / 5.0).unsqueeze(-1)  # rough ~unit scale
+        sdf_log = torch.log1p(sdf).unsqueeze(-1)
+
+        x = torch.cat([v_feat, pos, mask, sdf_raw, sdf_log], dim=-1)
         x = self.proj_in(x)
         x = self.blocks_pre(x)
         x = self.spatial(x, pos)
@@ -184,13 +226,14 @@ def validate(model, val_loaders, device, global_step):
         n_samples = 0
 
         with torch.no_grad():
-            for v_in, v_out, pos, t, idcs in vloader:
+            for v_in, v_out, pos, t, idcs, sdf in vloader:
                 v_in = v_in.to(device, non_blocking=True)
                 v_out = v_out.to(device, non_blocking=True)
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
+                sdf = sdf.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)
+                pred = model(v_in, pos, t, idcs, sdf)
 
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
                 total_l2 += l2_err.sum().item()
@@ -247,7 +290,17 @@ def main():
 
     train_ds, val_splits, stats = load_data(cfg.splits_dir, debug=cfg.debug)
 
-    loader_kwargs = dict(collate_fn=collate_fn, num_workers=2, pin_memory=True)
+    print("Precomputing SDFs...")
+    t0 = time.time()
+    train_sdfs = [compute_sdf(train_ds[i][2], train_ds[i][4], device) for i in tqdm(range(len(train_ds)), desc="train SDF")]
+    val_sdfs = {name: [compute_sdf(ds[i][2], ds[i][4], device) for i in tqdm(range(len(ds)), desc=f"{name} SDF")]
+                for name, ds in val_splits.items()}
+    print(f"  done ({time.time()-t0:.1f}s)")
+
+    train_ds = SDFDataset(train_ds, train_sdfs)
+    val_splits = {name: SDFDataset(ds, val_sdfs[name]) for name, ds in val_splits.items()}
+
+    loader_kwargs = dict(collate_fn=collate_sdf, num_workers=2, pin_memory=True)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **loader_kwargs)
     val_loaders = {
         name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
@@ -308,13 +361,14 @@ def main():
         epoch_loss = 0.0
         n_batches = 0
 
-        for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+        for v_in, v_out, pos, t, idcs, sdf in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
             v_in = v_in.to(device, non_blocking=True)
             v_out = v_out.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
+            sdf = sdf.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)
+            pred = model(v_in, pos, t, idcs, sdf)
             vel_std = stats["vel_std"].to(device).view(1, 1, 1, 3)
             diff = (pred - v_out) / vel_std
             loss = diff.pow(2).mean()

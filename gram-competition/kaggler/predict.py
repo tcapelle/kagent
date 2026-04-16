@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from torch.utils.data import DataLoader
 
-from data import GRAMDataset, collate_fn
+from data import GRAMDataset
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -38,7 +38,7 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import VoxelResidualModel
+from train import VoxelResidualModel, compute_sdf, SDFDataset, collate_sdf
 from data import load_data
 _, _, stats = load_data(cfg.splits_dir)
 model = VoxelResidualModel(
@@ -61,18 +61,21 @@ output_dir.mkdir(parents=True, exist_ok=True)
 
 # Run inference on each scored split
 for split in TEST_SPLITS:
-    ds = GRAMDataset(splits_dir / split)
-    loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_fn)
-    print(f"{split}: {len(ds)} samples")
+    base = GRAMDataset(splits_dir / split)
+    print(f"{split}: {len(base)} samples — precomputing SDF")
+    sdfs = [compute_sdf(base[i][2], base[i][4], device) for i in tqdm(range(len(base)), desc=f"{split} SDF")]
+    ds = SDFDataset(base, sdfs)
+    loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_sdf)
 
     predictions = []
     with torch.no_grad():
-        for v_in, v_out, pos, t, idcs in tqdm(loader, desc=split, leave=False):
+        for v_in, v_out, pos, t, idcs, sdf in tqdm(loader, desc=split, leave=False):
             v_in = v_in.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
+            sdf = sdf.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            pred = model(v_in, pos, t, idcs, sdf)  # [B, 5, N, 3]
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 

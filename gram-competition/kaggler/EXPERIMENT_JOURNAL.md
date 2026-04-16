@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v5 SDF-to-airfoil feature
+- **Hypothesis:** near-wall flow physics (boundary layer, pressure gradient) depend strongly on distance to the wall. The airfoil-mask bit tells the model *if* a point is on the wing, but not how far off-wall. Add per-point Euclidean distance to the nearest airfoil point as an input feature (both raw/5 and log1p-transformed so the model can key on both near-field and far-field scales).
+- **Change:** `train.py` — `compute_sdf()` (GPU cdist, chunked), precompute per sample once at startup (~20s for 810 samples), `SDFDataset` wrapper + `collate_sdf`. Model `in_dim` 19→21 (added sdf_raw, sdf_log). `predict.py` does the same precompute. Arch identical to v2 otherwise.
+- **Result:** val/l2 = **0.9089** at epoch 35 (vs v2's 0.9228 at epoch 31). 30.6 min, 52s/epoch, peak 6.1 GB. 7.69M params. W&B run in project `kagent-v5`.
+- **Verdict:** kept — clear win of 0.014 and still descending at timeout (best epoch = last epoch).
+- **Notes:** SDF gives epoch-1 val/l2 = 1.52 vs v2's 1.64 — model uses it from the start. Cost is ~20s startup + 0 per-epoch overhead (SDF is a fixed feature). Next (v6): could try multi-scale voxel, or pair SDF with Fourier-encoded pos, or train longer (still descending).
+
+
 ### 2026-04-16 — v4 DISCARDED — bigger UNet (voxel_mid=96) slightly worse
 - **Hypothesis:** v2 was still descending at timeout (epoch 31). Doubling spatial capacity (voxel_mid 64→96, params 7.7M→15M) with more epochs (40→50) and more time (27→35 min) should push lower without aug/EMA confounds.
 - **Change:** `train.py` — `voxel_mid=96`, `epochs=50`; `predict.py` updated to match.
