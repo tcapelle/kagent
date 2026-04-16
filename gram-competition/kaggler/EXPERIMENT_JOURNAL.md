@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v7 DISCARDED — wall-offset vector feature regressed ~0.036
+- **Hypothesis:** scalar SDF tells the model *how far* to the wall but not *which direction*. Adding the 3D offset vector (`nearest_airfoil_pos - pos`) should give an explicit wall-normal-ish direction prior for pressure-gradient physics, on top of v6's longer training.
+- **Change:** `train.py` — `compute_sdf()` also returns per-point offset vector (N,3); `SDFDataset`/`collate_sdf` carry it; model `in_dim` 21→24 with `offset_feat = offset/5.0` concatenated. `predict.py` updated to compute and pass offset. Otherwise identical to v6.
+- **Result:** val/l2 = **0.9070** at epoch 51 (vs v6's 0.8707 at 52). Strictly worse the entire run (epoch 1: 1.58 vs v6 1.52; epoch 24: 1.03 vs v6 ~0.95). 52s/epoch, 6.1 GB. W&B project `kagent-v7`.
+- **Verdict:** discarded — reverted to v6.
+- **Notes:** 3 extra input features increased in_dim by 14% (21→24) but the scaling `offset/5.0` may have interacted poorly with early training dynamics. Offset magnitude is correlated with SDF magnitude (they measure the same thing up to a direction), so the model gets redundant signal that slows feature disentanglement. A cleaner direction prior would be a unit-normalized offset (wall-normal unit vector) separate from the scalar SDF, so the two features have independent meaning. Next (v8): try something architecturally simpler — bigger model (hidden=384) + more time, capitalizing on v6 still-descending curve.
+
+
 ### 2026-04-16 — v6 longer training (60 epochs, 45 min)
 - **Hypothesis:** v5 was still dropping val/l2 in the last 5 epochs (0.9253 → 0.9089). Cosine LR schedule tuned to 60 epochs (so LR is still decent at epoch ~50) plus 45-min timeout should let it converge further.
 - **Change:** `train.py` — `epochs=60`, MAX_TIMEOUT=45. No architecture changes.
