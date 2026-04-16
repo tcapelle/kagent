@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — exp13: chained warm-start from exp12 + lr=2e-5
+- **Hypothesis:** Exp12 plateau in 0.964-0.966 suggests we're at LR=5e-5 convergence. One more chain at lr=2e-5 to squeeze last ~0.002. After this plateau, pivot to arch changes.
+- **Change:** Run with --warm_start=<exp12 ckpt> --lr=2e-5.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Plateau → stop chaining and try: (a) parallel multi-scale voxel branch, (b) grid_size bump to 48, (c) position jitter augmentation.
+
 ### 2026-04-16 — exp12: chained warm-start from exp11 + lr=5e-5
 - **Hypothesis:** Exp11 val oscillated 0.968-0.977 mid-run, best at E23 (0.9681). LR=1e-4 still too high for fine-tuning. Half again to 5e-5, warm-start from exp11. Expected gain ~0.004 (diminishing chain).
 - **Change:** Run with --warm_start=<exp11 ckpt> --lr=5e-5.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** If saturated, switch to arch changes (parallel multi-scale, attention).
+- **Result:** val/l2=**0.9638** @ epoch 25 (30.0 min). train=0.0057. run 9jtypb06.
+- **Verdict:** KEPT — +0.004 over exp11 (0.9681). Chain plateau approaching: val oscillated 0.964-0.966 at E20-25. Train at 0.0057 (still dropping slowly).
+- **Notes:** Chain progression: exp8(1.014) → exp10(0.974, Δ=0.04) → exp11(0.968, Δ=0.006) → exp12(0.964, Δ=0.004). Geometric decay in gains. One more chain expected ~0.002.
 
 ### 2026-04-16 — exp11: chained warm-start from exp10 + lr=1e-4
 - **Hypothesis:** Exp10 (0.9742) hit minimum mid-run (E36) then slowly climbed — the 2e-4 cosine was slightly too high late, allowing oscillation. Chain another warm-start from exp10 with lr=1e-4 (half), adds 30 more min of fine annealing. Train=0.0070 suggests capacity room remains. Each warm-start cycle has diminishing returns but should add 10-20% improvement per run until plateau.
