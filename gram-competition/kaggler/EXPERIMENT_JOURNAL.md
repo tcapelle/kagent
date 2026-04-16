@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — Fourier pos + v-diffs + L2-per-point loss + hidden=384/8 blocks (iter 3)
+- **Hypothesis:** (a) Per-point MLP is capacity-bound — go wider/deeper. (b) NeRF-style Fourier pos features let the MLP learn higher-frequency spatial response. (c) Inter-step velocity diffs carry accel info. (d) MSE training is outlier-dominated; L2-per-point loss directly matches the val metric.
+- **Change:** `train.py` — hidden=384, n_blocks=8; Fourier pos encoding (L=6, gives 39-d pos feat); v_norm + inter-step v_diff as inputs (27-d); loss = `(pred-v_out).norm(dim=3).mean()`.
+- **Result:** best val/l2_error = **1.7497** at epoch 32/50 (30 min timeout). VRAM 8.1 GB. train=1.6731.
+- **Verdict:** kept — improved 1.7778 → 1.7497. Run `fern/iter3-fourier-l2loss`. Train/val gap tiny → not overfit, adding more signal (spatial) is the next lever.
+- **Notes:** Epoch 1 already hit 1.759 — L2 loss converges orders of magnitude faster than MSE; losses plateau by epoch ~10 but minor val improvements continue through epoch 32. Most wins probably come from L2 loss + Fourier features.
+
+### 2026-04-16 — kNN EdgeConv + Fourier (iter 2, DISCARDED)
+- **Hypothesis:** Per-point MLP ignores neighbors; interleave 2 DGCNN-style EdgeConv layers (kNN=16) between ResBlocks to add spatial context.
+- **Change:** `train.py` — EdgeConvBlock with max-pooled edge MLP, chunked self-kNN with per-geometry cache, Fourier pos.
+- **Result:** best val/l2_error = 1.7791 at epoch 3, then plateaued. 115 s/epoch (5× slower) → only 16 epochs in 30 min budget.
+- **Verdict:** discarded. Roughly tied with iter 1 despite more capacity — the slowdown ate the epoch budget before the model could converge. Reverted via `git reset --hard HEAD~1`.
+- **Notes:** VRAM 22.6 GB (fits but heavy). To retry spatial context cheaply: (i) voxel-grid pool (O(N), measured ~4 ms/layer with `index_add`), or (ii) precompute kNN per unique geometry once.
+
 ### 2026-04-16 — residual + no-slip + input-norm (iter 1)
 - **Hypothesis:** Baseline predicts full velocity from scratch and ignores the fact that flow is nearly stationary over 5 steps. Predicting `delta = v_out - v_in[-1]`, enforcing zero velocity at `idcs_airfoil`, and normalizing inputs with dataset stats should each help.
 - **Change:** `train.py` — BaselineMLP now stores vel_mean/vel_std buffers, normalizes v_in, adds v_in[-1] to the MLP output, and zeros predictions at airfoil indices. Same hidden=256, 6 blocks.
