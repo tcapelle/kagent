@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter3: larger Perceiver (L=192, d=512, 8 proc) + grad_accum=4 + warmup-cosine
+- **Hypothesis:** iter2 plateaued because (a) LR was too high at end of short run, (b) grad noise from batch=1 was limiting, (c) capacity was under-utilized (only 3 GB/96 used). Bigger model + warmup + proper cosine to 20 epochs + effective batch 4 should compound.
+- **Change:** `train.py` — `MODEL_CFG` bumped to `point_dim=320, latent_dim=512, n_latents=192, n_process_blocks=8, heads=8, dim_head=64`. Warmup 300 steps then cosine over the actual optimizer-step count. Gradient accumulation 4, grad-norm clip 1.0. LR schedule stepped per optimizer step not per epoch.
+- **Result:** val/l2 = **1.3456** at epoch 20 (full run, 28.3 min). Steady decrease: 2.39 (warmup) → 1.69 → 1.35; smoothest convergence so far. 4.2 GB peak. Run `<iter3>`. Predictions saved to `/mnt/new-pvc/predictions/apr16/nezuko/e4ea026`.
+- **Verdict:** kept (−0.06 vs iter2). Cleaner training curve, no LR-end noise.
+- **Notes:** Leaderboard now tops at alphonse/v2-voxel-unet = **0.9228**, thorfinn/transolver = 1.0751, askeladd/knn-gnn = 1.214. My global-attention Perceiver lacks spatial locality inductive bias — turbulence is a local phenomenon. Next iter: voxel-UNet (scatter points → 3D grid, 3D conv U-Net, trilinear-sample back to points) — same family as current leader, closes the obvious architecture gap.
+
 ### 2026-04-16 — iter2: Perceiver-IO latent bottleneck (L=128)
 - **Hypothesis:** pointwise ResMLP saturated because it cannot exchange information between neighbors; adding a Perceiver-IO latent bottleneck with L=128 learned queries will let the model aggregate global context for turbulent components.
 - **Change:** `train.py` — replaced `ResMLP` with `Perceiver(point_dim=256, latent_dim=384, n_latents=128, n_process_blocks=6, heads=6, dim_head=64)`. Fourier(16 bands) pos features, time-mean velocity extra feature, time sinusoidal embed conditions the learned latent init. Encoder cross-attn + 6 self-attn processor + decoder cross-attn + residual/no-slip head.
