@@ -22,7 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-16 — Fourier pos + v-diffs + L2-per-point loss + hidden=384/8 blocks (iter 3)
+### 2026-04-16 — Perceiver-style latent cross-attn + bf16 AMP (iter 6, TIED)
+- **Hypothesis:** Per-point MLP is capacity-bound; fixed-query Perceiver (M=256 latents) at O(N*M) gives cheap global spatial context at full 100k points. AMP bf16 makes attention at this scale affordable.
+- **Change:** `train.py` — `PerceiverBlock(dim, n_latents=256, n_heads=8)` with 3-stage attn (latent←point xattn, latent self-attn+FFN, point←latent xattn). 1 perceiver after 4 ResBlocks (via `perceiver_every=4`). bf16 AMP on train and val forward.
+- **Result:** best val/l2_error = **1.7496** at epoch 44/44 in 30 min. bf16 cut per-step from 417ms→54ms fw+bw → **41s/epoch** (iter 3 was 56s/epoch). VRAM 6.6 GB.
+- **Verdict:** tied with iter 3 (1.7497). bf16 AMP kept as a speedup, Perceiver did NOT meaningfully help. Train loss floor 1.673 ≈ val 1.75 → not overfit, the *type* of global context is wrong.
+- **Notes:** This is the same ceiling iter 3, 4, 5 hit. Next: replace fixed-query Perceiver with **Transolver Physics-Attention** — data-dependent slice tokens (softmax(point→slice), M=32-64) give geometry-aware global context. Top teams on AirfRANS/DrivAerML all hard-code geometry awareness. Research findings saved to memory `gram_next_ideas.md`.
+
+
 - **Hypothesis:** (a) Per-point MLP is capacity-bound — go wider/deeper. (b) NeRF-style Fourier pos features let the MLP learn higher-frequency spatial response. (c) Inter-step velocity diffs carry accel info. (d) MSE training is outlier-dominated; L2-per-point loss directly matches the val metric.
 - **Change:** `train.py` — hidden=384, n_blocks=8; Fourier pos encoding (L=6, gives 39-d pos feat); v_norm + inter-step v_diff as inputs (27-d); loss = `(pred-v_out).norm(dim=3).mean()`.
 - **Result:** best val/l2_error = **1.7497** at epoch 32/50 (30 min timeout). VRAM 8.1 GB. train=1.6731.
