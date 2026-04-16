@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v3 DISCARDED — EMA + y-mirror aug regressed ~0.06
+- **Hypothesis:** stack two free wins on v2: (1) EMA(0.999) weights smooth noisy B=1 val; (2) random y-mirror augmentation doubles effective data (F1 wing is y-symmetric). Epochs=50, MAX_TIMEOUT=30 min.
+- **Change:** `train.py` — added `EMA` class, update each step, swap in before validate/save. Random flip of `pos[...,1]`, `v_in[...,1]`, `v_out[...,1]` with p=0.5 during training.
+- **Result:** val/l2 = **0.9861** at epoch 35 (vs v2's 0.9228 at epoch 31). Consistently ~0.05–0.08 behind v2 throughout training. 30.7 min, 6.2 GB. W&B run `7c7qljbi` (project `kagent-v3`).
+- **Verdict:** discarded — reset to v2. Hurt not helped.
+- **Notes:** Can't separate EMA vs mirror-flip effects in this run. Most likely culprit: y-mirror assumption may be wrong (dataset has yaw or asymmetric wing geometries → flipping invents OOD data). EMA by itself usually helps; but v3 might be stuck in a "not-converged early EMA lag" regime combined with harder targets. Next (v4): isolate by trying more capacity + more epochs without aug or EMA.
+
+
 ### 2026-04-16 — v2 voxel-UNet spatial context (64³)
 - **Hypothesis:** v1 was a per-point MLP — zero spatial interaction. Near-wall flow depends on neighbors (wakes, pressure coupling). A 3D voxel-UNet (scatter-mean features into 64³ grid, run UNet, trilinear scatter-back) gives every point global+local context with the bottleneck giving receptive field ≫ wing chord. Residual around v1's per-point backbone so spatial block only needs to learn the correction.
 - **Change:** `train.py` — added `VoxelSpatial` (scatter/gather + 3-level UNet3D, GroupNorm), inserted between 2 pre-blocks and 4 post-blocks of ResMLP. Zero-init UNet output conv → block starts as identity. Axis permutation `[2,1,0]` on grid_sample coords to match (x,y,z)↔(W,H,D). `hidden=256, voxel_res=64, voxel_mid=64`. Moved training code into `main()` so predict.py import doesn't trigger `sp.parse`. 7.69M params.
