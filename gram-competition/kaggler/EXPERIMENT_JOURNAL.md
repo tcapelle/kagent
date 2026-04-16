@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter6: y-flip data augmentation (undertrained)
+- **Hypothesis:** F1 front wing has approximate y-axis symmetry; 50% random flip of pos_y + Uy (in/out) should double effective data and close the Uy MAE gap (0.33 → 0.29 like alphonse).
+- **Change:** `train.py` training loop — `if rand < 0.5: v_in[...,1].neg_(); v_out[...,1].neg_(); pos[...,1].neg_()`. Rest of iter5 config unchanged.
+- **Result:** val/l2 = **1.0029** at epoch 20 / 20 (still improving). 57 s/epoch, 5.5 GB peak, 19.2 min. Run `wrgpx6iv`.
+- **Verdict:** discarded for now — **undertrained, not a failure of the hypothesis**. Train loss still dropping (1.46) and val monotonically improving for the last 7 epochs. 20 epochs is insufficient for the augmented (harder) loss surface.
+- **Notes:** Ideas: (a) add TTA (y-flip averaging) at inference on iter5 checkpoint — free, targets the same symmetry without retraining; (b) if TTA helps, retrain iter5 config with y-flip aug for 30+ epochs. Going with (a) first as a cheap iter7.
+
 ### 2026-04-16 — iter5: scaled VoxelUNet (base_ch=128, blocks=3, bottleneck self-attn)
 - **Hypothesis:** capacity + global mixing at the 12³ bottleneck will close the 0.09 gap to alphonse. My Uy/Uz MAE (0.34/0.48) is weakest vs alphonse (0.29/0.42) — turbulent transverse components need both more features and global context, which pure local convs at 48³ with receptive field ~16 voxels can't give.
 - **Change:** `train.py` — `VoxelUNet` config: `base_ch` 96→128, `blocks_per_level` 2→3, added `VoxelBottleneckAttn` (self-attn + FF over 12³=1728 flattened bottleneck tokens, 8 heads × 64 dim). `point_dim` 192→256, `head_hidden` 320→384. Fourier/scheduler unchanged.

@@ -71,7 +71,13 @@ for split in TEST_SPLITS:
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            # TTA: average original and y-flipped predictions.
+            p1 = model(v_in, pos, t, idcs)
+            v_f = v_in.clone(); v_f[..., 1].neg_()
+            pos_f = pos.clone(); pos_f[..., 1].neg_()
+            p2 = model(v_f, pos_f, t, idcs)
+            p2 = p2.clone(); p2[..., 1].neg_()
+            pred = 0.5 * (p1 + p2)
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
