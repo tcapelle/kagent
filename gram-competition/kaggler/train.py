@@ -156,6 +156,22 @@ class SelfAttn(nn.Module):
         return self.attn(x, x)
 
 
+class VoxelBottleneckAttn(nn.Module):
+    """Self-attention over flattened bottleneck voxels for global mixing."""
+
+    def __init__(self, dim, heads=8, dim_head=64):
+        super().__init__()
+        self.attn = SelfAttn(dim, heads=heads, dim_head=dim_head)
+        self.ff = FeedForward(dim)
+
+    def forward(self, x):
+        B, C, D, H, W = x.shape
+        tokens = x.flatten(2).transpose(1, 2)  # [B, D*H*W, C]
+        tokens = self.attn(tokens)
+        tokens = self.ff(tokens)
+        return tokens.transpose(1, 2).reshape(B, C, D, H, W)
+
+
 class VoxelUNet(nn.Module):
     """3D conv U-Net over voxelized point features.
 
@@ -165,7 +181,8 @@ class VoxelUNet(nn.Module):
     voxel-sampled and original point features to predict a residual delta
     on top of v_in[-1] (velocity-normalized). Physics: velocity
     normalization, residual anchor, hard no-slip BC on airfoil points,
-    time conditioning broadcast per-point.
+    time conditioning broadcast per-point. Optional self-attention at the
+    bottleneck for global context.
     """
 
     def __init__(
@@ -176,6 +193,9 @@ class VoxelUNet(nn.Module):
         head_hidden=320,
         fourier_bands=12,
         blocks_per_level=2,
+        bottleneck_attn=False,
+        attn_heads=8,
+        attn_dim_head=64,
         vel_mean=None,
         vel_std=None,
     ):
@@ -195,6 +215,10 @@ class VoxelUNet(nn.Module):
         self.down2 = nn.Sequential(*[ResConv3d(c2) for _ in range(blocks_per_level)])
         self.pool2 = nn.Conv3d(c2, c3, 3, stride=2, padding=1)
         self.bottleneck = nn.Sequential(*[ResConv3d(c3) for _ in range(blocks_per_level)])
+        self.bottleneck_attn = (
+            VoxelBottleneckAttn(c3, heads=attn_heads, dim_head=attn_dim_head)
+            if bottleneck_attn else None
+        )
         self.up2 = nn.ConvTranspose3d(c3, c2, 2, stride=2)
         self.up_block2 = nn.Sequential(
             nn.Conv3d(c2 * 2, c2, 1), *[ResConv3d(c2) for _ in range(blocks_per_level)]
@@ -262,6 +286,8 @@ class VoxelUNet(nn.Module):
         x1 = self.down1(vox)
         x2 = self.down2(self.pool1(x1))
         x3 = self.bottleneck(self.pool2(x2))
+        if self.bottleneck_attn is not None:
+            x3 = self.bottleneck_attn(x3)
         u2 = self.up_block2(torch.cat([self.up2(x3), x2], dim=1))
         u1 = self.up_block1(torch.cat([self.up1(u2), x1], dim=1))
 
@@ -454,11 +480,14 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 # predict.py import it so the model can always be reconstructed from a checkpoint.
 MODEL_CFG = dict(
     grid_size=48,
-    base_ch=96,
-    point_dim=192,
-    head_hidden=320,
+    base_ch=128,
+    point_dim=256,
+    head_hidden=384,
     fourier_bands=12,
-    blocks_per_level=2,
+    blocks_per_level=3,
+    bottleneck_attn=True,
+    attn_heads=8,
+    attn_dim_head=64,
 )
 
 GRAD_ACCUM = 4
