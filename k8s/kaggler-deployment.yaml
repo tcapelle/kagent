@@ -47,11 +47,11 @@ spec:
             secretKeyRef:
               name: kagent-secrets
               key: wandb-api-key
-        - name: ANTHROPIC_API_KEY
+        - name: CLAUDE_CODE_OAUTH_TOKEN
           valueFrom:
             secretKeyRef:
               name: kagent-secrets
-              key: anthropic-api-key
+              key: claude-oauth-token
         - name: EXA_API_KEY
           valueFrom:
             secretKeyRef:

@@ -4,7 +4,7 @@ set -o pipefail
 : "${COMPETITION_DIR:?missing COMPETITION_DIR}"
 : "${KAGGLER_NAME:?missing KAGGLER_NAME}"
 : "${RESEARCH_TAG:?missing RESEARCH_TAG}"
-: "${ANTHROPIC_API_KEY:?missing ANTHROPIC_API_KEY}"
+: "${CLAUDE_CODE_OAUTH_TOKEN:?missing CLAUDE_CODE_OAUTH_TOKEN}"
 
 BRANCH="$RESEARCH_TAG/kaggler/$KAGGLER_NAME"
 AGENT_MODEL="${AGENT_MODEL:-}"
@@ -20,10 +20,9 @@ echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || ec
 cd /workspace/kagent
 
 # --- Branch setup (sparse: kaggler dir only, no organizer) ---
-git fetch --depth 1 origin
-if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
-    git checkout "$BRANCH"
-    git pull origin "$BRANCH"
+if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+    git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH"
+    git checkout -b "$BRANCH" "origin/$BRANCH"
 else
     git checkout -b "$BRANCH"
     git push -u origin "$BRANCH"

@@ -9,7 +9,7 @@ competition: cfd-competition  # repo-relative competition directory
 
 # agent
 agent_model: ""  # defaults to claude-opus-4-6[1m]
-max_timeout_min: 5  # training timeout in minutes (default 30)
+max_timeout_min: 30  # training timeout in minutes
 
 # git
 repo_url: https://github.com/tcapelle/kagent.git
