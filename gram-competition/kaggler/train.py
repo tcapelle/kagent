@@ -157,142 +157,141 @@ class Config:
     debug: bool = False
 
 
-cfg = sp.parse(Config)
-MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
+def main():
+    cfg = sp.parse(Config)
+    MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 
-train_ds, val_splits, stats = load_data(cfg.splits_dir, debug=cfg.debug)
+    train_ds, val_splits, stats = load_data(cfg.splits_dir, debug=cfg.debug)
 
-loader_kwargs = dict(collate_fn=collate_fn, num_workers=2, pin_memory=True)
-train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **loader_kwargs)
-val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
-    for name, ds in val_splits.items()
-}
+    loader_kwargs = dict(collate_fn=collate_fn, num_workers=2, pin_memory=True)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **loader_kwargs)
+    val_loaders = {
+        name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+        for name, ds in val_splits.items()
+    }
 
-model = ResidualPointMLP(
-    vel_mean=stats["vel_mean"],
-    vel_std=stats["vel_std"],
-    hidden=cfg.hidden,
-    n_blocks=cfg.n_blocks,
-).to(device)
+    model = ResidualPointMLP(
+        vel_mean=stats["vel_mean"],
+        vel_std=stats["vel_std"],
+        hidden=cfg.hidden,
+        n_blocks=cfg.n_blocks,
+    ).to(device)
 
-n_params = sum(p.numel() for p in model.parameters())
-print(f"Model params: {n_params/1e6:.2f} M")
-optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"Model params: {n_params/1e6:.2f} M")
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
-RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
+    RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
-run = wandb.init(
-    entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
-    project=os.environ.get("WANDB_PROJECT", "kagent-gram"),
-    group=cfg.wandb_group or RESEARCH_TAG,
-    name=cfg.wandb_name,
-    tags=[t for t in [cfg.agent, RESEARCH_TAG] if t],
-    config={**asdict(cfg), "n_params": n_params,
-            "train_samples": len(train_ds),
-            "val_samples": {k: len(v) for k, v in val_splits.items()}},
-    mode=os.environ.get("WANDB_MODE", "online"),
-)
-
-wandb.define_metric("global_step")
-wandb.define_metric("train/*", step_metric="global_step")
-wandb.define_metric("val/*", step_metric="global_step")
-
-KAGGLER_NAME = os.environ.get("KAGGLER_NAME", cfg.agent or "local")
-pvc_dir = Path(f"/mnt/new-pvc/kagent/{RESEARCH_TAG}/{KAGGLER_NAME}/checkpoints/model-{run.id}")
-pvc_dir.mkdir(parents=True, exist_ok=True)
-model_path = pvc_dir / "checkpoint.pt"
-
-git_ckpt_path = Path("checkpoints/best.pt")
-git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
-
-
-# ---------------------------------------------------------------------------
-# Training loop
-# ---------------------------------------------------------------------------
-
-best_val = float("inf")
-best_metrics: dict = {}
-global_step = 0
-train_start = time.time()
-
-for epoch in range(MAX_EPOCHS):
-    if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
-        print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
-        break
-
-    t0 = time.time()
-    model.train()
-    epoch_loss = 0.0
-    n_batches = 0
-
-    for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
-        v_in = v_in.to(device, non_blocking=True)
-        v_out = v_out.to(device, non_blocking=True)
-        pos = pos.to(device, non_blocking=True)
-        t = t.to(device, non_blocking=True)
-
-        pred = model(v_in, pos, t, idcs)
-        # normalized loss: fair weighting across components (Ux std ~20 dominates raw MSE otherwise)
-        vel_std = stats["vel_std"].to(device).view(1, 1, 1, 3)
-        diff = (pred - v_out) / vel_std
-        loss = diff.pow(2).mean()
-
-        optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
-        global_step += 1
-        wandb.log({"train/loss": loss.item(), "global_step": global_step})
-
-        epoch_loss += loss.item()
-        n_batches += 1
-
-    scheduler.step()
-    epoch_loss /= max(n_batches, 1)
-
-    mean_val, split_metrics = validate(model, val_loaders, device, global_step)
-    dt = time.time() - t0
-
-    wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
-               "epoch_time_s": dt, "global_step": global_step})
-
-    tag = ""
-    if mean_val < best_val:
-        best_val = mean_val
-        best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
-        for sm in split_metrics.values():
-            best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-        torch.save(model.state_dict(), model_path)
-        shutil.copyfile(model_path, git_ckpt_path)
-        tag = " *"
-
-    peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
-    print(
-        f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
-        f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+    run = wandb.init(
+        entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
+        project=os.environ.get("WANDB_PROJECT", "kagent-gram"),
+        group=cfg.wandb_group or RESEARCH_TAG,
+        name=cfg.wandb_name,
+        tags=[t for t in [cfg.agent, RESEARCH_TAG] if t],
+        config={**asdict(cfg), "n_params": n_params,
+                "train_samples": len(train_ds),
+                "val_samples": {k: len(v) for k, v in val_splits.items()}},
+        mode=os.environ.get("WANDB_MODE", "online"),
     )
 
-total_time = (time.time() - train_start) / 60.0
-print(f"\nDone ({total_time:.1f} min)")
+    wandb.define_metric("global_step")
+    wandb.define_metric("train/*", step_metric="global_step")
+    wandb.define_metric("val/*", step_metric="global_step")
 
-if best_metrics:
-    print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
-    wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
+    KAGGLER_NAME = os.environ.get("KAGGLER_NAME", cfg.agent or "local")
+    pvc_dir = Path(f"/mnt/new-pvc/kagent/{RESEARCH_TAG}/{KAGGLER_NAME}/checkpoints/model-{run.id}")
+    pvc_dir.mkdir(parents=True, exist_ok=True)
+    model_path = pvc_dir / "checkpoint.pt"
 
-if best_metrics and not cfg.debug:
-    import subprocess
-    print("\nGenerating test predictions...")
-    pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
-    if cfg.agent:
-        pred_cmd += ["--agent", cfg.agent]
-    result = subprocess.run(pred_cmd, capture_output=True, text=True)
-    print(result.stdout)
-    if result.returncode != 0:
-        print(f"predict.py failed:\n{result.stderr[-500:]}")
+    git_ckpt_path = Path("checkpoints/best.pt")
+    git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
-wandb.finish()
+    best_val = float("inf")
+    best_metrics: dict = {}
+    global_step = 0
+    train_start = time.time()
+
+    for epoch in range(MAX_EPOCHS):
+        if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
+            print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
+            break
+
+        t0 = time.time()
+        model.train()
+        epoch_loss = 0.0
+        n_batches = 0
+
+        for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+            v_in = v_in.to(device, non_blocking=True)
+            v_out = v_out.to(device, non_blocking=True)
+            pos = pos.to(device, non_blocking=True)
+            t = t.to(device, non_blocking=True)
+
+            pred = model(v_in, pos, t, idcs)
+            vel_std = stats["vel_std"].to(device).view(1, 1, 1, 3)
+            diff = (pred - v_out) / vel_std
+            loss = diff.pow(2).mean()
+
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            global_step += 1
+            wandb.log({"train/loss": loss.item(), "global_step": global_step})
+
+            epoch_loss += loss.item()
+            n_batches += 1
+
+        scheduler.step()
+        epoch_loss /= max(n_batches, 1)
+
+        mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+        dt = time.time() - t0
+
+        wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
+                   "epoch_time_s": dt, "global_step": global_step})
+
+        tag = ""
+        if mean_val < best_val:
+            best_val = mean_val
+            best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
+            for sm in split_metrics.values():
+                best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+            torch.save(model.state_dict(), model_path)
+            shutil.copyfile(model_path, git_ckpt_path)
+            tag = " *"
+
+        peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+        print(
+            f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
+            f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+        )
+
+    total_time = (time.time() - train_start) / 60.0
+    print(f"\nDone ({total_time:.1f} min)")
+
+    if best_metrics:
+        print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
+        wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
+
+    if best_metrics and not cfg.debug:
+        import subprocess
+        print("\nGenerating test predictions...")
+        pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
+        if cfg.agent:
+            pred_cmd += ["--agent", cfg.agent]
+        result = subprocess.run(pred_cmd, capture_output=True, text=True)
+        print(result.stdout)
+        if result.returncode != 0:
+            print(f"predict.py failed:\n{result.stderr[-500:]}")
+
+    wandb.finish()
+
+
+if __name__ == "__main__":
+    main()
