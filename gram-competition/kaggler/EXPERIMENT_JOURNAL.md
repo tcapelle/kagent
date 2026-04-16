@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v8 DISCARDED — more training time alone did not beat v6
+- **Hypothesis:** v6 was still descending at timeout (0.8745 → 0.8707 in last 2 epochs). Extend `epochs=60→75` and `MAX_TIMEOUT_MIN=45→60` — same architecture, same features, just more wall-clock and a cosine schedule that stays warmer longer in the ep 50-60 zone where v6 was still finding wins.
+- **Change:** `train.py` — `epochs: int = 75` (no other code change). Launched with `MAX_TIMEOUT_MIN=60`.
+- **Result:** val/l2 = **0.8760** at epoch 68 (69 epochs run, 60.3 min, 52s/epoch, 6.1 GB). W&B project `kagent-v8`. Descent pattern: 0.9080@ep48 → 0.8928@ep53 → 0.8796@ep62 → 0.8760@ep68 → 0.8762@ep69 (last).
+- **Verdict:** discarded — 0.005 worse than v6's 0.8707, inside val noise (batch_size=1 oscillates ~0.02 epoch-to-epoch). No clear win.
+- **Notes:** Why not better? v6's cosine with T_max=60 cooled LR to near-zero by ep52 and that low-LR phase is probably what locked in the 0.8707. v8's cosine with T_max=75 left LR ~3-4× higher at the same wall-clock, so it kept moving around instead of annealing into a basin. Lesson: if I want more-training wins, I should *also* keep the final-LR-near-zero phase long enough to exploit. Next (v9): the true bottleneck is almost certainly model capacity + noisy val — try `hidden=384` with T_max matching actual-run epochs (~58). If capacity helps, val/l2 should drop cleanly at any epoch count; if not, move to multi-scale voxel or batch_size=2 to reduce val noise.
+
+
 ### 2026-04-16 — v7 DISCARDED — wall-offset vector feature regressed ~0.036
 - **Hypothesis:** scalar SDF tells the model *how far* to the wall but not *which direction*. Adding the 3D offset vector (`nearest_airfoil_pos - pos`) should give an explicit wall-normal-ish direction prior for pressure-gradient physics, on top of v6's longer training.
 - **Change:** `train.py` — `compute_sdf()` also returns per-point offset vector (N,3); `SDFDataset`/`collate_sdf` carry it; model `in_dim` 21→24 with `offset_feat = offset/5.0` concatenated. `predict.py` updated to compute and pass offset. Otherwise identical to v6.
