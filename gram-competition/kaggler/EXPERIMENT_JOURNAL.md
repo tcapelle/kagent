@@ -29,10 +29,17 @@ Keep entries short. Link W&B run URLs when useful.
   and (c) temporal Δv features should substantially lower val/l2.
 - **Change:** `model.py` — `voxel_pool_mean`, `min_distance_to`; input
   dim grows from 19 → ~41. Architecture: hidden=512, 10 ResBlocks.
-- **Result:** pending
-- **Verdict:** pending
-- **Notes:** Debug run: peak VRAM 13.3 GB, ~1 sec/step on 4 samples.
-  Voxel grids use `torch_geometric.utils.scatter` (no torch-cluster).
+  121s/epoch. Peak VRAM 13.3 GB.
+- **Result:** Best val/l2=1.39 at epoch 16 (of 16 run, killed early).
+  Train loss 0.044 → 0.027. Val trajectory: 1.57,1.81,1.60,1.52,1.61,
+  1.48,1.59,1.56,1.51,1.58,1.53,1.42,1.44,1.41,1.64,1.39.
+  WandB run `edward/v2-voxel+dist`.
+- **Verdict:** Only marginal gain over v1 (~1.34). Mean-only voxel
+  features give weak spatial signal.
+- **Notes:** Killed early (epoch 16/60) because trajectory mirrored
+  v1's and the expected ~1.30 wouldn't justify full run; swap to v3
+  with richer spatial stats (mean, std, self-deviation, laplacian
+  proxy) and bf16 AMP for speed.
 
 ### 2026-04-16 — v1: residual + normalization + no-slip BC + time FiLM
 - **Hypothesis:** absolute-velocity MLP wastes capacity modelling the ~35 m/s

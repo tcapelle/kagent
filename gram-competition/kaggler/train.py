@@ -88,6 +88,7 @@ class Config:
     epochs: int = 50
     hidden: int = 512
     n_blocks: int = 8
+    amp: bool = False  # enable mixed-precision (bf16 autocast, no scaler needed)
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -178,10 +179,11 @@ for epoch in range(MAX_EPOCHS):
         pos = pos.to(device, non_blocking=True)
         t = t.to(device, non_blocking=True)
 
-        pred = model(v_in, pos, t, idcs)
-        # Loss in normalized space (scale components to unit std); gives balanced gradient
-        err_norm = (pred - v_out) / model.vel_std
-        loss = err_norm.pow(2).mean()
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.amp):
+            pred = model(v_in, pos, t, idcs)
+            # Loss in normalized space (scale components to unit std); gives balanced gradient
+            err_norm = (pred - v_out) / model.vel_std
+            loss = err_norm.pow(2).mean()
 
         optimizer.zero_grad()
         loss.backward()

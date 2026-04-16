@@ -1,12 +1,9 @@
 """Model for GRaM airflow prediction.
 
-Per-point ResMLP with:
-  * residual prediction (delta from last input step, in normalized space)
-  * multi-scale voxel-pooled neighbor velocities (spatial context)
-  * signed distance to the airfoil surface (boundary-layer coord)
-  * temporal velocity differences (Δv over input frames)
-  * airfoil mask + global time conditioning
-  * hard no-slip BC enforcement at airfoil indices.
+v3: per-point residual MLP with multi-scale voxel statistics (mean, std,
+self-deviation), laplacian-like coarse-minus-fine proxy, temporal Δv,
+airfoil mask, log-distance-to-airfoil, global time conditioning, and hard
+no-slip BC enforcement.
 """
 
 import torch
@@ -16,16 +13,22 @@ from torch_geometric.utils import scatter
 from data import T_IN, T_OUT
 
 
-VOXEL_SCALES = (0.05, 0.20)  # metres; F1 wing domain is ~2m x 0.8m x 1.2m
+VOXEL_SCALES = (0.05, 0.20)  # fine / coarse
+
+
+def min_distance_to(pos, subset_pos, chunk=4096):
+    """Per-point min distance from `pos` to any point in `subset_pos`. Chunked."""
+    N = pos.shape[0]
+    out = torch.empty(N, device=pos.device)
+    for i in range(0, N, chunk):
+        d = torch.cdist(pos[i : i + chunk], subset_pos)
+        out[i : i + chunk] = d.min(dim=1).values
+    return out
 
 
 def voxel_pool_mean(pos, feats, voxel_size):
-    """Per-voxel mean of `feats`, broadcast back to each input point.
-
-    pos: [N, 3], feats: [N, C]. Returns [N, C].
-    Voxel ids are built by integer-quantising pos at `voxel_size`.
-    """
-    grid = torch.floor(pos / voxel_size).long()  # [N,3]
+    """Per-voxel mean of `feats`, broadcast back to each point."""
+    grid = torch.floor(pos / voxel_size).long()
     g_min = grid.min(dim=0).values
     grid = grid - g_min
     rng = grid.max(dim=0).values + 1
@@ -36,17 +39,30 @@ def voxel_pool_mean(pos, feats, voxel_size):
     return mean[inv]
 
 
-def min_distance_to(pos, subset_pos, chunk=4096):
-    """For each point in `pos`, distance to the nearest point in `subset_pos`.
+def voxel_stats(pos, feats, voxel_size):
+    """Returns (mean_at_point, std_at_point, self_deviation_at_point).
 
-    Returns [N] tensor. Chunked to keep memory bounded.
+    mean_at_point[i] = mean(feats) over the voxel containing point i.
+    std_at_point[i]  = std(feats) over the voxel.
+    self_dev[i]      = feats[i] - mean_at_point[i].
     """
-    N = pos.shape[0]
-    out = torch.empty(N, device=pos.device)
-    for i in range(0, N, chunk):
-        d = torch.cdist(pos[i : i + chunk], subset_pos)  # [c, M]
-        out[i : i + chunk] = d.min(dim=1).values
-    return out
+    grid = torch.floor(pos / voxel_size).long()
+    g_min = grid.min(dim=0).values
+    grid = grid - g_min
+    rng = grid.max(dim=0).values + 1
+    key = grid[:, 0] * (rng[1] * rng[2]) + grid[:, 1] * rng[2] + grid[:, 2]
+    _, inv = torch.unique(key, return_inverse=True)
+    n_vox = int(inv.max().item() + 1)
+
+    m = scatter(feats, inv, dim=0, dim_size=n_vox, reduce="mean")
+    m2 = scatter(feats * feats, inv, dim=0, dim_size=n_vox, reduce="mean")
+    var = (m2 - m * m).clamp_min(0)
+    std = var.sqrt()
+
+    mean_at = m[inv]
+    std_at = std[inv]
+    dev = feats - mean_at
+    return mean_at, std_at, dev
 
 
 class ResBlock(nn.Module):
@@ -64,13 +80,12 @@ class ResBlock(nn.Module):
 
 
 class ResidualMLP(nn.Module):
-    """Pointwise residual predictor with spatial + temporal context features."""
-
-    # Feature dim breakdown:
+    # Per-point input features:
     #   pos(3) + v_in_norm_flat(T_IN*3) + v_in_diff_flat((T_IN-1)*3)
     #   + airfoil_mask(1) + log_dist_airfoil(1)
-    #   + voxel_mean_v per scale (len(VOXEL_SCALES) * 3)
-    IN_DIM = 3 + T_IN * 3 + (T_IN - 1) * 3 + 1 + 1 + len(VOXEL_SCALES) * 3
+    #   + [mean(3), std(3), self-dev(3)] per scale × len(VOXEL_SCALES)
+    #   + laplacian(3)  (coarse mean − fine mean)
+    IN_DIM = 3 + T_IN * 3 + (T_IN - 1) * 3 + 1 + 1 + len(VOXEL_SCALES) * 9 + 3
 
     def __init__(self, vel_mean, vel_std, hidden=512, n_blocks=10):
         super().__init__()
@@ -92,38 +107,40 @@ class ResidualMLP(nn.Module):
         B, T, N, _ = velocity_in.shape
         device = velocity_in.device
 
-        v_in_norm = (velocity_in - self.vel_mean) / self.vel_std      # [B,T,N,3]
+        v_in_norm = (velocity_in - self.vel_mean) / self.vel_std       # [B,T,N,3]
         v_in_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * 3)
-        v_in_diff = (v_in_norm[:, 1:] - v_in_norm[:, :-1])              # [B,T-1,N,3]
+        v_in_diff = v_in_norm[:, 1:] - v_in_norm[:, :-1]
         v_in_diff_flat = v_in_diff.permute(0, 2, 1, 3).reshape(B, N, (T - 1) * 3)
 
-        # Per-sample voxel features + distance-to-airfoil + mask.
         mask = torch.zeros(B, N, 1, device=device)
         log_dist = torch.zeros(B, N, 1, device=device)
-        vox_feats_per_scale = [torch.zeros(B, N, 3, device=device) for _ in VOXEL_SCALES]
+        per_scale_feats = [torch.zeros(B, N, 9, device=device) for _ in VOXEL_SCALES]
+        laplacian = torch.zeros(B, N, 3, device=device)
 
-        v_last_norm = v_in_norm[:, -1]  # [B,N,3]
+        v_last = v_in_norm[:, -1]
         for i in range(B):
             idc = idcs_airfoil[i].to(device)
             mask[i, idc, 0] = 1.0
 
-            # Signed-distance-like feature to the nearest airfoil point.
             dist = min_distance_to(pos[i], pos[i, idc])
             log_dist[i, :, 0] = torch.log1p(dist * 10.0)
 
-            # Multi-scale voxel-mean velocity (last input frame).
+            means = []
             for s, vs in enumerate(VOXEL_SCALES):
-                vox_feats_per_scale[s][i] = voxel_pool_mean(pos[i], v_last_norm[i], vs)
+                mean_at, std_at, dev = voxel_stats(pos[i], v_last[i], vs)
+                per_scale_feats[s][i] = torch.cat([mean_at, std_at, dev], dim=-1)
+                means.append(mean_at)
+            laplacian[i] = means[-1] - means[0]
 
-        vox = torch.cat(vox_feats_per_scale, dim=-1)  # [B,N,3*len(scales)]
+        vox_cat = torch.cat(per_scale_feats, dim=-1)
         feats = torch.cat(
-            [pos, v_in_flat, v_in_diff_flat, mask, log_dist, vox],
+            [pos, v_in_flat, v_in_diff_flat, mask, log_dist, vox_cat, laplacian],
             dim=-1,
         )
         return feats, v_in_norm
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
-        B, T, N, _ = velocity_in.shape
+        B, _, N, _ = velocity_in.shape
         device = velocity_in.device
 
         feats, v_in_norm = self._build_features(velocity_in, pos, idcs_airfoil)
