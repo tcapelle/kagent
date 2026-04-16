@@ -37,37 +37,106 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, film_dim=None):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
-            nn.GELU(),
-            nn.Linear(dim * 2, dim),
-        )
+        self.norm = nn.LayerNorm(dim)
+        self.lin1 = nn.Linear(dim, dim * 2)
+        self.lin2 = nn.Linear(dim * 2, dim)
+        self.film = nn.Linear(film_dim, dim * 2) if film_dim else None
 
-    def forward(self, x):
-        return x + self.net(x)
+    def forward(self, x, cond=None):
+        h = self.norm(x)
+        if self.film is not None and cond is not None:
+            scale, shift = self.film(cond).chunk(2, dim=-1)
+            h = h * (1 + scale.unsqueeze(-2)) + shift.unsqueeze(-2)
+        h = self.lin1(h)
+        h = torch.nn.functional.gelu(h)
+        h = self.lin2(h)
+        return x + h
 
 
-class BaselineMLP(nn.Module):
-    """Concat pos + velocity_in per point, predict velocity_out through ResMLP."""
+def sinusoidal_embed(x, dim):
+    """Sinusoidal embedding for a scalar per-sample tensor x of shape [B, K]."""
+    device = x.device
+    half = dim // 2
+    freqs = torch.exp(
+        -torch.arange(half, device=device, dtype=torch.float32) * (torch.log(torch.tensor(10000.0)) / max(half - 1, 1))
+    )
+    args = x.unsqueeze(-1) * freqs  # [B, K, half]
+    emb = torch.cat([args.sin(), args.cos()], dim=-1)  # [B, K, dim]
+    return emb
 
-    def __init__(self, hidden=256, n_blocks=6):
+
+class ResMLP(nn.Module):
+    """Pointwise residual MLP with physics priors.
+
+    - Normalizes velocity (standardize by train stats) and position (per-sample center + scale).
+    - Predicts residual delta per output timestep relative to the last input timestep.
+    - FiLM-conditions each block on a per-sample time embedding (encodes the 10 absolute t values).
+    - Enforces no-slip BC: zero velocity at airfoil indices.
+    """
+
+    def __init__(self, hidden=384, n_blocks=8, time_dim=64, vel_mean=None, vel_std=None):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
+        in_dim = 3 + T_IN * 3 + 1   # pos(3) + velocity_in (normalized, 5*3=15) + airfoil mask(1)
+        out_dim = T_OUT * 3          # residual delta per-timestep
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        # Per-sample time embedding dim: 10 absolute times * time_dim, projected to `hidden`.
+        t_enc_dim = 10 * time_dim
+        self.time_proj = nn.Sequential(
+            nn.Linear(t_enc_dim, hidden), nn.GELU(), nn.Linear(hidden, hidden)
+        )
+        self.blocks = nn.ModuleList([ResBlock(hidden, film_dim=hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        self.time_dim = time_dim
+
+        if vel_mean is None:
+            vel_mean = torch.zeros(3)
+        if vel_std is None:
+            vel_std = torch.ones(3)
+        self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
+        self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
+
+        # Normalize velocity with dataset stats.
+        v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
+
+        # Center and scale pos per sample (makes model invariant to absolute coordinate).
+        pos_mean = pos.mean(dim=1, keepdim=True)
+        pos_scale = pos.std(dim=(1, 2), keepdim=True).clamp_min(1e-3)
+        pos_norm = (pos - pos_mean) / pos_scale  # [B, N, 3]
+
+        # Airfoil mask as a per-point feature.
+        airfoil_mask = torch.zeros(B, N, 1, device=pos.device, dtype=pos.dtype)
+        for b, idcs in enumerate(idcs_airfoil):
+            airfoil_mask[b, idcs.to(pos.device), 0] = 1.0
+
+        x = torch.cat([pos_norm, v_norm.reshape(B, N, T * C), airfoil_mask], dim=-1)
         x = self.proj_in(x)
-        x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        return out.reshape(B, T_OUT, N, 3)
+
+        # Time conditioning: embed each of the 10 timestep values, flatten, project.
+        t_emb = sinusoidal_embed(t, self.time_dim).reshape(B, -1)  # [B, 10*time_dim]
+        cond = self.time_proj(t_emb)  # [B, hidden]
+
+        for blk in self.blocks:
+            x = blk(x, cond)
+
+        out = self.proj_out(x)  # [B, N, T_OUT * 3]
+        delta_norm = out.reshape(B, T_OUT, N, 3)
+
+        # Residual prediction: add delta to last input timestep (both in normalized space).
+        v_last_norm = v_norm[:, -1:, :, :]  # [B, 1, N, 3]
+        pred_norm = v_last_norm + delta_norm  # [B, T_OUT, N, 3]
+
+        # Denormalize back to m/s.
+        pred = pred_norm * self.vel_std + self.vel_mean
+
+        # No-slip BC: zero velocity at airfoil surface points.
+        for b, idcs in enumerate(idcs_airfoil):
+            pred[b, :, idcs.to(pos.device), :] = 0.0
+        return pred
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +227,13 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+model = ResMLP(
+    hidden=384,
+    n_blocks=8,
+    time_dim=64,
+    vel_mean=stats["vel_mean"],
+    vel_std=stats["vel_std"],
+).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
