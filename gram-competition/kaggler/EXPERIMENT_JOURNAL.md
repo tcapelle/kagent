@@ -25,9 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-16 — exp7: train-time point subsampling to 50k
 - **Hypothesis:** Exp5 (best: 1.0430) had train loss still dropping at timeout (0.0091, down from 0.0103 at epoch 27). More epochs should help. Subsampling points 100k→50k at train time only (val stays 100k) gives 1.44x step speedup → ~52 epochs vs 38 in same 30min budget. Voxel grid remains same density per voxel (just slightly sparser) so spatial structure preserved.
 - **Change:** Config.subsample_train=50000. Train loop: randomly sample K=50k point indices per step, slice v_in/v_out/pos, remap idcs_airfoil via inverse index. Val unchanged (all 100k).
-- **Result:** TBD. Bench: 47ms/step @ 50k (vs 68ms @ 100k), 2.7GB peak.
-- **Verdict:** TBD
-- **Notes:** Val is shifted from train distribution (100k dense vs 50k subsampled) — model must generalize across densities. Voxel grid partially handles this since grid_sample interpolates.
+- **Result:** val/l2=**1.0189** @ epoch 50 (29.8 min). train=0.0103, 2.7GB peak. run jdwouppy. 35s/epoch (fit all 50 epochs in budget).
+- **Verdict:** KEPT — beats exp5 (1.0430) by 0.024. Subsampling acts as regularization AND enables more epochs. Final train loss 0.0103 is higher than exp5's 0.0091, but val is much better → subsampling = better generalization (new point sampling per step ≈ implicit augmentation).
+- **Notes:** Val still dropping at end — could benefit from even more epochs or a deeper net. Subsampling was a 2x win (0.024 drop) without any architectural change. Next: try subsample=30k for even more epochs, or push the net deeper (n_blocks=8) now that per-step is cheap.
 
 ### 2026-04-16 — exp6: multi-scale voxel (alternate grids 32/16) (DISCARDED)
 - **Hypothesis:** Alternate VoxelMixer grids 32/16 to get multi-scale receptive field at no extra param cost.
