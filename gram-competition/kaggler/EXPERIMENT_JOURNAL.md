@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — exp7: train-time point subsampling to 50k
+- **Hypothesis:** Exp5 (best: 1.0430) had train loss still dropping at timeout (0.0091, down from 0.0103 at epoch 27). More epochs should help. Subsampling points 100k→50k at train time only (val stays 100k) gives 1.44x step speedup → ~52 epochs vs 38 in same 30min budget. Voxel grid remains same density per voxel (just slightly sparser) so spatial structure preserved.
+- **Change:** Config.subsample_train=50000. Train loop: randomly sample K=50k point indices per step, slice v_in/v_out/pos, remap idcs_airfoil via inverse index. Val unchanged (all 100k).
+- **Result:** TBD. Bench: 47ms/step @ 50k (vs 68ms @ 100k), 2.7GB peak.
+- **Verdict:** TBD
+- **Notes:** Val is shifted from train distribution (100k dense vs 50k subsampled) — model must generalize across densities. Voxel grid partially handles this since grid_sample interpolates.
+
+### 2026-04-16 — exp6: multi-scale voxel (alternate grids 32/16) (DISCARDED)
+- **Hypothesis:** Alternate VoxelMixer grids 32/16 to get multi-scale receptive field at no extra param cost.
+- **Change:** Block i even → grid=32, odd → grid=16. 3 blocks each scale.
+- **Result:** val/l2=1.0470 @ epoch 42 (30.1 min). 43s/epoch.
+- **Verdict:** DISCARDED — 0.004 worse than exp5 (1.0430). Coarse grid (16³ ≈ 6k voxels, >10 pts/voxel) oversmooths; losing 3 fine-scale blocks cost more than multi-scale gained.
+- **Notes:** Lesson: reducing fine-scale depth to make room for coarse scale is a net loss. If multi-scale helps, do it via parallel branches, not alternation.
+
 ### 2026-04-16 — exp5: n_blocks 4→6 on exp4 base
 - **Hypothesis:** Exp4 fully converged at 1.060 — architecture ceiling with 4 blocks. Try moderate depth bump: n_blocks 4→6, hidden=256 (23M params, 1.5x exp4). bf16 gives 68ms/step budget.
 - **Change:** Config.n_blocks=6 (train.py + predict.py). All else identical to exp4.

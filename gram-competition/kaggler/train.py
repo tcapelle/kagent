@@ -257,6 +257,7 @@ class Config:
     n_fourier: int = 8
     grad_clip: float = 1.0
     bf16: bool = True
+    subsample_train: int = 50000
 
 
 def main():
@@ -337,6 +338,22 @@ def main():
             v_out = v_out.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
+
+            if 0 < cfg.subsample_train < v_in.shape[2]:
+                N = v_in.shape[2]
+                K = cfg.subsample_train
+                sel = torch.randperm(N, device=device)[:K]
+                v_in = v_in[:, :, sel]
+                v_out = v_out[:, :, sel]
+                pos = pos[:, sel]
+                new_idcs = []
+                mask_full = torch.zeros(N, dtype=torch.bool, device=device)
+                inv = torch.empty(N, dtype=torch.long, device=device).fill_(-1)
+                inv[sel] = torch.arange(K, device=device)
+                for af in idcs:
+                    af = af.to(device, non_blocking=True)
+                    new_idcs.append(inv[af][inv[af] >= 0])
+                idcs = new_idcs
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp_enabled):
                 pred = model(v_in, pos, t, idcs)
