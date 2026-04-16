@@ -50,24 +50,44 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class BaselineMLP(nn.Module):
-    """Concat pos + velocity_in per point, predict velocity_out through ResMLP."""
+class ResidualMLP(nn.Module):
+    """Predict residual from last-input velocity, with normalization and no-slip BC.
 
-    def __init__(self, hidden=256, n_blocks=6):
+    Key ideas:
+      * Normalize velocity_in by dataset stats to stabilize training.
+      * Predict a per-timestep delta on top of velocity_in[:, -1] (strong prior).
+      * Hard-zero the prediction at airfoil surface indices (no-slip).
+    """
+
+    def __init__(self, hidden=384, n_blocks=8, vel_mean=None, vel_std=None):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
+        in_dim = 3 + T_IN * 3  # pos(3) + normalized velocity_in(15)
+        out_dim = T_OUT * 3
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
+        if vel_mean is None:
+            vel_mean = torch.zeros(3)
+        if vel_std is None:
+            vel_std = torch.ones(3)
+        self.register_buffer("vel_mean", vel_mean.float().view(1, 1, 1, 3))
+        self.register_buffer("vel_std", vel_std.float().view(1, 1, 1, 3))
+
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
+        v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
+        x = torch.cat([pos, v_norm.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
         x = self.proj_in(x)
         x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        return out.reshape(B, T_OUT, N, 3)
+        delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        # Predict as residual on top of the last input velocity step.
+        last = velocity_in[:, -1:, :, :]  # [B, 1, N, 3]
+        pred = last + delta * self.vel_std
+        # Hard no-slip: zero velocity at airfoil surface points.
+        for b, idx in enumerate(idcs_airfoil):
+            pred[b, :, idx, :] = 0.0
+        return pred
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +154,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 50
+    epochs: int = 20
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -158,7 +178,12 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+model = ResidualMLP(
+    hidden=384,
+    n_blocks=8,
+    vel_mean=stats["vel_mean"],
+    vel_std=stats["vel_std"],
+).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)

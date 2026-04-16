@@ -38,8 +38,8 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+from train import ResidualMLP
+model = ResidualMLP(hidden=384, n_blocks=8).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
