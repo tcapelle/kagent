@@ -22,7 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-16 — Time-conditioned per-step decoder (iter 9, BREAKTHROUGH)
+### 2026-04-16 — Warmup + higher LR + 25-epoch cosine (iter 10, kept)
+- **Hypothesis:** Iter 9 still descending at epoch 22/50; T_max=50 means cosine barely decayed. Tune schedule to match actual budget: lr=1e-3 peak, 200-step linear warmup, cosine over 25 epochs so LR→0 by the end.
+- **Change:** `train.py` — `lr=1e-3`, `warmup_steps=200`, `epochs=25`, `SequentialLR(LinearLR + CosineAnnealingLR)` stepping per-batch.
+- **Result:** best val/l2_error = **1.2218** at epoch 22/22. train=1.1421 by end. Val was still monotonically descending — 3 more epochs would have helped.
+- **Verdict:** KEPT (1.2594 → 1.2218, 3% improvement). Phase transition faster (epoch 3 vs iter 9's epoch 5). Still at #7.
+- **Notes:** Still compute-bound. Real blocker is 85s/epoch (21 epochs in 30 min). Need per-epoch speedup to descend further. Next (iter 11): subsample to 30k training points (eval stays at 100k) — this should roughly triple epochs/minute, letting cosine fully anneal with far more descent budget.
+
+
 - **Hypothesis:** All prior iterations plateaued at copy-last (1.75) because a single `Linear(hidden->15)` forced all 5 output time steps to share one predictor. The model cannot distinguish "easy" near-future (t+dt) from "hard" far-future (t+5dt) — gradient steps that help one step hurt another, so the net effect is the safe zero-delta solution. Replace with a shared MLP + per-step time embedding so each output step has its own effective decoder.
 - **Change:** `train.py` BaselineMLP — remove `proj_out = Linear(hidden, 15)`. Add `time_embed = nn.Embedding(T_OUT=5, 32)` + `decoder = MLP(hidden+32 -> hidden -> 3)`. Forward expands features to `[B, T_OUT, N, hidden]`, concats time embedding, applies shared decoder, adds back `v_last`.
 - **Result:** best val/l2_error = **1.2594** at epoch 22/22 (31 min). train=1.189, val=1.26 — still descending when timeout hit. VRAM 15.3 GB. 85s/epoch (slower than iter 8's 79s; the per-step expansion adds memory+compute).
