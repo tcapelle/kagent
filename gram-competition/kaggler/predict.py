@@ -38,12 +38,12 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import Perceiver, MODEL_CFG
+from train import VoxelUNet, MODEL_CFG
 with open(Path(cfg.splits_dir) / "stats.json") as f:
     _stats_raw = json.load(f)
 _vel_mean = torch.tensor(_stats_raw["vel_mean"], dtype=torch.float32)
 _vel_std = torch.tensor(_stats_raw["vel_std"], dtype=torch.float32)
-model = Perceiver(**MODEL_CFG, vel_mean=_vel_mean, vel_std=_vel_std).to(device)
+model = VoxelUNet(**MODEL_CFG, vel_mean=_vel_mean, vel_std=_vel_std).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()

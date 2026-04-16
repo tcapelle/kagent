@@ -36,6 +36,56 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 
+class ResConv3d(nn.Module):
+    """Residual 3D conv block with GroupNorm + GELU."""
+
+    def __init__(self, dim, groups=8):
+        super().__init__()
+        self.n1 = nn.GroupNorm(min(groups, dim), dim)
+        self.c1 = nn.Conv3d(dim, dim, 3, padding=1)
+        self.n2 = nn.GroupNorm(min(groups, dim), dim)
+        self.c2 = nn.Conv3d(dim, dim, 3, padding=1)
+
+    def forward(self, x):
+        h = self.c1(torch.nn.functional.gelu(self.n1(x)))
+        h = self.c2(torch.nn.functional.gelu(self.n2(h)))
+        return x + h
+
+
+def voxelize(pos_norm, feat, grid_size):
+    """Scatter point features onto a 3D voxel grid via mean-pool.
+
+    pos_norm in [-1, 1]; feat [B, N, C]; returns voxel [B, C, G, G, G] and
+    occupancy mask [B, 1, G, G, G].
+    Axis convention: spatial axes 2/3/4 correspond to x/y/z.
+    """
+    B, N, C = feat.shape
+    G = grid_size
+    idx = ((pos_norm * 0.5 + 0.5) * G).floor().clamp(0, G - 1).long()  # [B, N, 3]
+    flat = idx[..., 0] * (G * G) + idx[..., 1] * G + idx[..., 2]        # [B, N]
+
+    out = torch.zeros(B, C, G * G * G, device=feat.device, dtype=feat.dtype)
+    cnt = torch.zeros(B, 1, G * G * G, device=feat.device, dtype=feat.dtype)
+    out.scatter_add_(2, flat.unsqueeze(1).expand(B, C, N), feat.transpose(1, 2))
+    cnt.scatter_add_(2, flat.unsqueeze(1), torch.ones(B, 1, N, device=feat.device, dtype=feat.dtype))
+    out = out / cnt.clamp_min(1.0)
+    mask = (cnt > 0).to(feat.dtype)
+    return out.view(B, C, G, G, G), mask.view(B, 1, G, G, G)
+
+
+def sample_voxel(vox, pos_norm):
+    """Trilinear-sample voxel grid at point positions. Returns [B, N, C]."""
+    B, C = vox.shape[:2]
+    N = pos_norm.shape[1]
+    # grid_sample 3D: grid last dim is (W, H, D). Our axes 2/3/4 = x/y/z → (D, H, W)=(x, y, z)
+    # so grid[...,0]=z, grid[...,1]=y, grid[...,2]=x.
+    grid = pos_norm[:, :, [2, 1, 0]].view(B, 1, 1, N, 3)
+    sampled = torch.nn.functional.grid_sample(
+        vox, grid, mode="bilinear", align_corners=False, padding_mode="border"
+    )  # [B, C, 1, 1, N]
+    return sampled.view(B, C, N).transpose(1, 2)
+
+
 def sinusoidal_embed(x, dim):
     """Sinusoidal embedding for tensor x of shape [..., K]. Returns [..., K, dim]."""
     device = x.device
@@ -104,6 +154,126 @@ class SelfAttn(nn.Module):
 
     def forward(self, x):
         return self.attn(x, x)
+
+
+class VoxelUNet(nn.Module):
+    """3D conv U-Net over voxelized point features.
+
+    Pipeline: per-point encoder MLP → mean-pool into [G,G,G] voxel grid →
+    3-level 3D U-Net (G → G/2 → G/4 → G/2 → G) with skip concats →
+    trilinear sample back at every input point → pointwise head concats
+    voxel-sampled and original point features to predict a residual delta
+    on top of v_in[-1] (velocity-normalized). Physics: velocity
+    normalization, residual anchor, hard no-slip BC on airfoil points,
+    time conditioning broadcast per-point.
+    """
+
+    def __init__(
+        self,
+        grid_size=48,
+        base_ch=96,
+        point_dim=192,
+        head_hidden=320,
+        fourier_bands=12,
+        blocks_per_level=2,
+        vel_mean=None,
+        vel_std=None,
+    ):
+        super().__init__()
+        self.grid_size = grid_size
+        self.fourier_bands = fourier_bands
+
+        in_feat = 3 * 2 * fourier_bands + T_IN * 3 + 3 + 1
+        self.point_enc = nn.Sequential(
+            nn.Linear(in_feat, point_dim), nn.GELU(),
+            nn.Linear(point_dim, base_ch),
+        )
+
+        c1, c2, c3 = base_ch, base_ch * 2, base_ch * 4
+        self.down1 = nn.Sequential(*[ResConv3d(c1) for _ in range(blocks_per_level)])
+        self.pool1 = nn.Conv3d(c1, c2, 3, stride=2, padding=1)
+        self.down2 = nn.Sequential(*[ResConv3d(c2) for _ in range(blocks_per_level)])
+        self.pool2 = nn.Conv3d(c2, c3, 3, stride=2, padding=1)
+        self.bottleneck = nn.Sequential(*[ResConv3d(c3) for _ in range(blocks_per_level)])
+        self.up2 = nn.ConvTranspose3d(c3, c2, 2, stride=2)
+        self.up_block2 = nn.Sequential(
+            nn.Conv3d(c2 * 2, c2, 1), *[ResConv3d(c2) for _ in range(blocks_per_level)]
+        )
+        self.up1 = nn.ConvTranspose3d(c2, c1, 2, stride=2)
+        self.up_block1 = nn.Sequential(
+            nn.Conv3d(c1 * 2, c1, 1), *[ResConv3d(c1) for _ in range(blocks_per_level)]
+        )
+
+        self.t_dim = 64
+        self.t_proj = nn.Sequential(
+            nn.Linear(10 * self.t_dim, point_dim), nn.GELU(),
+            nn.Linear(point_dim, base_ch),
+        )
+
+        head_in = base_ch * 2  # voxel-sampled + per-point skip
+        self.head = nn.Sequential(
+            nn.LayerNorm(head_in),
+            nn.Linear(head_in, head_hidden), nn.GELU(),
+            nn.Linear(head_hidden, head_hidden), nn.GELU(),
+            nn.Linear(head_hidden, T_OUT * 3),
+        )
+
+        if vel_mean is None:
+            vel_mean = torch.zeros(3)
+        if vel_std is None:
+            vel_std = torch.ones(3)
+        self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
+        self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
+
+    def forward(self, velocity_in, pos, t, idcs_airfoil):
+        B, T, N, C = velocity_in.shape
+        device = pos.device
+
+        v_norm = (velocity_in - self.vel_mean) / self.vel_std
+        v_last_norm = v_norm[:, -1:, :, :]
+        v_time_mean = v_norm.mean(dim=1)
+
+        # Per-sample bounding-box normalization → [-1, 1], slight shrink to keep
+        # edge points strictly inside the voxel grid.
+        pos_min = pos.amin(dim=1, keepdim=True)
+        pos_max = pos.amax(dim=1, keepdim=True)
+        pos_norm = 2.0 * (pos - pos_min) / (pos_max - pos_min).clamp_min(1e-6) - 1.0
+        pos_norm = pos_norm * 0.98
+
+        pos_feat = fourier_pos_embed(pos_norm, num_bands=self.fourier_bands)
+
+        airfoil_mask = torch.zeros(B, N, 1, device=device, dtype=pos.dtype)
+        for b, idcs in enumerate(idcs_airfoil):
+            airfoil_mask[b, idcs.to(device), 0] = 1.0
+
+        point_in = torch.cat([
+            pos_feat,
+            v_norm.permute(0, 2, 1, 3).reshape(B, N, T * 3),
+            v_time_mean,
+            airfoil_mask,
+        ], dim=-1)
+        feat = self.point_enc(point_in)  # [B, N, base_ch]
+
+        t_emb = sinusoidal_embed(t, self.t_dim).reshape(B, -1)
+        t_cond = self.t_proj(t_emb).unsqueeze(1)  # [B, 1, base_ch]
+        feat = feat + t_cond
+
+        vox, _ = voxelize(pos_norm, feat, self.grid_size)
+        x1 = self.down1(vox)
+        x2 = self.down2(self.pool1(x1))
+        x3 = self.bottleneck(self.pool2(x2))
+        u2 = self.up_block2(torch.cat([self.up2(x3), x2], dim=1))
+        u1 = self.up_block1(torch.cat([self.up1(u2), x1], dim=1))
+
+        sampled = sample_voxel(u1, pos_norm)
+        combined = torch.cat([sampled, feat], dim=-1)
+        delta_norm = self.head(combined).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
+        pred_norm = v_last_norm + delta_norm
+        pred = pred_norm * self.vel_std + self.vel_mean
+
+        for b, idcs in enumerate(idcs_airfoil):
+            pred[b, :, idcs.to(device), :] = 0.0
+        return pred
 
 
 class Perceiver(nn.Module):
@@ -283,13 +453,12 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 # Single source of truth for the model architecture; both train.py and
 # predict.py import it so the model can always be reconstructed from a checkpoint.
 MODEL_CFG = dict(
-    point_dim=320,
-    latent_dim=512,
-    n_latents=192,
-    n_process_blocks=8,
-    heads=8,
-    dim_head=64,
-    fourier_bands=16,
+    grid_size=48,
+    base_ch=96,
+    point_dim=192,
+    head_hidden=320,
+    fourier_bands=12,
+    blocks_per_level=2,
 )
 
 GRAD_ACCUM = 4
@@ -326,7 +495,7 @@ if __name__ == "__main__":
         for name, ds in val_splits.items()
     }
 
-    model = Perceiver(**MODEL_CFG, vel_mean=stats["vel_mean"], vel_std=stats["vel_std"]).to(device)
+    model = VoxelUNet(**MODEL_CFG, vel_mean=stats["vel_mean"], vel_std=stats["vel_std"]).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
