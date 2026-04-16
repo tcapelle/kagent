@@ -1,7 +1,8 @@
 """Train a 3D airflow velocity predictor.
 
-Template — fill in your model architecture.
-The training loop, loss, validation, and W&B logging are provided.
+Model: per-point ResMLP that predicts residual delta from the last input frame,
+with velocity normalized by dataset stats, airfoil-membership feature, and
+hard no-slip BC applied at the output.
 
 Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
@@ -17,23 +18,10 @@ import simple_parsing as sp
 import torch
 import torch.nn as nn
 import wandb
-import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
-
-
-# ---------------------------------------------------------------------------
-# Baseline MLP — replace with your own architecture
-#
-# Model contract:
-#   Input:  velocity_in [B, 5, N, 3], pos [B, N, 3], t [B, 10], idcs_airfoil list[tensor]
-#   Output: velocity_out [B, 5, N, 3]  (predicted future velocity field)
-#
-# Note: the real competition uses model(t, pos, idcs_airfoil, velocity_in) —
-#       different arg order. If you submit to the real comp, wrap accordingly.
-# ---------------------------------------------------------------------------
 
 
 class ResBlock(nn.Module):
@@ -50,24 +38,52 @@ class ResBlock(nn.Module):
         return x + self.net(x)
 
 
-class BaselineMLP(nn.Module):
-    """Concat pos + velocity_in per point, predict velocity_out through ResMLP."""
+class ResidualPointMLP(nn.Module):
+    """Per-point ResMLP predicting residual delta from the last input frame.
 
-    def __init__(self, hidden=256, n_blocks=6):
+    Features per point: normalized velocity_in (5*3=15), pos (3), airfoil mask (1) = 19.
+    Output: residual delta in normalized space, denormalized and added to v_in[-1].
+    Hard no-slip BC: zero out predictions at idcs_airfoil.
+    """
+
+    def __init__(self, vel_mean, vel_std, hidden=384, n_blocks=8):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
+        in_dim = T_IN * 3 + 3 + 1
+        out_dim = T_OUT * 3
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        self.norm_out = nn.LayerNorm(hidden)
+        self.proj_out = nn.Linear(hidden, out_dim)
+        # zero-init output → initial prediction is exactly persistence of last frame
+        nn.init.zeros_(self.proj_out.weight)
+        nn.init.zeros_(self.proj_out.bias)
+        self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
+        self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
+        v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
+        v_feat = v_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
+
+        mask = torch.zeros(B, N, 1, device=velocity_in.device, dtype=velocity_in.dtype)
+        for b, idcs in enumerate(idcs_airfoil):
+            mask[b, idcs.to(mask.device), 0] = 1.0
+
+        x = torch.cat([v_feat, pos, mask], dim=-1)  # [B, N, 19]
         x = self.proj_in(x)
         x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        return out.reshape(B, T_OUT, N, 3)
+        x = self.norm_out(x)
+        delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
+        delta = delta_norm * self.vel_std  # [B, T_OUT, N, 3]
+
+        last_frame = velocity_in[:, -1:].expand(-1, T_OUT, -1, -1)
+        pred = last_frame + delta
+
+        # hard no-slip: zero out on airfoil
+        no_slip = torch.ones(B, 1, N, 1, device=pred.device, dtype=pred.dtype)
+        for b, idcs in enumerate(idcs_airfoil):
+            no_slip[b, 0, idcs.to(no_slip.device), 0] = 0.0
+        return pred * no_slip
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +91,6 @@ class BaselineMLP(nn.Module):
 # ---------------------------------------------------------------------------
 
 def validate(model, val_loaders, device, global_step):
-    """Run validation, log to W&B. Returns mean val metric (L2 velocity error)."""
     model.eval()
     val_metrics: dict[str, dict] = {}
 
@@ -91,14 +106,12 @@ def validate(model, val_loaders, device, global_step):
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                pred = model(v_in, pos, t, idcs)
 
-                # L2 velocity error (competition hint metric)
-                l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))  # [B]
+                l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
                 total_l2 += l2_err.sum().item()
 
-                # Per-component MAE
-                mae = (pred - v_out).abs().mean(dim=(1, 2))  # [B, 3]
+                mae = (pred - v_out).abs().mean(dim=(1, 2))
                 total_mae += mae.double().sum(dim=0)
                 n_samples += v_in.shape[0]
 
@@ -126,7 +139,7 @@ def validate(model, val_loaders, device, global_step):
 # Config + data loading
 # ---------------------------------------------------------------------------
 
-MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
+MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 
 @dataclass
@@ -134,7 +147,9 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 50
+    epochs: int = 80
+    hidden: int = 384
+    n_blocks: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -151,24 +166,25 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 train_ds, val_splits, stats = load_data(cfg.splits_dir, debug=cfg.debug)
 
 loader_kwargs = dict(collate_fn=collate_fn, num_workers=2, pin_memory=True)
-
 train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **loader_kwargs)
 val_loaders = {
     name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+model = ResidualPointMLP(
+    vel_mean=stats["vel_mean"],
+    vel_std=stats["vel_std"],
+    hidden=cfg.hidden,
+    n_blocks=cfg.n_blocks,
+).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
+print(f"Model params: {n_params/1e6:.2f} M")
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
-
-# ---------------------------------------------------------------------------
-# W&B setup (do not remove)
-# ---------------------------------------------------------------------------
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -191,7 +207,6 @@ pvc_dir = Path(f"/mnt/new-pvc/kagent/{RESEARCH_TAG}/{KAGGLER_NAME}/checkpoints/m
 pvc_dir.mkdir(parents=True, exist_ok=True)
 model_path = pvc_dir / "checkpoint.pt"
 
-# Git-tracked mirror of the best checkpoint (un-ignored in .gitignore).
 git_ckpt_path = Path("checkpoints/best.pt")
 git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -221,11 +236,15 @@ for epoch in range(MAX_EPOCHS):
         pos = pos.to(device, non_blocking=True)
         t = t.to(device, non_blocking=True)
 
-        pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-        loss = (pred - v_out).pow(2).mean()
+        pred = model(v_in, pos, t, idcs)
+        # normalized loss: fair weighting across components (Ux std ~20 dominates raw MSE otherwise)
+        vel_std = stats["vel_std"].to(device).view(1, 1, 1, 3)
+        diff = (pred - v_out) / vel_std
+        loss = diff.pow(2).mean()
 
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -234,9 +253,8 @@ for epoch in range(MAX_EPOCHS):
         n_batches += 1
 
     scheduler.step()
-    epoch_loss /= n_batches
+    epoch_loss /= max(n_batches, 1)
 
-    # --- Validate ---
     mean_val, split_metrics = validate(model, val_loaders, device, global_step)
     dt = time.time() - t0
 
@@ -259,7 +277,6 @@ for epoch in range(MAX_EPOCHS):
         f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
     )
 
-# --- Final ---
 total_time = (time.time() - train_start) / 60.0
 print(f"\nDone ({total_time:.1f} min)")
 
@@ -267,7 +284,6 @@ if best_metrics:
     print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-# --- Auto-submit predictions ---
 if best_metrics and not cfg.debug:
     import subprocess
     print("\nGenerating test predictions...")
