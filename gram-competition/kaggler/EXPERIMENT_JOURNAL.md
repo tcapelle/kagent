@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter5: distance-to-airfoil feature (cached per geometry)
+- **Hypothesis:** Airfoil proximity is a strong physical prior — boundary layer thickness and wake intensity scale with distance. Adding a signed-distance-ish feature (unsigned min-distance to airfoil points) should help the model modulate turbulence amplitude without extra layers.
+- **Change:** train.py/predict.py — added `compute_dist_to_airfoil(pos, idcs)` (chunked cdist + min). Fed raw `d`, `log1p(d)`, and 6 Fourier pairs of `log1p(d)` as point features. Cached per-geometry via a cheap pos-fingerprint → 162 unique geoms cached once, reused across 810 samples. Kept iter2 backbone (d=256, 6 blocks, 64 slices). `num_dist_freqs=6`.
+- **Result:** val/l2=**1.0554** at epoch 110/120. 3.28M params (~unchanged), 1.7GB VRAM, 13s/epoch, 27min total. Train loss 5.4→1.50 (still decreasing slightly at end).
+- **Verdict:** KEPT — beats iter2 (1.0751) by 0.0197 (≈1.8% absolute), rank 2 behind alphonse (0.9228). Gap closed ≈13%.
+- **Notes:** Distance-feature cache is essential — per-sample cdist across 100k×airfoil_k would cost minutes per epoch; caching makes it ≈1min overhead total. Training loss/val gap widened vs iter2 (iter2 train=1.57 vs iter5 train=1.50), suggesting mild overfit of the new feature — could try dropout or augmentation next. Candidates for iter6: (a) k-NN local attention block on top of slice-attention for fine turbulence, (b) signed distance (inside/outside via surface normals — but we don't have normals, skip), (c) test-time geometric augmentation (x-flip averaging), (d) predict turbulent component only (subtract v_in[-1] already done — maybe subtract a low-pass too).
+
 ### 2026-04-16 — iter4: per-timestep decoder + velocity tendency features
 - **Hypothesis:** Model should know which output timestep it's predicting. Replace Linear(hidden, T_OUT*3) with per-step time-embedding + Linear(hidden, 3). Also add velocity tendency features (v[-1]-v[-2], (v[-1]-v[0])/T_IN).
 - **Change:** train.py/predict.py — new decoder: time_emb[k] added to point features, shared Linear(hidden, 3) head applied per timestep. Added 6 velocity tendency channels to input.
