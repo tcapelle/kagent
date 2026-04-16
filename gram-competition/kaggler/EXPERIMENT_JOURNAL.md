@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v4 DISCARDED — bigger UNet (voxel_mid=96) slightly worse
+- **Hypothesis:** v2 was still descending at timeout (epoch 31). Doubling spatial capacity (voxel_mid 64→96, params 7.7M→15M) with more epochs (40→50) and more time (27→35 min) should push lower without aug/EMA confounds.
+- **Change:** `train.py` — `voxel_mid=96`, `epochs=50`; `predict.py` updated to match.
+- **Result:** val/l2 = **0.9349** at epoch 32 (vs v2's 0.9228). 35.5 min, 6.8 GB, 67s/epoch. W&B run in project `kagent-v4`.
+- **Verdict:** discarded — slightly worse. Best checkpoint was the last epoch (still descending), so given more budget it might eventually beat v2, but not a convincing win.
+- **Notes:** Big-model slower per step (67 vs 52 s/epoch) → fewer effective epochs in same wall-clock. Val noise pattern is the same shape as v2 — just offset. Capacity alone isn't the bottleneck. Next (v5): add a real physics feature — signed distance to airfoil — so the model has an explicit wall-distance prior.
+
+
 ### 2026-04-16 — v3 DISCARDED — EMA + y-mirror aug regressed ~0.06
 - **Hypothesis:** stack two free wins on v2: (1) EMA(0.999) weights smooth noisy B=1 val; (2) random y-mirror augmentation doubles effective data (F1 wing is y-symmetric). Epochs=50, MAX_TIMEOUT=30 min.
 - **Change:** `train.py` — added `EMA` class, update each step, swap in before validate/save. Random flip of `pos[...,1]`, `v_in[...,1]`, `v_out[...,1]` with p=0.5 during training.
