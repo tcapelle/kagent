@@ -25,9 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-16 — exp10: warm-start from exp8 + 30 more min
 - **Hypothesis:** Exp8 val was still dropping linearly at 30min timeout (best 1.0137). Rather than architectural change, reload exp8 ckpt and train another 30min with a fresh cosine LR schedule at lower peak (2e-4 vs 5e-4). Effectively doubles training budget without needing arch changes. SGDR-style warm restart: new annealing cycle may find better minima from a pre-trained init.
 - **Change:** train.py: Added `warm_start: str | None` to Config; loads state_dict post model init. Set cfg.lr=2e-4 for fine-tune run.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Risk: 2nd cycle overfits on train (with fp32 weights, not fp16 from git — load from PVC). If val degrades from warm start, next try higher fine-tune LR (3e-4) or train from scratch with longer cosine.
+- **Result:** val/l2=**0.9742** @ epoch 36 (30.2 min). train=0.0070 (vs exp8's 0.0100, ~30% lower). 3.6GB peak. run dgolkvqw. 46-67s/epoch.
+- **Verdict:** KEPT — beats exp8 (1.0137) by 0.0395 (massive jump). Warm-start effectively doubled compute budget. Val still dropping slowly at end (0.9742 → 0.9768 after peak, so we found the minimum). Now rank #2 above nezuko (0.9867).
+- **Notes:** This is the biggest single-experiment win. Compound warm-start is a clear winning strategy while budgets are tight. Next: exp11 warm-start from exp10 with even lower LR.
 
 ### 2026-04-16 — exp9: subsample 50k→30k (DISCARDED)
 - **Hypothesis:** Exp8 (n_blocks=8) was still dropping val at timeout. Subsample 50k→30k saves step time → more epochs to finish the cosine schedule.
