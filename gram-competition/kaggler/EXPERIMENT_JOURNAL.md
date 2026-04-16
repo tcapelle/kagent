@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — exp8: n_blocks 6→8 on exp7 base
+- **Hypothesis:** Exp7 val (1.0189) plateaued around E45-50 with train still dropping; exp5 showed depth 4→6 gained 0.016. Try 6→8 with subsample=50k to keep per-step fast. Expect ~47s/epoch → 38 epochs. More rounds of voxel mixing at same grid should extract more spatial structure, which has been our best lever so far.
+- **Change:** Config.n_blocks 6→8 (train.py + predict.py). All else identical to exp7.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** If n_blocks=8 underfits in 38 epochs, next step is subsample=30k to buy more iterations.
+
 ### 2026-04-16 — exp7: train-time point subsampling to 50k
 - **Hypothesis:** Exp5 (best: 1.0430) had train loss still dropping at timeout (0.0091, down from 0.0103 at epoch 27). More epochs should help. Subsampling points 100k→50k at train time only (val stays 100k) gives 1.44x step speedup → ~52 epochs vs 38 in same 30min budget. Voxel grid remains same density per voxel (just slightly sparser) so spatial structure preserved.
 - **Change:** Config.subsample_train=50000. Train loop: randomly sample K=50k point indices per step, slice v_in/v_out/pos, remap idcs_airfoil via inverse index. Val unchanged (all 100k).

@@ -34,7 +34,7 @@ class Config:
     agent: str | None = None
     batch_size: int = 1
     hidden: int = 256
-    n_blocks: int = 6
+    n_blocks: int = 8
     grid_size: int = 32
     n_fourier: int = 8
 
