@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter7: fine-tune iter5 with y-flip aug + TTA
+- **Hypothesis:** Iter6 showed TTA gives ~0.015 improvement once the model is y-equivariant, but from-scratch training burned too much budget on learning equivariance. Fix: warm-start from iter5 checkpoint (already a great predictor), fine-tune with y-flip aug at low LR so equivariance emerges without destroying iter5's accuracy. Then TTA at inference.
+- **Change:** train.py — added `init_from: str | None = None` (loads state_dict) and the yflip aug block; auto-passes `--yflip_tta True` to predict.py when aug is on. predict.py — added `yflip_tta: bool = False`. Launched with `--init_from /tmp/iter5_best.pt --lr 3e-4 --epochs 80 --yflip_aug True`.
+- **Result:** Direct val/l2=**1.0451** at epoch 76/80. With TTA on val: **1.0238**. 80 epochs in 18min. 3.28M params (same as iter5).
+- **Verdict:** KEPT — TTA score 1.0238 is 0.032 better than iter5 (1.0554) = 23.6% of the gap to alphonse (0.9228) closed.
+- **Notes:** Flipped-only prediction is 1.0701 (slightly worse than direct 1.0440), meaning the model is NOT fully equivariant — the two views are diverse, and the average benefits most when they disagree asymmetrically around truth. 80 fine-tune epochs > 120 from-scratch because initial 40+ epochs of from-scratch are 'wasted' learning the iter5-equivalent base. Iter8 ideas: (a) push TTA further with rotation/z-flip (but z is not symmetric — ground plane breaks it), (b) k-NN local attention block, (c) longer fine-tune / ensemble of 2-3 independent fine-tunes.
+
 ### 2026-04-16 — iter6: y-flip train augmentation + y-flip test-time averaging
 - **Hypothesis:** F1 wings are y-symmetric. Training a model invariant under y-reflection via random y-flip aug should (a) effectively double data diversity and (b) enable TTA at inference. TTA on iter5 alone HURT (1.28 direct → 1.35 TTA on one batch) because iter5 isn't y-equivariant.
 - **Change:** train.py — added `yflip_aug: bool = True` that, after subsampling, with prob 0.5 negates `pos[...,1]`, `v_in[...,1]`, `v_out[...,1]` (distance-to-airfoil is y-invariant, so dist_s unchanged). predict.py — adds flipped forward pass, negates Uy of output, averages with direct.
