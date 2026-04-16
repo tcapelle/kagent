@@ -269,6 +269,8 @@ class Config:
     num_vel_freqs: int = 3
     num_dist_freqs: int = 6
     dropout: float = 0.0
+    # Random y-axis reflection augmentation (wing is y-symmetric).
+    yflip_aug: bool = True
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -408,6 +410,13 @@ def main():
             v_in_s, v_out_s, pos_s, idcs_s, dist_s = subsample_batch(
                 v_in, v_out, pos, idcs, dist, cfg.subsample_points
             )
+
+            # y-flip: wing is symmetric about y=0. Flip pos_y, Uy of v_in, v_out.
+            # Distance-to-airfoil is invariant under y-reflection, so dist_s unchanged.
+            if cfg.yflip_aug and torch.rand(1).item() < 0.5:
+                pos_s = pos_s.clone(); pos_s[..., 1] = -pos_s[..., 1]
+                v_in_s = v_in_s.clone(); v_in_s[..., 1] = -v_in_s[..., 1]
+                v_out_s = v_out_s.clone(); v_out_s[..., 1] = -v_out_s[..., 1]
 
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 pred = model(v_in_s, pos_s, t, idcs_s, dist_s)
