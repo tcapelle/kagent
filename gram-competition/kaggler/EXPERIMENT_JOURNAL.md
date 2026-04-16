@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter8: normalized MSE loss (channel-balanced)
+- **Hypothesis:** Leaderboard L2 metric is per-3-vector L2 (channels equally weighted), but training MSE on raw velocities lets Ux dominate (std=21 vs Uy 6.5, Uz 8.3). Iter7 MAE shows: Ux=0.665, Uy=0.330, Uz=0.489 — Uy/Uz relative errors are high. Normalizing residual by vel_std before MSE should rebalance training toward Uy/Uz.
+- **Change:** train.py — `loss = ((pred - v_out_s) / model.vel_std).pow(2).mean()` (was raw `.pow(2).mean()`). Warm-start from iter7, lr=2e-4, 80 epochs, yflip_aug + TTA unchanged.
+- **Result:** Direct val/l2=**1.0437** (iter7=1.0451). With TTA: **1.0197** (iter7 TTA=1.0238). MAE with TTA: Ux=0.673 (+0.008), Uy=0.319 (-0.011), Uz=0.481 (-0.008).
+- **Verdict:** KEPT — 0.004 improvement; Uy/Uz rebalance worked as predicted (tradeoff for slight Ux worsening is net positive).
+- **Notes:** Small gain — the raw MSE was already fairly balanced because the model learns per-channel structure regardless of loss weighting (once capacity is sufficient). Larger gains would need architectural changes. Iter9 ideas: (a) k-NN local attention block, (b) ensemble iter7+iter8 (independent errors), (c) predict also the divergence (physics-informed aux loss), (d) finer subsampling (24k points).
+
 ### 2026-04-16 — iter7: fine-tune iter5 with y-flip aug + TTA
 - **Hypothesis:** Iter6 showed TTA gives ~0.015 improvement once the model is y-equivariant, but from-scratch training burned too much budget on learning equivariance. Fix: warm-start from iter5 checkpoint (already a great predictor), fine-tune with y-flip aug at low LR so equivariance emerges without destroying iter5's accuracy. Then TTA at inference.
 - **Change:** train.py — added `init_from: str | None = None` (loads state_dict) and the yflip aug block; auto-passes `--yflip_tta True` to predict.py when aug is on. predict.py — added `yflip_tta: bool = False`. Launched with `--init_from /tmp/iter5_best.pt --lr 3e-4 --epochs 80 --yflip_aug True`.
