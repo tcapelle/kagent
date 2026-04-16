@@ -44,9 +44,10 @@ with open(Path(cfg.splits_dir) / "stats.json") as _f:
 _vel_mean = torch.tensor(_stats_raw["vel_mean"], dtype=torch.float32)
 _vel_std = torch.tensor(_stats_raw["vel_std"], dtype=torch.float32)
 
-from train import ResidualMLP
-model = ResidualMLP(
-    hidden=512, n_blocks=8, num_pos_freqs=10, num_vel_freqs=4,
+from train import TransolverModel
+model = TransolverModel(
+    hidden=256, n_blocks=6, heads=8, slices=64,
+    num_pos_freqs=10, num_vel_freqs=3,
     vel_mean=_vel_mean, vel_std=_vel_std,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
