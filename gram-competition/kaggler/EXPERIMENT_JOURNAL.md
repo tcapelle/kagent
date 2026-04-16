@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v4: 4 voxel scales (0.03/0.08/0.20/0.50) + within-voxel offsets
+- **Hypothesis:** v3's two scales under-resolve boundary-layer detail
+  (0.05) and large-structure context (need > 0.20). Adding finer 0.03
+  and coarser 0.50 scales plus an "offset within voxel" feature
+  (lets two points in the same voxel differentiate sub-voxel position)
+  should improve further.
+- **Change:** `model.py` → `VOXEL_SCALES = (0.03, 0.08, 0.20, 0.50)`,
+  `voxel_stats` now returns sub-voxel offset per scale, input dim
+  53 → 83. Default blocks 10 → 12. 77s/epoch (vs v3's 67s).
+  Peak VRAM 9.6GB.
+- **Result:** Best val/l2=**1.2409** at epoch 36 of 43 (55 min).
+  Train loss 0.044 → 0.018. Still improving at timeout.
+  WandB `edward/v4-4scales+offsets`.
+- **Verdict:** Kept — modest 1.6% gain over v3 (1.2615 → 1.2409),
+  diminishing returns for more hand-crafted features alone.
+- **Notes:** Gap to winner (~0.85) is still huge. Pure pointwise MLP
+  + voxel features has a ceiling because voxels don't mix across the
+  network — each point only sees static pooled neighbors *once*,
+  at the input. Next: iterative voxel-scatter/gather interleaved
+  with ResBlocks (graph-conv style message passing).
+
 ### 2026-04-16 — v3: multi-scale voxel stats (mean/std/dev) + laplacian + bf16 AMP
 - **Hypothesis:** v2's voxel *mean* alone is weak — turbulence needs local
   variance and self-deviation (a gradient-like proxy), plus a cheap

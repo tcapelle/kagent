@@ -1,9 +1,9 @@
 """Model for GRaM airflow prediction.
 
-v3: per-point residual MLP with multi-scale voxel statistics (mean, std,
-self-deviation), laplacian-like coarse-minus-fine proxy, temporal Δv,
-airfoil mask, log-distance-to-airfoil, global time conditioning, and hard
-no-slip BC enforcement.
+v4: per-point residual MLP with 4-scale voxel statistics (mean, std,
+self-deviation) + within-voxel offset per scale, laplacian proxy
+(coarse−fine), temporal Δv, airfoil mask, log-distance-to-airfoil,
+global time conditioning, and hard no-slip BC enforcement.
 """
 
 import torch
@@ -13,7 +13,7 @@ from torch_geometric.utils import scatter
 from data import T_IN, T_OUT
 
 
-VOXEL_SCALES = (0.05, 0.20)  # fine / coarse
+VOXEL_SCALES = (0.03, 0.08, 0.20, 0.50)  # fine → coarse
 
 
 def min_distance_to(pos, subset_pos, chunk=4096):
@@ -40,11 +40,13 @@ def voxel_pool_mean(pos, feats, voxel_size):
 
 
 def voxel_stats(pos, feats, voxel_size):
-    """Returns (mean_at_point, std_at_point, self_deviation_at_point).
+    """Returns (mean_at_point, std_at_point, self_dev_at_point, offset_at_point).
 
-    mean_at_point[i] = mean(feats) over the voxel containing point i.
-    std_at_point[i]  = std(feats) over the voxel.
-    self_dev[i]      = feats[i] - mean_at_point[i].
+    mean_at[i]  = mean(feats) over the voxel containing point i.
+    std_at[i]   = std(feats) over the voxel.
+    self_dev[i] = feats[i] - mean_at[i].
+    offset[i]   = pos[i] - mean_pos_of_voxel(i), normalized by voxel_size
+                  (gives sub-voxel position in [-0.5, 0.5]-ish range).
     """
     grid = torch.floor(pos / voxel_size).long()
     g_min = grid.min(dim=0).values
@@ -59,10 +61,13 @@ def voxel_stats(pos, feats, voxel_size):
     var = (m2 - m * m).clamp_min(0)
     std = var.sqrt()
 
+    pos_mean = scatter(pos, inv, dim=0, dim_size=n_vox, reduce="mean")
+    offset = (pos - pos_mean[inv]) / voxel_size
+
     mean_at = m[inv]
     std_at = std[inv]
     dev = feats - mean_at
-    return mean_at, std_at, dev
+    return mean_at, std_at, dev, offset
 
 
 class ResBlock(nn.Module):
@@ -83,11 +88,11 @@ class ResidualMLP(nn.Module):
     # Per-point input features:
     #   pos(3) + v_in_norm_flat(T_IN*3) + v_in_diff_flat((T_IN-1)*3)
     #   + airfoil_mask(1) + log_dist_airfoil(1)
-    #   + [mean(3), std(3), self-dev(3)] per scale × len(VOXEL_SCALES)
-    #   + laplacian(3)  (coarse mean − fine mean)
-    IN_DIM = 3 + T_IN * 3 + (T_IN - 1) * 3 + 1 + 1 + len(VOXEL_SCALES) * 9 + 3
+    #   + [mean(3), std(3), self-dev(3), offset(3)] per scale × len(VOXEL_SCALES)
+    #   + laplacian(3)  (coarsest mean − finest mean)
+    IN_DIM = 3 + T_IN * 3 + (T_IN - 1) * 3 + 1 + 1 + len(VOXEL_SCALES) * 12 + 3
 
-    def __init__(self, vel_mean, vel_std, hidden=512, n_blocks=10):
+    def __init__(self, vel_mean, vel_std, hidden=512, n_blocks=12):
         super().__init__()
         self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
         self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
@@ -114,7 +119,7 @@ class ResidualMLP(nn.Module):
 
         mask = torch.zeros(B, N, 1, device=device)
         log_dist = torch.zeros(B, N, 1, device=device)
-        per_scale_feats = [torch.zeros(B, N, 9, device=device) for _ in VOXEL_SCALES]
+        per_scale_feats = [torch.zeros(B, N, 12, device=device) for _ in VOXEL_SCALES]
         laplacian = torch.zeros(B, N, 3, device=device)
 
         v_last = v_in_norm[:, -1]
@@ -127,8 +132,8 @@ class ResidualMLP(nn.Module):
 
             means = []
             for s, vs in enumerate(VOXEL_SCALES):
-                mean_at, std_at, dev = voxel_stats(pos[i], v_last[i], vs)
-                per_scale_feats[s][i] = torch.cat([mean_at, std_at, dev], dim=-1)
+                mean_at, std_at, dev, offset = voxel_stats(pos[i], v_last[i], vs)
+                per_scale_feats[s][i] = torch.cat([mean_at, std_at, dev, offset], dim=-1)
                 means.append(mean_at)
             laplacian[i] = means[-1] - means[0]
 
