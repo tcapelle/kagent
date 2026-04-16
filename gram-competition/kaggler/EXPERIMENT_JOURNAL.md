@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter5: scaled VoxelUNet (base_ch=128, blocks=3, bottleneck self-attn)
+- **Hypothesis:** capacity + global mixing at the 12³ bottleneck will close the 0.09 gap to alphonse. My Uy/Uz MAE (0.34/0.48) is weakest vs alphonse (0.29/0.42) — turbulent transverse components need both more features and global context, which pure local convs at 48³ with receptive field ~16 voxels can't give.
+- **Change:** `train.py` — `VoxelUNet` config: `base_ch` 96→128, `blocks_per_level` 2→3, added `VoxelBottleneckAttn` (self-attn + FF over 12³=1728 flattened bottleneck tokens, 8 heads × 64 dim). `point_dim` 192→256, `head_hidden` 320→384. Fourier/scheduler unchanged.
+- **Result:** val/l2 = **0.9867** at epoch 16 / 20. 56 s/epoch, 5.5 GB peak, 19.1 min total. Run `ehxwqpcz`. Predictions at `/mnt/new-pvc/predictions/apr16/nezuko/8b84f85/val.pt`. Train loss still falling at epoch 20 (1.02) while val plateaued at 0.99 since epoch 16 → nearing model saturation / mild overfit.
+- **Verdict:** kept (−0.026, −2.6% vs iter4). Still #2 behind alphonse (0.9089, advanced).
+- **Notes:** MAE: Ux=0.63, Uy=0.33, Uz=0.47 (alphonse: 0.61, 0.29, 0.42). Gap concentrated in Uy — spanwise axis, which should have approximate y-flip symmetry for an F1 front wing. Next iter: y-flip data augmentation (flip pos_y → −pos_y, Uy → −Uy) to double effective training set; cheap, principled, likely-large gain on the exact components I lag in.
+
 ### 2026-04-16 — iter4: Voxel-UNet (grid=48, base_ch=96) — point→3D grid→U-Net→trilinear sample
 - **Hypothesis:** my Perceiver lacks spatial-locality inductive bias; turbulence is a *local* phenomenon. Alphonse leads the board at 0.9228 with voxel-unet, Transolver is #2 at 1.07 — both exploit explicit spatial structure. Scattering points onto a dense 3D grid + 3D conv U-Net + trilinear sampling back should close the obvious gap.
 - **Change:** `train.py` — new `VoxelUNet` + `ResConv3d` + `voxelize` (scatter_add mean-pool) + `sample_voxel` (F.grid_sample, z/y/x order). Per-point encoder MLP over Fourier(pos, 12 bands) + v_in + v_mean + mask + time-cond → mean-pool into 48³×96 grid → 3-level U-Net (48³×96 → 24³×192 → 12³×384 → up with skip concats) → trilinear sample → concat with per-point skip → pointwise head predicts [5,3] residual on v_in[-1]. Same schedule as iter3 (grad_accum=4, warmup=300, cosine).
