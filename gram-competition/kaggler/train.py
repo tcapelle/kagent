@@ -341,6 +341,7 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    resume: str | None = None  # path to a checkpoint to warm-start from
 
 
 def main():
@@ -366,6 +367,11 @@ def main():
         vel_mean=stats["vel_mean"],
         vel_std=stats["vel_std"],
     ).to(device)
+
+    if cfg.resume:
+        state = torch.load(cfg.resume, map_location=device, weights_only=True)
+        model.load_state_dict(state)
+        print(f"Warm-started from {cfg.resume}")
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
