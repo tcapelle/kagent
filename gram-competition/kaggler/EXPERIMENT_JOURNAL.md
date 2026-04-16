@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter3: scaled Transolver (d=384, 8 blocks, 128 slices)
+- **Hypothesis:** Iter2 Transolver had huge headroom — 3.28M params fits in 1.4GB. Triple the capacity (10.5M params) + bigger slice pool (128 vs 64) should move the needle.
+- **Change:** train.py — hidden 256→384, blocks 6→8, slices 64→128, subsample 16384→24000, dropout 0.0→0.05, lr 1e-3→7e-4, epochs 120→90.
+- **Result:** val/l2=1.0860 at epoch 60 (ran out of 30min budget). 10.51M params, 2.3GB VRAM, 25s/epoch. Still decreasing at end — undertrained.
+- **Verdict:** DISCARDED — worse than iter2 (1.0751). Scale is not the problem; budget is. A bigger model converges slower.
+- **Notes:** Confirms 30-min wallclock is the binding constraint. Next iteration: keep iter2's small backbone (fits in budget) and add targeted architectural priors instead of capacity.
+
 ### 2026-04-16 — iter2: Transolver (soft-slice attention)
 - **Hypothesis:** Per-point MLP (iter1) lacks spatial interaction; Transolver's O(N·M) slice attention should model wake/vortex long-range structure.
 - **Change:** train.py — 6 Transolver blocks, d=256, M=64 slices, 8 heads. Kept residual head + no-slip BC + Fourier pos features + velocity normalization. Train subsample=16k, AMP bf16, lr=1e-3, 120 epochs, cosine decay.

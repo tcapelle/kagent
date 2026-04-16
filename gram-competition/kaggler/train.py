@@ -124,16 +124,19 @@ class TransolverBlock(nn.Module):
 
 class TransolverModel(nn.Module):
     def __init__(self, hidden=256, n_blocks=6, heads=8, slices=64,
-                 num_pos_freqs=10, num_vel_freqs=3, dropout=0.0,
-                 vel_mean=None, vel_std=None):
+                 num_pos_freqs=10, num_vel_freqs=3, num_time_freqs=4,
+                 dropout=0.0, vel_mean=None, vel_std=None):
         super().__init__()
         pos_dim = 3 * (1 + 2 * num_pos_freqs)
         vin_dim = T_IN * 3
         vin_fourier_dim = 3 * 2 * num_vel_freqs
-        in_dim = pos_dim + vin_dim + vin_fourier_dim + 1
+        # velocity tendency features: (v[-1] - v[-2]) and (v[-1] - v[0]) normalized
+        v_tend_dim = 2 * 3
+        in_dim = pos_dim + vin_dim + vin_fourier_dim + v_tend_dim + 1
 
         self.num_pos_freqs = num_pos_freqs
         self.num_vel_freqs = num_vel_freqs
+        self.num_time_freqs = num_time_freqs
 
         self.proj_in = nn.Sequential(
             nn.Linear(in_dim, hidden),
@@ -144,12 +147,18 @@ class TransolverModel(nn.Module):
             TransolverBlock(hidden, heads=heads, slices=slices, dropout=dropout)
             for _ in range(n_blocks)
         ])
-        self.proj_out = nn.Sequential(
-            nn.LayerNorm(hidden),
-            nn.Linear(hidden, T_OUT * 3),
+
+        # Per-timestep decoder: time embedding added to point features then decoded.
+        time_in_dim = 1 + 2 * num_time_freqs
+        self.time_mlp = nn.Sequential(
+            nn.Linear(time_in_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, hidden),
         )
-        nn.init.zeros_(self.proj_out[1].weight)
-        nn.init.zeros_(self.proj_out[1].bias)
+        self.head_ln = nn.LayerNorm(hidden)
+        self.head = nn.Linear(hidden, 3)
+        nn.init.zeros_(self.head.weight)
+        nn.init.zeros_(self.head.bias)
 
         if vel_mean is None:
             vel_mean = torch.zeros(3)
@@ -173,16 +182,35 @@ class TransolverModel(nn.Module):
         vf = last_norm.unsqueeze(-1) * freqs
         vin_fourier = torch.cat([vf.sin(), vf.cos()], dim=-1).reshape(B, N, -1)
 
+        # Velocity tendencies (normalized): short-range and full-window.
+        v_tend_short = v_norm[:, -1] - v_norm[:, -2]
+        v_tend_long = (v_norm[:, -1] - v_norm[:, 0]) / max(T_IN - 1, 1)
+        v_tend = torch.cat([v_tend_short, v_tend_long], dim=-1)  # [B, N, 6]
+
         airfoil_ind = torch.zeros(B, N, 1, device=pos.device, dtype=pos.dtype)
         for b, idx in enumerate(idcs_airfoil):
             airfoil_ind[b, idx.to(pos.device).long(), 0] = 1.0
 
-        x = torch.cat([pos_feat, vin_flat, vin_fourier, airfoil_ind], dim=-1)
+        x = torch.cat([pos_feat, vin_flat, vin_fourier, v_tend, airfoil_ind], dim=-1)
         x = self.proj_in(x)
         for blk in self.blocks:
             x = blk(x)
 
-        delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
+        # Per-timestep time embedding: dt_k = t[T_IN + k] - t[T_IN - 1], normalized
+        # by the input step size so it's dimensionless.
+        step_dt = (t[:, T_IN - 1] - t[:, T_IN - 2]).clamp(min=1e-6)     # [B]
+        dt_out = t[:, T_IN:T_IN + T_OUT] - t[:, T_IN - 1:T_IN]          # [B, T_OUT]
+        dt_norm = dt_out / step_dt.unsqueeze(-1)                        # [B, T_OUT]
+        tf_freqs = 2.0 ** torch.arange(
+            self.num_time_freqs, device=pos.device, dtype=pos.dtype
+        ) * math.pi
+        tf = dt_norm.unsqueeze(-1) * tf_freqs                            # [B, T_OUT, F]
+        time_feat = torch.cat([dt_norm.unsqueeze(-1), tf.sin(), tf.cos()], dim=-1)
+        time_emb = self.time_mlp(time_feat)                              # [B, T_OUT, hidden]
+
+        # Broadcast-add time to point features: [B, T_OUT, N, hidden]
+        x_t = x.unsqueeze(1) + time_emb.unsqueeze(2)
+        delta_norm = self.head(self.head_ln(x_t))                        # [B, T_OUT, N, 3]
         delta = delta_norm * self.vel_std
         pred = last_v.unsqueeze(1) + delta
 
@@ -242,19 +270,20 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 7e-4
+    lr: float = 1e-3
     weight_decay: float = 1e-5
     batch_size: int = 1
-    epochs: int = 90
+    epochs: int = 120
     # Subsample points during training for speed + regularization.
-    subsample_points: int = 24000
-    hidden: int = 384
-    n_blocks: int = 8
+    subsample_points: int = 16384
+    hidden: int = 256
+    n_blocks: int = 6
     heads: int = 8
-    slices: int = 128
+    slices: int = 64
     num_pos_freqs: int = 10
     num_vel_freqs: int = 3
-    dropout: float = 0.05
+    num_time_freqs: int = 4
+    dropout: float = 0.0
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -299,6 +328,7 @@ def main():
     model = TransolverModel(
         hidden=cfg.hidden, n_blocks=cfg.n_blocks, heads=cfg.heads, slices=cfg.slices,
         num_pos_freqs=cfg.num_pos_freqs, num_vel_freqs=cfg.num_vel_freqs,
+        num_time_freqs=cfg.num_time_freqs,
         dropout=cfg.dropout,
         vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     ).to(device)

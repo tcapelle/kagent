@@ -46,8 +46,8 @@ _vel_std = torch.tensor(_stats_raw["vel_std"], dtype=torch.float32)
 
 from train import TransolverModel
 model = TransolverModel(
-    hidden=384, n_blocks=8, heads=8, slices=128,
-    num_pos_freqs=10, num_vel_freqs=3,
+    hidden=256, n_blocks=6, heads=8, slices=64,
+    num_pos_freqs=10, num_vel_freqs=3, num_time_freqs=4,
     vel_mean=_vel_mean, vel_std=_vel_std,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
