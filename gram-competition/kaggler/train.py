@@ -36,59 +36,125 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 
-class ResBlock(nn.Module):
-    def __init__(self, dim, film_dim=None):
-        super().__init__()
-        self.norm = nn.LayerNorm(dim)
-        self.lin1 = nn.Linear(dim, dim * 2)
-        self.lin2 = nn.Linear(dim * 2, dim)
-        self.film = nn.Linear(film_dim, dim * 2) if film_dim else None
-
-    def forward(self, x, cond=None):
-        h = self.norm(x)
-        if self.film is not None and cond is not None:
-            scale, shift = self.film(cond).chunk(2, dim=-1)
-            h = h * (1 + scale.unsqueeze(-2)) + shift.unsqueeze(-2)
-        h = self.lin1(h)
-        h = torch.nn.functional.gelu(h)
-        h = self.lin2(h)
-        return x + h
-
-
 def sinusoidal_embed(x, dim):
-    """Sinusoidal embedding for a scalar per-sample tensor x of shape [B, K]."""
+    """Sinusoidal embedding for tensor x of shape [..., K]. Returns [..., K, dim]."""
     device = x.device
     half = dim // 2
     freqs = torch.exp(
-        -torch.arange(half, device=device, dtype=torch.float32) * (torch.log(torch.tensor(10000.0)) / max(half - 1, 1))
+        -torch.arange(half, device=device, dtype=torch.float32)
+        * (torch.log(torch.tensor(10000.0)) / max(half - 1, 1))
     )
-    args = x.unsqueeze(-1) * freqs  # [B, K, half]
-    emb = torch.cat([args.sin(), args.cos()], dim=-1)  # [B, K, dim]
-    return emb
+    args = x.unsqueeze(-1) * freqs
+    return torch.cat([args.sin(), args.cos()], dim=-1)
 
 
-class ResMLP(nn.Module):
-    """Pointwise residual MLP with physics priors.
+def fourier_pos_embed(pos, num_bands=16):
+    """Fourier positional features for 3D positions. Returns [..., 6*num_bands]."""
+    # pos: [..., 3]
+    scales = 2.0 ** torch.arange(num_bands, device=pos.device, dtype=torch.float32)  # [nb]
+    # [..., 3, nb]
+    x = pos.unsqueeze(-1) * scales * 3.14159265
+    return torch.cat([x.sin(), x.cos()], dim=-1).flatten(-2)  # [..., 3*2*nb]
 
-    - Normalizes velocity (standardize by train stats) and position (per-sample center + scale).
-    - Predicts residual delta per output timestep relative to the last input timestep.
-    - FiLM-conditions each block on a per-sample time embedding (encodes the 10 absolute t values).
-    - Enforces no-slip BC: zero velocity at airfoil indices.
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, mult=4):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.net = nn.Sequential(
+            nn.Linear(dim, dim * mult), nn.GELU(), nn.Linear(dim * mult, dim)
+        )
+
+    def forward(self, x):
+        return x + self.net(self.norm(x))
+
+
+class Attention(nn.Module):
+    """Generic attention: query set attends to key/value set. q,kv separately normed."""
+
+    def __init__(self, dim, heads=8, dim_head=64, kv_dim=None):
+        super().__init__()
+        kv_dim = kv_dim or dim
+        self.heads = heads
+        self.dim_head = dim_head
+        inner = heads * dim_head
+        self.norm_q = nn.LayerNorm(dim)
+        self.norm_kv = nn.LayerNorm(kv_dim)
+        self.to_q = nn.Linear(dim, inner, bias=False)
+        self.to_kv = nn.Linear(kv_dim, inner * 2, bias=False)
+        self.to_out = nn.Linear(inner, dim)
+
+    def forward(self, q_in, kv_in):
+        q = self.to_q(self.norm_q(q_in))
+        k, v = self.to_kv(self.norm_kv(kv_in)).chunk(2, dim=-1)
+        B, Nq, _ = q.shape
+        Nk = k.shape[1]
+        q = q.view(B, Nq, self.heads, self.dim_head).transpose(1, 2)
+        k = k.view(B, Nk, self.heads, self.dim_head).transpose(1, 2)
+        v = v.view(B, Nk, self.heads, self.dim_head).transpose(1, 2)
+        out = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+        out = out.transpose(1, 2).reshape(B, Nq, self.heads * self.dim_head)
+        return q_in + self.to_out(out)
+
+
+class SelfAttn(nn.Module):
+    def __init__(self, dim, heads=8, dim_head=64):
+        super().__init__()
+        self.attn = Attention(dim, heads=heads, dim_head=dim_head)
+
+    def forward(self, x):
+        return self.attn(x, x)
+
+
+class Perceiver(nn.Module):
+    """Perceiver-IO for 3D airflow prediction.
+
+    - Point features: Fourier(pos) + time-avg velocity + per-timestep velocity + airfoil mask.
+    - Encoder: L learned latent queries cross-attend to N points (shared once).
+    - Processor: self-attention + MLP on the L latents, several blocks.
+    - Decoder: N point queries cross-attend to L latents for final features.
+    - Output head: pointwise MLP predicting residual delta per output timestep.
+    - Physics: velocity normalization, residual to v_in[-1], no-slip BC on airfoil.
     """
 
-    def __init__(self, hidden=384, n_blocks=8, time_dim=64, vel_mean=None, vel_std=None):
+    def __init__(
+        self,
+        point_dim=256,
+        latent_dim=384,
+        n_latents=128,
+        n_process_blocks=6,
+        heads=8,
+        dim_head=48,
+        fourier_bands=16,
+        vel_mean=None,
+        vel_std=None,
+    ):
         super().__init__()
-        in_dim = 3 + T_IN * 3 + 1   # pos(3) + velocity_in (normalized, 5*3=15) + airfoil mask(1)
-        out_dim = T_OUT * 3          # residual delta per-timestep
-        self.proj_in = nn.Linear(in_dim, hidden)
-        # Per-sample time embedding dim: 10 absolute times * time_dim, projected to `hidden`.
-        t_enc_dim = 10 * time_dim
-        self.time_proj = nn.Sequential(
-            nn.Linear(t_enc_dim, hidden), nn.GELU(), nn.Linear(hidden, hidden)
+        in_feat = 3 * 2 * fourier_bands + T_IN * 3 + 3 + 1  # fourier_pos + v_in(15) + v_mean(3) + mask(1)
+        self.fourier_bands = fourier_bands
+
+        self.proj_in = nn.Sequential(nn.Linear(in_feat, point_dim), nn.GELU(), nn.Linear(point_dim, point_dim))
+
+        # Learned latent queries, modulated by sample-level features (time).
+        self.latents = nn.Parameter(torch.randn(n_latents, latent_dim) * 0.02)
+        t_dim = 64
+        self.t_proj = nn.Sequential(
+            nn.Linear(10 * t_dim, latent_dim), nn.GELU(), nn.Linear(latent_dim, latent_dim)
         )
-        self.blocks = nn.ModuleList([ResBlock(hidden, film_dim=hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
-        self.time_dim = time_dim
+        self.t_embed_dim = t_dim
+
+        self.enc_attn = Attention(latent_dim, heads=heads, dim_head=dim_head, kv_dim=point_dim)
+        self.enc_ff = FeedForward(latent_dim)
+
+        self.proc_attn = nn.ModuleList([SelfAttn(latent_dim, heads=heads, dim_head=dim_head) for _ in range(n_process_blocks)])
+        self.proc_ff = nn.ModuleList([FeedForward(latent_dim) for _ in range(n_process_blocks)])
+
+        self.dec_attn = Attention(point_dim, heads=heads, dim_head=dim_head, kv_dim=latent_dim)
+        self.dec_ff = FeedForward(point_dim)
+
+        self.head = nn.Sequential(
+            nn.LayerNorm(point_dim), nn.Linear(point_dim, point_dim), nn.GELU(), nn.Linear(point_dim, T_OUT * 3)
+        )
 
         if vel_mean is None:
             vel_mean = torch.zeros(3)
@@ -99,43 +165,60 @@ class ResMLP(nn.Module):
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
+        device = pos.device
 
-        # Normalize velocity with dataset stats.
-        v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
+        # Velocity normalization + residual anchor.
+        v_norm = (velocity_in - self.vel_mean) / self.vel_std
+        v_last_norm = v_norm[:, -1:, :, :]  # [B,1,N,3]
+        v_time_mean = v_norm.mean(dim=1)     # [B,N,3]
 
-        # Center and scale pos per sample (makes model invariant to absolute coordinate).
+        # Per-sample position normalization (center + scale) for Fourier features.
         pos_mean = pos.mean(dim=1, keepdim=True)
         pos_scale = pos.std(dim=(1, 2), keepdim=True).clamp_min(1e-3)
-        pos_norm = (pos - pos_mean) / pos_scale  # [B, N, 3]
+        pos_norm = (pos - pos_mean) / pos_scale
+        pos_feat = fourier_pos_embed(pos_norm, num_bands=self.fourier_bands)  # [B,N,6*nb]
 
-        # Airfoil mask as a per-point feature.
-        airfoil_mask = torch.zeros(B, N, 1, device=pos.device, dtype=pos.dtype)
+        # Airfoil mask feature.
+        airfoil_mask = torch.zeros(B, N, 1, device=device, dtype=pos.dtype)
         for b, idcs in enumerate(idcs_airfoil):
-            airfoil_mask[b, idcs.to(pos.device), 0] = 1.0
+            airfoil_mask[b, idcs.to(device), 0] = 1.0
 
-        x = torch.cat([pos_norm, v_norm.reshape(B, N, T * C), airfoil_mask], dim=-1)
-        x = self.proj_in(x)
+        point_in = torch.cat([
+            pos_feat,
+            v_norm.permute(0, 2, 1, 3).reshape(B, N, T * C),
+            v_time_mean,
+            airfoil_mask,
+        ], dim=-1)
+        x = self.proj_in(point_in)  # [B, N, point_dim]
 
-        # Time conditioning: embed each of the 10 timestep values, flatten, project.
-        t_emb = sinusoidal_embed(t, self.time_dim).reshape(B, -1)  # [B, 10*time_dim]
-        cond = self.time_proj(t_emb)  # [B, hidden]
+        # Sample-level conditioning from time values.
+        t_emb = sinusoidal_embed(t, self.t_embed_dim).reshape(B, -1)
+        cond = self.t_proj(t_emb).unsqueeze(1)  # [B, 1, latent_dim]
 
-        for blk in self.blocks:
-            x = blk(x, cond)
+        # Init latents and add conditioning.
+        lat = self.latents.unsqueeze(0).expand(B, -1, -1) + cond  # [B, L, latent_dim]
 
-        out = self.proj_out(x)  # [B, N, T_OUT * 3]
-        delta_norm = out.reshape(B, T_OUT, N, 3)
+        # Encoder cross-attn.
+        lat = self.enc_attn(lat, x)
+        lat = self.enc_ff(lat)
 
-        # Residual prediction: add delta to last input timestep (both in normalized space).
-        v_last_norm = v_norm[:, -1:, :, :]  # [B, 1, N, 3]
-        pred_norm = v_last_norm + delta_norm  # [B, T_OUT, N, 3]
+        # Processor self-attn blocks.
+        for attn, ff in zip(self.proc_attn, self.proc_ff):
+            lat = attn(lat)
+            lat = ff(lat)
 
-        # Denormalize back to m/s.
+        # Decoder cross-attn: points attend to latents.
+        x = self.dec_attn(x, lat)
+        x = self.dec_ff(x)
+
+        # Pointwise head for residual delta.
+        delta_norm = self.head(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)  # [B,T_OUT,N,3]
+        pred_norm = v_last_norm + delta_norm
         pred = pred_norm * self.vel_std + self.vel_mean
 
-        # No-slip BC: zero velocity at airfoil surface points.
+        # No-slip BC.
         for b, idcs in enumerate(idcs_airfoil):
-            pred[b, :, idcs.to(pos.device), :] = 0.0
+            pred[b, :, idcs.to(device), :] = 0.0
         return pred
 
 
@@ -227,10 +310,14 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = ResMLP(
-    hidden=384,
-    n_blocks=8,
-    time_dim=64,
+model = Perceiver(
+    point_dim=256,
+    latent_dim=384,
+    n_latents=128,
+    n_process_blocks=6,
+    heads=6,
+    dim_head=64,
+    fourier_bands=16,
     vel_mean=stats["vel_mean"],
     vel_std=stats["vel_std"],
 ).to(device)
