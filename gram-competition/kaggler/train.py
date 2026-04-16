@@ -588,6 +588,16 @@ if __name__ == "__main__":
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
+            # y-flip augmentation: F1 front wing has approximate y=0 symmetry.
+            # Flip pos_y, Uy (in + out) together with 50% probability.
+            if torch.rand(1, device=v_in.device).item() < 0.5:
+                v_in = v_in.clone()
+                v_out = v_out.clone()
+                pos = pos.clone()
+                v_in[..., 1].neg_()
+                v_out[..., 1].neg_()
+                pos[..., 1].neg_()
+
             pred = model(v_in, pos, t, idcs)
             loss = (pred - v_out).pow(2).mean()
             (loss / GRAD_ACCUM).backward()
