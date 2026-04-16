@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — Time-conditioned per-step decoder (iter 9, BREAKTHROUGH)
+- **Hypothesis:** All prior iterations plateaued at copy-last (1.75) because a single `Linear(hidden->15)` forced all 5 output time steps to share one predictor. The model cannot distinguish "easy" near-future (t+dt) from "hard" far-future (t+5dt) — gradient steps that help one step hurt another, so the net effect is the safe zero-delta solution. Replace with a shared MLP + per-step time embedding so each output step has its own effective decoder.
+- **Change:** `train.py` BaselineMLP — remove `proj_out = Linear(hidden, 15)`. Add `time_embed = nn.Embedding(T_OUT=5, 32)` + `decoder = MLP(hidden+32 -> hidden -> 3)`. Forward expands features to `[B, T_OUT, N, hidden]`, concats time embedding, applies shared decoder, adds back `v_last`.
+- **Result:** best val/l2_error = **1.2594** at epoch 22/22 (31 min). train=1.189, val=1.26 — still descending when timeout hit. VRAM 15.3 GB. 85s/epoch (slower than iter 8's 79s; the per-step expansion adds memory+compute).
+- **Verdict:** KEPT. **1.7497 -> 1.2594 = 28% improvement**, moves fern from 8th to ~6th. The first iteration that actually beat copy-last.
+- **Notes:** Training dynamics show a clear phase transition — epochs 1-4 stuck at 1.75 (copy-last), epoch 5 jumps to 1.64, epoch 6 to 1.40, then smooth descent. Confirms the copy-last attractor was the problem. The time-conditioned decoder lets the model allocate capacity per time horizon. Next: (a) run longer — loss still descending at epoch 22; (b) try richer per-step conditioning (FiLM on trunk?); (c) now that the output decoder is unlocked, revisit data augmentation (reflection) — it should finally help since the model is no longer in copy-last.
+
 ### 2026-04-16 — y-reflection aug + TTA (iter 8, TIED)
 - **Hypothesis:** 146 geometries is too few; train 1.67 < val 1.75 suggests overfitting. y-flip aug doubles effective data; TTA averages original + mirrored predictions, enforces y-symmetry exactly.
 - **Change:** `train.py` — `reflect_y()` flips pos_y, v_in_y, v_out_y, applied with p=0.5 during training. `predict_tta()` averages original + mirrored prediction. Used at val and predict time. Also `predict.py` updated to use TTA at submission.
