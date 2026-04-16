@@ -119,6 +119,7 @@ class FlowGNN(nn.Module):
         self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
         self.k = k
         self.prior = prior  # "mean" or "last"
+        self._knn_cache: dict = {}
 
         in_dim = 3 + T_IN * 3
         out_dim = T_OUT * 3
@@ -142,7 +143,13 @@ class FlowGNN(nn.Module):
 
         xs = []
         for b in range(B):
-            edge_index = knn_edge_index(pos[b], k=self.k)
+            # cheap content fingerprint so we only compute KNN once per unique geometry
+            fp = pos[b, ::1000].flatten()  # ~100 floats
+            key = (N, float(fp.sum().item()), float(fp[:5].prod().item()))
+            edge_index = self._knn_cache.get(key)
+            if edge_index is None:
+                edge_index = knn_edge_index(pos[b], k=self.k)
+                self._knn_cache[key] = edge_index
             xb = x[b]
             for layer in self.gnn:
                 xb = layer(xb, pos[b], edge_index)
