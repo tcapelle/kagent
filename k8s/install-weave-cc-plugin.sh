@@ -14,8 +14,8 @@
 
 # Make git use GITHUB_TOKEN for HTTPS + SSH-style GitHub URLs (needed to clone
 # the private wandb/claude_code_weave_plugin marketplace repo).
-git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
+git config --global --add url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+git config --global --add url."https://${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
 
 # Register marketplace and install plugin (fully non-interactive).
 claude plugin marketplace add wandb/claude_code_weave_plugin || true
