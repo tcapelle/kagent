@@ -89,7 +89,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 20
+    epochs: int = 12
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -114,8 +114,8 @@ val_loaders = {
 }
 
 model = ResidualMLP(
-    hidden=384,
-    n_blocks=8,
+    hidden=512,
+    n_blocks=10,
     vel_mean=stats["vel_mean"],
     vel_std=stats["vel_std"],
 ).to(device)
