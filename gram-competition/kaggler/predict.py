@@ -38,7 +38,7 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import BaselineMLP
+from train import BaselineMLP, predict_tta
 model = BaselineMLP(hidden=384, n_blocks=8).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 # vel_mean/vel_std buffers are loaded via state_dict; no extra wiring needed.
@@ -68,7 +68,8 @@ for split in TEST_SPLITS:
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                pred = predict_tta(model, v_in, pos, t, idcs).float()  # [B, 5, N, 3]
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 

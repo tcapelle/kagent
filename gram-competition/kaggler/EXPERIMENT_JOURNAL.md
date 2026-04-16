@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — Transolver Physics-Attention (iter 7, TIED — and copy-last baseline discovered)
+- **Hypothesis:** Perceiver's fixed learnable queries aren't geometry-aware. Transolver's data-dependent slice tokens (softmax(point→slice), M=32) cluster points by physical state (wake vs freestream vs boundary) per-sample. This is SOTA on AirfRANS/DrivAerML.
+- **Change:** `train.py` — replaced PerceiverBlock with `PhysicsAttentionBlock(dim, n_slices=32, n_heads=8)` using orthogonal-init slice projection and learnable per-head temperature (0.5). Trunk = 8 × PhysicsAttention (each with own MHSA across slice tokens + FFN), no ResBlocks.
+- **Result:** best val/l2_error = **1.7501** at epoch 22/24, train=1.6743 by end. 76s/epoch, VRAM 13.5 GB.
+- **Verdict:** discarded (tied with iter 3/6). **CRITICAL DISCOVERY:** computed the copy-last baseline `v_out = v_in[-1]` on val — it scores **1.7496**. All my models (iter 3 1.7497, iter 6 1.7496, iter 7 1.7501) are converging to *exactly copy-last* on val. My "improvements" have been training-set overfitting.
+- **Notes:** Train 1.67 vs val 1.75 confirms overfitting. Only 146 unique train geometries — not enough data for the model to learn *nonzero* deltas that generalize. Need DATA AUGMENTATION (reflection), stronger regularization, or richer input features (spatial gradients, vorticity). Next: iter 8 = reflection aug + TTA. Leader at 0.92 is ~47% improvement over copy-last — real generalizing model needed, not architecture tweaks.
+
 ### 2026-04-16 — Perceiver-style latent cross-attn + bf16 AMP (iter 6, TIED)
 - **Hypothesis:** Per-point MLP is capacity-bound; fixed-query Perceiver (M=256 latents) at O(N*M) gives cheap global spatial context at full 100k points. AMP bf16 makes attention at this scale affordable.
 - **Change:** `train.py` — `PerceiverBlock(dim, n_latents=256, n_heads=8)` with 3-stage attn (latent←point xattn, latent self-attn+FFN, point←latent xattn). 1 perceiver after 4 ResBlocks (via `perceiver_every=4`). bf16 AMP on train and val forward.

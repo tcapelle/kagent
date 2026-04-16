@@ -221,7 +221,35 @@ class BaselineMLP(nn.Module):
 # Validation
 # ---------------------------------------------------------------------------
 
-def validate(model, val_loaders, device, global_step):
+def reflect_y(v_in, v_out, pos):
+    """Apply y-axis reflection to the whole sample (in-place safe on clones).
+
+    Flips pos_y and the y-component of velocities. The F1 wing geometry and its
+    flow field are near-perfectly y-symmetric, so this produces physically valid
+    augmented samples and doubles the effective dataset size.
+    """
+    v_in = v_in.clone();   v_in[..., 1] = -v_in[..., 1]
+    v_out = v_out.clone(); v_out[..., 1] = -v_out[..., 1]
+    pos = pos.clone();     pos[..., 1] = -pos[..., 1]
+    return v_in, v_out, pos
+
+
+def predict_tta(model, v_in, pos, t, idcs):
+    """Test-time augmentation: average prediction of original and y-mirrored inputs.
+
+    The mirror operation + un-mirror of the prediction enforces exact y-symmetry
+    on the output and is a cheap ensemble (2 forward passes).
+    """
+    pred_orig = model(v_in, pos, t, idcs)
+    v_in_m = v_in.clone();   v_in_m[..., 1] = -v_in_m[..., 1]
+    pos_m = pos.clone();     pos_m[..., 1] = -pos_m[..., 1]
+    pred_m = model(v_in_m, pos_m, t, idcs)
+    pred_m = pred_m.clone()
+    pred_m[..., 1] = -pred_m[..., 1]
+    return 0.5 * (pred_orig + pred_m)
+
+
+def validate(model, val_loaders, device, global_step, use_tta: bool = True):
     """Run validation, log to W&B. Returns mean val metric (L2 velocity error)."""
     model.eval()
     val_metrics: dict[str, dict] = {}
@@ -239,7 +267,10 @@ def validate(model, val_loaders, device, global_step):
                 t = t.to(device, non_blocking=True)
 
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    pred = model(v_in, pos, t, idcs).float()  # [B, 5, N, 3]
+                    if use_tta:
+                        pred = predict_tta(model, v_in, pos, t, idcs).float()
+                    else:
+                        pred = model(v_in, pos, t, idcs).float()  # [B, 5, N, 3]
 
                 # L2 velocity error (competition hint metric)
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))  # [B]
@@ -364,6 +395,11 @@ def main():
             v_out = v_out.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
+
+            # Reflection augmentation: with p=0.5 flip y-axis of pos + velocities.
+            # F1 wing is y-symmetric so the mirrored sample is physically valid.
+            if torch.rand(1).item() < 0.5:
+                v_in, v_out, pos = reflect_y(v_in, v_out, pos)
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
