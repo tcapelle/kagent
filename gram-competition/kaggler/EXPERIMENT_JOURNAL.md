@@ -32,6 +32,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 So *just predicting the mean of the input frames* beats a vanilla "copy last frame" prior. The time-mean is the bar to beat with trained models. dt between consecutive frames is ~0.001 — the future is close to the past.
 
+### 2026-04-16 — v2: spatial KNN-GNN with time-mean prior
+
+- **Hypothesis:** v1 is pointwise-only so it can't capture spatial structure; adding KNN-graph message passing should let the model see local neighborhoods (vortices, wake structure). Also switch the residual prior from `v_in[-1]` to `mean(v_in)` since the mean-of-inputs baseline (L2 1.42) already beats persistence (1.75).
+- **Change:** `model.py::FlowGNN` — pre/post pointwise ResBlocks with 3 KNN EdgeConv layers (k=16, max-agg, relative-pos encoded messages) in the middle. Added chunked cdist KNN (`torch-cluster` not installed) and a per-geometry in-process KNN cache keyed by a pos fingerprint (162 unique geometries → recompute once per run instead of every forward). hidden=256.
+- **Result:** 6 epochs (~31 min). Per-epoch val/l2: 1.4748 → 1.4741 → **1.2926** → 1.3125 → 1.2376 → **1.2140**. Epoch 1 357s (KNN cache warm), epochs 2–6 ~309s each. Train loss 4.42 → 3.17 (still descending). Peak VRAM 49 GB. Predictions saved to `/mnt/new-pvc/predictions/apr16/askeladd/686baad/val.pt`.
+- **Verdict:** kept. Huge win over v1 (1.4694) and time-mean baseline (1.42). Spatial message-passing matters a lot — the first 2 epochs looked like a plateau but the model sharply improved once it "understood" the graph.
+- **Notes:** clearly not converged — train & val both descending linearly at timeout. Next: run the same config with a longer time budget (v3) to ride out the descent.
+
 ### 2026-04-16 — v1: residual + normalize + no-slip BC, wider ResMLP (384/8)
 
 - **Hypothesis:** the biggest baseline wins are physical priors — normalize velocity with stats, predict a delta off `v_in[-1]` (persistence residual), and zero predictions at airfoil surface (no-slip BC). Still pointwise but with a much wider net.

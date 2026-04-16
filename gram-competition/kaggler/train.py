@@ -187,8 +187,11 @@ for epoch in range(MAX_EPOCHS):
 
         pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
         if cfg.loss == "norm":
-            mean, std = model.vel_mean, model.vel_std
+            std = model.vel_std
             loss = ((pred - v_out) / std).pow(2).mean()
+        elif cfg.loss == "l2":
+            # matches val metric: mean over (T, N) of ||pred - target||_2
+            loss = (pred - v_out).norm(dim=3).mean()
         else:
             loss = (pred - v_out).pow(2).mean()
 
