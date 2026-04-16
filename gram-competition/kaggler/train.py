@@ -331,10 +331,11 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 1e-3
     weight_decay: float = 1e-4
+    warmup_steps: int = 200
     batch_size: int = 1
-    epochs: int = 50
+    epochs: int = 25  # tuned to what fits in 30 min so the cosine actually anneals
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -368,7 +369,18 @@ def main():
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    # Warmup (linear 0 -> lr over warmup_steps) then cosine anneal over remaining steps.
+    steps_per_epoch = len(train_loader)
+    total_steps = MAX_EPOCHS * steps_per_epoch
+    warmup = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=1e-3, end_factor=1.0, total_iters=max(1, cfg.warmup_steps)
+    )
+    cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=max(1, total_steps - cfg.warmup_steps)
+    )
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup, cosine], milestones=[cfg.warmup_steps]
+    )
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
@@ -430,13 +442,13 @@ def main():
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            scheduler.step()
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
             epoch_loss += loss.item()
             n_batches += 1
 
-        scheduler.step()
         epoch_loss /= n_batches
 
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
