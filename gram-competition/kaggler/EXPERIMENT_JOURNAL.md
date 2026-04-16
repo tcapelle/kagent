@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — y-reflection aug + TTA (iter 8, TIED)
+- **Hypothesis:** 146 geometries is too few; train 1.67 < val 1.75 suggests overfitting. y-flip aug doubles effective data; TTA averages original + mirrored predictions, enforces y-symmetry exactly.
+- **Change:** `train.py` — `reflect_y()` flips pos_y, v_in_y, v_out_y, applied with p=0.5 during training. `predict_tta()` averages original + mirrored prediction. Used at val and predict time. Also `predict.py` updated to use TTA at submission.
+- **Result:** best val/l2_error = **1.7498** at epoch 21/23. Train 1.6738, val 1.7498 — same floor.
+- **Verdict:** tied. Reflection aug did NOT break the ceiling. **The problem is NOT data scarcity/overfitting alone.**
+- **Notes:** Three back-to-back ties at ~1.75 across totally different architectures (per-point MLP, Perceiver, Transolver) + augmentation now strongly implicate the OUTPUT decoder. All 5 output time steps share one Linear(hidden→15). The model has no way to distinguish easy (t+dt) from hard (t+5dt) predictions — errors are averaged into a single predictor that effectively collapses to delta=0. Next: iter 9 = per-step time-conditioned decoder.
+
 ### 2026-04-16 — Transolver Physics-Attention (iter 7, TIED — and copy-last baseline discovered)
 - **Hypothesis:** Perceiver's fixed learnable queries aren't geometry-aware. Transolver's data-dependent slice tokens (softmax(point→slice), M=32) cluster points by physical state (wake vs freestream vs boundary) per-sample. This is SOTA on AirfRANS/DrivAerML.
 - **Change:** `train.py` — replaced PerceiverBlock with `PhysicsAttentionBlock(dim, n_slices=32, n_heads=8)` using orthogonal-init slice projection and learnable per-head temperature (0.5). Trunk = 8 × PhysicsAttention (each with own MHSA across slice tokens + FFN), no ResBlocks.

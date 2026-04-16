@@ -160,6 +160,9 @@ class BaselineMLP(nn.Module):
       - Hard no-slip BC: zero velocity at airfoil indices.
       - Transolver Physics-Attention blocks (data-dependent slice tokens, M=32) provide
         geometry-aware global context at O(N*M) cost. Stacked as the main trunk.
+      - Time-conditioned per-step decoder: a shared MLP takes (point_feat, time_embed(k))
+        and predicts delta for each output step k separately. Replaces the monolithic
+        Linear(hidden -> 5*3) that forced all steps through one predictor.
     """
 
     def __init__(
@@ -169,15 +172,16 @@ class BaselineMLP(nn.Module):
         n_pos_freqs: int = 6,
         n_slices: int = 32,
         n_heads: int = 8,
+        time_embed_dim: int = 32,
         vel_mean: torch.Tensor | None = None,
         vel_std: torch.Tensor | None = None,
     ):
         super().__init__()
         self.n_pos_freqs = n_pos_freqs
+        self.time_embed_dim = time_embed_dim
         pos_feat_dim = 3 + 3 * 2 * n_pos_freqs      # 39
         vel_feat_dim = T_IN * 3 + (T_IN - 1) * 3     # 15 + 12 = 27
         in_dim = pos_feat_dim + vel_feat_dim         # 66
-        out_dim = T_OUT * 3                          # 15
 
         self.proj_in = nn.Linear(in_dim, hidden)
         # Trunk: stack of Physics-Attention blocks (each has its own FFN + residual).
@@ -185,7 +189,15 @@ class BaselineMLP(nn.Module):
             PhysicsAttentionBlock(hidden, n_slices=n_slices, n_heads=n_heads)
             for _ in range(n_blocks)
         ])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        # Time-conditioned decoder: shared across output steps, but each step gets
+        # its own time embedding as additional input.
+        self.time_embed = nn.Embedding(T_OUT, time_embed_dim)
+        self.ln_dec = nn.LayerNorm(hidden)
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden + time_embed_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, 3),
+        )
 
         if vel_mean is None:
             vel_mean = torch.zeros(3)
@@ -210,7 +222,16 @@ class BaselineMLP(nn.Module):
         x = self.proj_in(x)
         for block in self.blocks:
             x = block(x)
-        delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        x = self.ln_dec(x)  # [B, N, hidden]
+
+        # Decode per output time step with a shared MLP + step embedding.
+        step_ids = torch.arange(T_OUT, device=x.device)                 # [T_OUT]
+        step_emb = self.time_embed(step_ids)                             # [T_OUT, D_t]
+        # Expand: x -> [B, T_OUT, N, H], step_emb -> [1, T_OUT, 1, D_t]
+        x_exp = x.unsqueeze(1).expand(B, T_OUT, N, -1)
+        step_exp = step_emb.reshape(1, T_OUT, 1, self.time_embed_dim).expand(B, T_OUT, N, -1)
+        dec_in = torch.cat([x_exp, step_exp], dim=-1)                    # [B, T_OUT, N, H+D_t]
+        delta = self.decoder(dec_in)                                     # [B, T_OUT, N, 3]
         out = v_last.unsqueeze(1) + delta
         for b in range(B):
             out[b, :, idcs_airfoil[b], :] = 0.0
