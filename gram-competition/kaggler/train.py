@@ -36,6 +36,20 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 
+def fourier_encode(x: torch.Tensor, n_freqs: int = 6) -> torch.Tensor:
+    """NeRF-style positional encoding.
+
+    Concatenates raw x plus sin/cos at frequencies pi, 2pi, 4pi, ..., 2^(n_freqs-1)*pi.
+    Input shape [..., D], output shape [..., D + D*2*n_freqs].
+    Positions are ~2m in extent; highest freq gives ~6cm wavelength.
+    """
+    freqs = (2.0 ** torch.arange(n_freqs, device=x.device, dtype=x.dtype)) * torch.pi
+    scaled = x.unsqueeze(-1) * freqs  # [..., D, F]
+    enc = torch.cat([torch.sin(scaled), torch.cos(scaled)], dim=-1)  # [..., D, 2F]
+    enc = enc.reshape(*x.shape[:-1], -1)
+    return torch.cat([x, enc], dim=-1)
+
+
 class ResBlock(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -51,18 +65,31 @@ class ResBlock(nn.Module):
 
 
 class BaselineMLP(nn.Module):
-    """Per-point ResMLP predicting residual from last input timestep.
+    """Residual per-point ResMLP with Fourier pos encoding and temporal-diff features.
 
-    Tricks applied vs. the raw baseline:
-      - Normalize velocity_in per-channel with dataset stats before the MLP.
-      - Predict delta = v_out - v_in[-1]; add back v_in[-1] for final prediction.
-      - Enforce no-slip BC by zeroing velocity at airfoil surface indices.
+    Tricks vs. the raw baseline:
+      - Fourier (NeRF) encoding of positions.
+      - Normalized velocity + normalized inter-step diffs (acceleration proxy) as input.
+      - Predict delta = v_out - v_in[-1]; add v_in[-1] back.
+      - Hard no-slip BC: zero velocity at airfoil indices.
+      - Wider/deeper: hidden=384, n_blocks=8 (still fast, per-point).
     """
 
-    def __init__(self, hidden=256, n_blocks=6, vel_mean=None, vel_std=None):
+    def __init__(
+        self,
+        hidden: int = 384,
+        n_blocks: int = 8,
+        n_pos_freqs: int = 6,
+        vel_mean: torch.Tensor | None = None,
+        vel_std: torch.Tensor | None = None,
+    ):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
+        self.n_pos_freqs = n_pos_freqs
+        pos_feat_dim = 3 + 3 * 2 * n_pos_freqs      # 39
+        vel_feat_dim = T_IN * 3 + (T_IN - 1) * 3     # 15 + 12 = 27
+        in_dim = pos_feat_dim + vel_feat_dim         # 66
+        out_dim = T_OUT * 3                          # 15
+
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
@@ -77,13 +104,20 @@ class BaselineMLP(nn.Module):
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
-        v_last = velocity_in[:, -1]  # [B, N, 3]
-        x = torch.cat([pos, v_norm.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
+        v_diff = v_norm[:, 1:] - v_norm[:, :-1]                # [B, T-1, N, 3]
+        v_last = velocity_in[:, -1]                            # [B, N, 3]
+
+        pos_feat = fourier_encode(pos, self.n_pos_freqs)        # [B, N, 39]
+        vel_feat = torch.cat([
+            v_norm.permute(0, 2, 1, 3).reshape(B, N, T * C),
+            v_diff.permute(0, 2, 1, 3).reshape(B, N, (T - 1) * C),
+        ], dim=-1)                                              # [B, N, 27]
+        x = torch.cat([pos_feat, vel_feat], dim=-1)             # [B, N, 66]
+
         x = self.proj_in(x)
         x = self.blocks(x)
         delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
         out = v_last.unsqueeze(1) + delta
-        # Hard no-slip BC: airfoil surface velocity = 0.
         for b in range(B):
             out[b, :, idcs_airfoil[b], :] = 0.0
         return out
@@ -179,8 +213,8 @@ def main():
     }
 
     model = BaselineMLP(
-        hidden=256,
-        n_blocks=6,
+        hidden=384,
+        n_blocks=8,
         vel_mean=stats["vel_mean"],
         vel_std=stats["vel_std"],
     ).to(device)
@@ -237,7 +271,8 @@ def main():
             t = t.to(device, non_blocking=True)
 
             pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-            loss = (pred - v_out).pow(2).mean()
+            # L2-per-point loss: matches the val metric; less outlier-dominated than MSE.
+            loss = (pred - v_out).norm(dim=3).mean()
 
             optimizer.zero_grad()
             loss.backward()
