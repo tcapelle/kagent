@@ -13,13 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 import simple_parsing as sp
+import yaml
+
+
+CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
+_config = yaml.safe_load(CONFIG_PATH.read_text())
 
 
 @dataclass
 class Args:
     """Kill kagent deployments on Kubernetes."""
-    tag: str  # research tag to kill
-    competition: str = "cfd-competition"  # competition directory
+    tag: str = _config["tag"]  # research tag to kill
+    competition: str = _config["competition"]  # competition directory
     clean_branches: bool = False  # delete agent git branches
     clean_predictions: bool = False  # delete predictions from PVC
     dry_run: bool = False
