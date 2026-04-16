@@ -46,7 +46,7 @@ _vel_std = torch.tensor(_stats_raw["vel_std"], dtype=torch.float32)
 
 from train import TransolverModel
 model = TransolverModel(
-    hidden=256, n_blocks=6, heads=8, slices=64,
+    hidden=384, n_blocks=8, heads=8, slices=128,
     num_pos_freqs=10, num_vel_freqs=3,
     vel_mean=_vel_mean, vel_std=_vel_std,
 ).to(device)

@@ -242,19 +242,19 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 1e-3
+    lr: float = 7e-4
     weight_decay: float = 1e-5
     batch_size: int = 1
-    epochs: int = 120
+    epochs: int = 90
     # Subsample points during training for speed + regularization.
-    subsample_points: int = 16384
-    hidden: int = 256
-    n_blocks: int = 6
+    subsample_points: int = 24000
+    hidden: int = 384
+    n_blocks: int = 8
     heads: int = 8
-    slices: int = 64
+    slices: int = 128
     num_pos_freqs: int = 10
     num_vel_freqs: int = 3
-    dropout: float = 0.0
+    dropout: float = 0.05
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None

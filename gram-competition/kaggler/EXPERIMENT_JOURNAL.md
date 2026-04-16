@@ -21,3 +21,18 @@ Keep entries short. Link W&B run URLs when useful.
 ---
 
 ## Entries
+
+### 2026-04-16 — iter2: Transolver (soft-slice attention)
+- **Hypothesis:** Per-point MLP (iter1) lacks spatial interaction; Transolver's O(N·M) slice attention should model wake/vortex long-range structure.
+- **Change:** train.py — 6 Transolver blocks, d=256, M=64 slices, 8 heads. Kept residual head + no-slip BC + Fourier pos features + velocity normalization. Train subsample=16k, AMP bf16, lr=1e-3, 120 epochs, cosine decay.
+- **Result:** val/l2_error=1.0751 at epoch 108. 3.28M params, 1.4GB VRAM, 13s/epoch. Train loss 5.40→1.57 (converged).
+- **Verdict:** KEPT — massive jump from iter1 (1.27). Would be #1 on apr16 leaderboard (current #1 alphonse 1.32).
+- **Notes:** Training loss still slowly decreasing at end (not overfit). Model is tiny — huge headroom to scale. Next: bigger model + more capacity; possibly full 100k train resolution.
+
+### 2026-04-16 — iter1: residual MLP with Fourier pos + no-slip BC
+- **Hypothesis:** A solid baseline — residual prediction from v_in[-1], no-slip BC enforcement, velocity normalization, Fourier pos encoding, and a deeper MLP should crush naive baseline.
+- **Change:** train.py — 8-block ResMLP (512 hidden), Fourier pos features (10 freqs), velocity norm, airfoil indicator input, residual head zeroed-init, no-slip zero-out at airfoil indices. AMP bf16, 20k subsample during train, cosine LR.
+- **Result:** plateau val/l2≈1.27 (killed at epoch 35/80). 8.47M params, 1.5GB VRAM.
+- **Verdict:** DISCARDED — no spatial interaction means per-point MLP can't fit turbulent structure. Train loss also plateau-ed at ~3.3, saturated.
+- **Notes:** Established that residual+normalization framing works (val/l2 dropped from 1.62→1.27 in 35 epochs). The MLP is capacity-bound on the per-point task, not architecture-bound.
+
