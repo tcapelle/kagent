@@ -22,6 +22,43 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v6: iterative voxel-mix + 90 min budget
+- **Hypothesis:** v4's per-point MLP never mixes latent representations
+  across space. Adding lightweight scatter-mean message passing between
+  ResBlocks (VoxelMix) gives iterative spatial communication. v5.1
+  showed this matches v4 at equal epochs; extra training time should
+  push it well past v4.
+- **Change:** Same model as v5.1 — `VoxelMix` with per-scale LN +
+  tanh-bounded per-channel gate (zero-init), scatter-mean at scale 0.12
+  applied every 2 blocks. Training: `torch.nn.utils.clip_grad_norm_`
+  (max_norm=1.0) added to stabilize early iterations. 10 ResBlocks, 5
+  VoxelMix, hidden=512. `MAX_TIMEOUT_MIN=90`.
+- **Result:** Best val/l2=**1.1681** at epoch 52 of 52 (91 min).
+  Train loss 0.044 → 0.014, still descending. Val trajectory: 1.78
+  (ep1), 1.46 (ep5), 1.41 (ep10), 1.33 (ep20), 1.26 (ep28), 1.24
+  (ep35), 1.20 (ep40), 1.17 (ep48, ep52). WandB `edward/v6-mix-90min`.
+- **Verdict:** Kept — ~6% better than v4 (1.2409 → 1.1681). Iterative
+  message passing is clearly the right direction. Val still descending
+  at timeout.
+- **Notes:** Per-epoch time was variable (97-190s) — likely background
+  GPU use. Gap to winner (~0.85) is now ~37%. Next: pivot to
+  voxel-token transformer (voxel pool at scale 0.10 → ~1-2k tokens,
+  self-attention among them, scatter back to points). Much stronger
+  spatial model than gated scatter-mean, still tractable.
+
+### 2026-04-16 — v5.1: VoxelMix (LN + tanh gate) + grad-clip (55 min)
+- **Hypothesis:** v5 diverged at ep19 because unconstrained gate
+  parameter allowed positive feedback. Bound the gate magnitude and
+  add grad clipping.
+- **Change:** `model.py::VoxelMix` — added per-scale LN on pooled
+  features, tanh on gate, zero-init kept. `train.py` — add
+  `clip_grad_norm_(..., 1.0)`.
+- **Result:** Best val/l2=1.2545 at epoch 34 of 34 (55 min budget
+  gave fewer epochs due to mix compute overhead). No divergence.
+  At ep34, v4 was 1.2806 — so v5.1 beats v4 at equal epoch count.
+- **Verdict:** Kept as stepping stone — architecture validated,
+  needed longer training.
+
 ### 2026-04-16 — v4: 4 voxel scales (0.03/0.08/0.20/0.50) + within-voxel offsets
 - **Hypothesis:** v3's two scales under-resolve boundary-layer detail
   (0.05) and large-structure context (need > 0.20). Adding finer 0.03
