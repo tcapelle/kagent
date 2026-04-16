@@ -283,14 +283,17 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 # Single source of truth for the model architecture; both train.py and
 # predict.py import it so the model can always be reconstructed from a checkpoint.
 MODEL_CFG = dict(
-    point_dim=256,
-    latent_dim=384,
-    n_latents=128,
-    n_process_blocks=6,
-    heads=6,
+    point_dim=320,
+    latent_dim=512,
+    n_latents=192,
+    n_process_blocks=8,
+    heads=8,
     dim_head=64,
     fourier_bands=16,
 )
+
+GRAD_ACCUM = 4
+WARMUP_STEPS = 300
 
 
 @dataclass
@@ -298,7 +301,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 50
+    epochs: int = 20
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -327,7 +330,16 @@ if __name__ == "__main__":
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    # Cosine schedule over the actual number of optimizer steps we expect to run.
+    steps_per_epoch = max(1, len(train_loader) // GRAD_ACCUM)
+    total_steps = steps_per_epoch * MAX_EPOCHS
+    def lr_lambda(step):
+        if step < WARMUP_STEPS:
+            return step / max(1, WARMUP_STEPS)
+        progress = (step - WARMUP_STEPS) / max(1, total_steps - WARMUP_STEPS)
+        progress = min(max(progress, 0.0), 1.0)
+        return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.14159265)).item())
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
@@ -369,6 +381,8 @@ if __name__ == "__main__":
         model.train()
         epoch_loss = 0.0
         n_batches = 0
+        accum_idx = 0
+        optimizer.zero_grad()
 
         for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
             v_in = v_in.to(device, non_blocking=True)
@@ -378,23 +392,30 @@ if __name__ == "__main__":
 
             pred = model(v_in, pos, t, idcs)
             loss = (pred - v_out).pow(2).mean()
+            (loss / GRAD_ACCUM).backward()
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            global_step += 1
-            wandb.log({"train/loss": loss.item(), "global_step": global_step})
+            accum_idx += 1
+            if accum_idx == GRAD_ACCUM:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                optimizer.zero_grad()
+                scheduler.step()
+                accum_idx = 0
+                global_step += 1
+                wandb.log({"train/loss": loss.item(),
+                           "train/lr": optimizer.param_groups[0]["lr"],
+                           "global_step": global_step})
 
             epoch_loss += loss.item()
             n_batches += 1
 
-        scheduler.step()
         epoch_loss /= n_batches
 
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
         dt = time.time() - t0
 
-        wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
+        wandb.log({"train/epoch_loss": epoch_loss,
+                   "lr": optimizer.param_groups[0]["lr"],
                    "epoch_time_s": dt, "global_step": global_step})
 
         tag = ""
