@@ -44,10 +44,10 @@ with open(Path(cfg.splits_dir) / "stats.json") as _f:
 _vel_mean = torch.tensor(_stats_raw["vel_mean"], dtype=torch.float32)
 _vel_std = torch.tensor(_stats_raw["vel_std"], dtype=torch.float32)
 
-from train import TransolverModel
+from train import TransolverModel, compute_dist_to_airfoil
 model = TransolverModel(
     hidden=256, n_blocks=6, heads=8, slices=64,
-    num_pos_freqs=10, num_vel_freqs=3,
+    num_pos_freqs=10, num_vel_freqs=3, num_dist_freqs=6,
     vel_mean=_vel_mean, vel_std=_vel_std,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
@@ -77,7 +77,8 @@ for split in TEST_SPLITS:
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            dist = compute_dist_to_airfoil(pos, idcs)
+            pred = model(v_in, pos, t, idcs, dist)  # [B, 5, N, 3]
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 

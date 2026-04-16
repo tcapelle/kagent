@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — iter4: per-timestep decoder + velocity tendency features
+- **Hypothesis:** Model should know which output timestep it's predicting. Replace Linear(hidden, T_OUT*3) with per-step time-embedding + Linear(hidden, 3). Also add velocity tendency features (v[-1]-v[-2], (v[-1]-v[0])/T_IN).
+- **Change:** train.py/predict.py — new decoder: time_emb[k] added to point features, shared Linear(hidden, 3) head applied per timestep. Added 6 velocity tendency channels to input.
+- **Result:** val/l2=1.2040 at epoch 108. 3.34M params, 1.5GB VRAM, 14s/epoch, 120 epochs in 27min.
+- **Verdict:** DISCARDED — significantly worse than iter2 (1.0751).
+- **Notes:** Root cause: the new decoder has 1/5th the decoder-layer params of iter2. Iter2's Linear(hidden, T_OUT*3) is mathematically 5 independent heads; iter4's shared Linear(hidden,3)+time_emb bias is only a SHIFT of features per timestep before a single shared weight matrix. Takeaway: don't trade independent per-step weights for a bias-only conditioning. The velocity tendency features are likely redundant with raw v_in[t] inputs and couldn't be isolated as helpful.
+
 ### 2026-04-16 — iter3: scaled Transolver (d=384, 8 blocks, 128 slices)
 - **Hypothesis:** Iter2 Transolver had huge headroom — 3.28M params fits in 1.4GB. Triple the capacity (10.5M params) + bigger slice pool (128 vs 64) should move the needle.
 - **Change:** train.py — hidden 256→384, blocks 6→8, slices 64→128, subsample 16384→24000, dropout 0.0→0.05, lr 1e-3→7e-4, epochs 120→90.

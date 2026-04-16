@@ -124,16 +124,19 @@ class TransolverBlock(nn.Module):
 
 class TransolverModel(nn.Module):
     def __init__(self, hidden=256, n_blocks=6, heads=8, slices=64,
-                 num_pos_freqs=10, num_vel_freqs=3, dropout=0.0,
-                 vel_mean=None, vel_std=None):
+                 num_pos_freqs=10, num_vel_freqs=3, num_dist_freqs=6,
+                 dropout=0.0, vel_mean=None, vel_std=None):
         super().__init__()
         pos_dim = 3 * (1 + 2 * num_pos_freqs)
         vin_dim = T_IN * 3
         vin_fourier_dim = 3 * 2 * num_vel_freqs
-        in_dim = pos_dim + vin_dim + vin_fourier_dim + 1
+        # distance-to-airfoil: raw + log + fourier (num_dist_freqs freqs, sin/cos)
+        dist_dim = 2 + 2 * num_dist_freqs
+        in_dim = pos_dim + vin_dim + vin_fourier_dim + dist_dim + 1
 
         self.num_pos_freqs = num_pos_freqs
         self.num_vel_freqs = num_vel_freqs
+        self.num_dist_freqs = num_dist_freqs
 
         self.proj_in = nn.Sequential(
             nn.Linear(in_dim, hidden),
@@ -158,7 +161,7 @@ class TransolverModel(nn.Module):
         self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
         self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
+    def forward(self, velocity_in, pos, t, idcs_airfoil, dist_airfoil):
         B, T, N, C = velocity_in.shape
         last_v = velocity_in[:, -1]
 
@@ -177,7 +180,16 @@ class TransolverModel(nn.Module):
         for b, idx in enumerate(idcs_airfoil):
             airfoil_ind[b, idx.to(pos.device).long(), 0] = 1.0
 
-        x = torch.cat([pos_feat, vin_flat, vin_fourier, airfoil_ind], dim=-1)
+        # Distance-to-airfoil features: raw, log1p, and fourier on log1p(dist).
+        d = dist_airfoil.unsqueeze(-1)                                    # [B, N, 1]
+        d_log = torch.log1p(d)
+        dfreqs = 2.0 ** torch.arange(
+            self.num_dist_freqs, device=pos.device, dtype=pos.dtype
+        ) * math.pi
+        df = d_log * dfreqs
+        d_feat = torch.cat([d, d_log, df.sin(), df.cos()], dim=-1)       # [B, N, 2+2*F]
+
+        x = torch.cat([pos_feat, vin_flat, vin_fourier, d_feat, airfoil_ind], dim=-1)
         x = self.proj_in(x)
         for blk in self.blocks:
             x = blk(x)
@@ -209,8 +221,9 @@ def validate(model, val_loaders, device, global_step):
                 v_out = v_out.to(device, non_blocking=True)
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
+                dist = compute_dist_to_airfoil(pos, idcs)
                 with torch.amp.autocast('cuda', dtype=torch.bfloat16):
-                    pred = model(v_in, pos, t, idcs)
+                    pred = model(v_in, pos, t, idcs, dist)
                 pred = pred.float()
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))
                 total_l2 += l2_err.sum().item()
@@ -254,6 +267,7 @@ class Config:
     slices: int = 64
     num_pos_freqs: int = 10
     num_vel_freqs: int = 3
+    num_dist_freqs: int = 6
     dropout: float = 0.0
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
@@ -262,22 +276,55 @@ class Config:
     debug: bool = False
 
 
-def subsample_batch(v_in, v_out, pos, idcs_airfoil, k):
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, dist_airfoil, k):
     B, T, N, C = v_in.shape
     if k is None or k >= N:
-        return v_in, v_out, pos, idcs_airfoil
+        return v_in, v_out, pos, idcs_airfoil, dist_airfoil
     new_idcs = []
     perm = torch.stack([torch.randperm(N, device=v_in.device)[:k] for _ in range(B)])
     v_in_s = torch.gather(v_in, 2, perm[:, None, :, None].expand(-1, T, -1, C))
     v_out_s = torch.gather(v_out, 2, perm[:, None, :, None].expand(-1, T_OUT, -1, C))
     pos_s = torch.gather(pos, 1, perm[:, :, None].expand(-1, -1, C))
+    dist_s = torch.gather(dist_airfoil, 1, perm)
     for b in range(B):
         af = idcs_airfoil[b].to(v_in.device).long()
         mask_full = torch.zeros(N, dtype=torch.bool, device=v_in.device)
         mask_full[af] = True
         mask_sub = mask_full[perm[b]]
         new_idcs.append(mask_sub.nonzero(as_tuple=False).squeeze(-1))
-    return v_in_s, v_out_s, pos_s, new_idcs
+    return v_in_s, v_out_s, pos_s, new_idcs, dist_s
+
+
+_DIST_CACHE: dict = {}
+
+
+def _geom_key(pos_b: torch.Tensor, idcs_b: torch.Tensor) -> tuple:
+    # Geometry is determined by pos + airfoil idcs; fingerprint cheaply.
+    p = pos_b.flatten()[:6].detach().cpu().tolist()
+    return (len(idcs_b), int(idcs_b.numel()), tuple(round(v, 4) for v in p))
+
+
+def compute_dist_to_airfoil(pos: torch.Tensor, idcs_airfoil: list) -> torch.Tensor:
+    """pos: [B, N, 3]; returns [B, N] unsigned distance to nearest airfoil point."""
+    B, N, _ = pos.shape
+    out = torch.empty(B, N, device=pos.device, dtype=pos.dtype)
+    for b in range(B):
+        idx = idcs_airfoil[b].to(pos.device).long()
+        key = _geom_key(pos[b], idx)
+        cached = _DIST_CACHE.get(key)
+        if cached is not None:
+            out[b] = cached.to(pos.device, non_blocking=True)
+            continue
+        af = pos[b].index_select(0, idx)                 # [M, 3]
+        # Chunked min-distance to avoid OOM for 100k x 15k.
+        chunks = []
+        for chunk in pos[b].split(8192):
+            d2 = torch.cdist(chunk, af)                  # [chunk, M]
+            chunks.append(d2.min(dim=1).values)
+        dist = torch.cat(chunks, dim=0)                  # [N]
+        _DIST_CACHE[key] = dist.detach().to("cpu")
+        out[b] = dist
+    return out
 
 
 def main():
@@ -299,6 +346,7 @@ def main():
     model = TransolverModel(
         hidden=cfg.hidden, n_blocks=cfg.n_blocks, heads=cfg.heads, slices=cfg.slices,
         num_pos_freqs=cfg.num_pos_freqs, num_vel_freqs=cfg.num_vel_freqs,
+        num_dist_freqs=cfg.num_dist_freqs,
         dropout=cfg.dropout,
         vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     ).to(device)
@@ -355,12 +403,14 @@ def main():
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            v_in_s, v_out_s, pos_s, idcs_s = subsample_batch(
-                v_in, v_out, pos, idcs, cfg.subsample_points
+            dist = compute_dist_to_airfoil(pos, idcs)
+
+            v_in_s, v_out_s, pos_s, idcs_s, dist_s = subsample_batch(
+                v_in, v_out, pos, idcs, dist, cfg.subsample_points
             )
 
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
-                pred = model(v_in_s, pos_s, t, idcs_s)
+                pred = model(v_in_s, pos_s, t, idcs_s, dist_s)
                 loss = (pred.float() - v_out_s).pow(2).mean()
 
             optimizer.zero_grad()
