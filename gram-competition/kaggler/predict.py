@@ -76,17 +76,9 @@ for split in TEST_SPLITS:
             v_in = v_in.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
+
             dist = compute_dist_to_airfoil(pos, idcs)
-
             pred = model(v_in, pos, t, idcs, dist)  # [B, 5, N, 3]
-
-            # y-flip TTA: wing is symmetric about y=0; flow is equivariant under
-            # (x,y,z) -> (x,-y,z), (Ux,Uy,Uz) -> (Ux,-Uy,Uz). Average direct + flipped.
-            pos_f = pos.clone(); pos_f[..., 1] = -pos_f[..., 1]
-            v_in_f = v_in.clone(); v_in_f[..., 1] = -v_in_f[..., 1]
-            pred_f = model(v_in_f, pos_f, t, idcs, dist)
-            pred_f[..., 1] = -pred_f[..., 1]
-            pred = 0.5 * (pred + pred_f)
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
