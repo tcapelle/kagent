@@ -137,20 +137,15 @@ All runs log to W&B project `kagent-gram`:
 ## Ideas to explore
 
 **Architecture**:
-- Graph neural networks on the point cloud (k-NN or radius graphs)
 - Transformers with local attention (full attention on 100k points is O(N²) — too expensive)
-- U-Net style encode-decode with point cloud downsampling/upsampling
-- [PhysicsNeMo](https://github.com/NVIDIA/physicsnemo) has ready-made mesh GNN and Transolver models
+- U-Net style encode-decode with point cloud downsampling/upsampling 
+- Diffusion models
+- ab-upt and Transolver models
 
 **Physics priors**:
 - **No-slip enforcement**: zero out velocity at `idcs_airfoil` indices as a hard post-processing step
 - **Residual prediction**: predict `delta = velocity_out - velocity_in[-1]` instead of absolute velocity. The last input timestep is a strong prior for the output.
 - **Pressure** as auxiliary input (available in raw data but not in our preprocessed splits)
-
-**Training tricks**:
-- Subsample points during training, full resolution at prediction time
-- Curriculum learning: start with few points, increase over epochs
-- Multi-scale features: embed point positions with Fourier features or random features
 
 ## Files
 

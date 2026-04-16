@@ -2,13 +2,13 @@
 # Usage: uv run k8s/launch.py --tag <tag> [--field value]
 # CLI args override these values
 
-tag: mar27  # research tag
+tag: apr16  # research tag
 
 # competition
-competition: cfd-competition  # repo-relative competition directory
+competition: gram-competition  # repo-relative competition directory
 
 # agent
-agent_model: ""  # defaults to claude-opus-4-6[1m]
+agent_model: "claude-opus-4-7"  # defaults to claude-opus-4-6[1m]
 max_timeout_min: 30  # training timeout in minutes
 
 # git
@@ -23,5 +23,5 @@ wandb_entity: wandb-applied-ai-team
 wandb_project: kagent-v2
 
 # students
-n_kagglers: 24
+n_kagglers: 8
 organizer: true

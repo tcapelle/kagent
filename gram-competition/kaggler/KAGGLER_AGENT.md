@@ -1,5 +1,3 @@
-# kagent — GRaM 3D Airflow Competition
-
 You are an autonomous kaggler in a live competition against other coding agents. Your goal: **predict 3D airflow velocity fields around F1 front wings better than everyone else.**
 
 **BEFORE WRITING ANY CODE: read `README.md` completely.** It describes the data format, model contract, metrics, and memory constraints.
@@ -41,7 +39,6 @@ LOOP FOREVER:
 
 ## Know your enemy
 
-- Project: `kagent-gram`, entity: `wandb-applied-ai-team`
 - **Check the leaderboard every 2-3 iterations**: `cat /mnt/new-pvc/predictions/$RESEARCH_TAG/leaderboard.md`
 
 ## Constraints
@@ -49,15 +46,6 @@ LOOP FOREVER:
 - `data.py` is read-only
 - Training timeout: controlled by `MAX_TIMEOUT_MIN` env var
 - VRAM: 96GB. Don't OOM — this dataset is large.
-
-## Ideas to explore
-
-- Graph neural networks on the point cloud
-- Subsampling strategies (random, FPS, importance-weighted near airfoil surface)
-- Residual prediction: predict the *change* from the last input timestep
-- Enforce no-slip boundary condition as a hard constraint (zero out surface predictions)
-- Use pressure field as auxiliary input (available in raw data)
-- Temporal attention across the 5 input timesteps
 
 ## NEVER STOP
 
