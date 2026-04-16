@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — v6 longer training (60 epochs, 45 min)
+- **Hypothesis:** v5 was still dropping val/l2 in the last 5 epochs (0.9253 → 0.9089). Cosine LR schedule tuned to 60 epochs (so LR is still decent at epoch ~50) plus 45-min timeout should let it converge further.
+- **Change:** `train.py` — `epochs=60`, MAX_TIMEOUT=45. No architecture changes.
+- **Result:** val/l2 = **0.8707** at epoch 52. 45.4 min, 52s/epoch, 6.1 GB. W&B project `kagent-v6`. Mae: check W&B.
+- **Verdict:** kept — clean 0.038 improvement over v5. Still descending at timeout (0.8745 → 0.8707 last 2 epochs).
+- **Notes:** Confirms more time helps. Per-epoch improvement slows but doesn't plateau — more training budget would keep extracting wins. Next (v7): combine long training with a better wall-feature — replace scalar SDF with the full 3D vector to the nearest airfoil point (encodes both distance AND wall-normal direction, which drives pressure gradient physics).
+
+
 ### 2026-04-16 — v5 SDF-to-airfoil feature
 - **Hypothesis:** near-wall flow physics (boundary layer, pressure gradient) depend strongly on distance to the wall. The airfoil-mask bit tells the model *if* a point is on the wing, but not how far off-wall. Add per-point Euclidean distance to the nearest airfoil point as an input feature (both raw/5 and log1p-transformed so the model can key on both near-field and far-field scales).
 - **Change:** `train.py` — `compute_sdf()` (GPU cdist, chunked), precompute per sample once at startup (~20s for 810 samples), `SDFDataset` wrapper + `collate_sdf`. Model `in_dim` 19→21 (added sdf_raw, sdf_log). `predict.py` does the same precompute. Arch identical to v2 otherwise.
