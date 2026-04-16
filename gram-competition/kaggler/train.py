@@ -426,7 +426,10 @@ def main():
 
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 pred = model(v_in_s, pos_s, t, idcs_s, dist_s)
-                loss = (pred.float() - v_out_s).pow(2).mean()
+                # Normalize residual per-channel so Ux (large std) doesn't dominate
+                # and Uy/Uz get equal training weight — matches leaderboard L2 metric.
+                err = (pred.float() - v_out_s) / model.vel_std
+                loss = err.pow(2).mean()
 
             optimizer.zero_grad()
             loss.backward()
