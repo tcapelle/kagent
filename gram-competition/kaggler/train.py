@@ -82,10 +82,10 @@ class VoxelMixer(nn.Module):
         v_idx = (p_norm * G).long().clamp(0, G - 1)
         flat_idx = v_idx[..., 0] * G * G + v_idx[..., 1] * G + v_idx[..., 2]
 
-        voxel_feat = torch.zeros(B, G ** 3, D, device=x.device, dtype=x.dtype)
-        count = torch.zeros(B, G ** 3, device=x.device, dtype=x.dtype)
+        voxel_feat = torch.zeros(B, G ** 3, D, device=x.device, dtype=h.dtype)
+        count = torch.zeros(B, G ** 3, device=x.device, dtype=h.dtype)
         voxel_feat.scatter_add_(1, flat_idx.unsqueeze(-1).expand(-1, -1, D), h)
-        count.scatter_add_(1, flat_idx, torch.ones_like(flat_idx, dtype=x.dtype))
+        count.scatter_add_(1, flat_idx, torch.ones_like(flat_idx, dtype=h.dtype))
         voxel_feat = voxel_feat / count.unsqueeze(-1).clamp(min=1.0)
 
         vf = voxel_feat.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
@@ -105,11 +105,13 @@ class BaselineMLP(nn.Module):
     """Residual MLP + voxel-grid spatial mixer, predicts delta in normalized space."""
 
     def __init__(self, hidden=256, n_blocks=4, grid_size=32,
-                 vel_mean=None, vel_std=None, n_fourier=8):
+                 vel_mean=None, vel_std=None, n_fourier=8, sdf_samples=1024):
         super().__init__()
         self.n_fourier = n_fourier
+        self.sdf_samples = sdf_samples
         fourier_dim = 3 * n_fourier * 2
-        in_dim = 3 + fourier_dim + T_IN * 3
+        # +2 feats: normalized SDF + is_airfoil indicator
+        in_dim = 3 + fourier_dim + T_IN * 3 + 2
         out_dim = T_OUT * 3
         self.proj_in = nn.Linear(in_dim, hidden)
 
@@ -136,12 +138,39 @@ class BaselineMLP(nn.Module):
         p = pos.unsqueeze(-1) * self.fourier_freqs  # [B, N, 3, K]
         return torch.cat([p.sin(), p.cos()], dim=-1).reshape(pos.shape[0], pos.shape[1], -1)
 
+    @torch.no_grad()
+    def _geom_features(self, pos, idcs_airfoil):
+        """SDF-to-airfoil (normalized by bbox diag) + is_airfoil binary."""
+        B, N, _ = pos.shape
+        p_min = pos.amin(dim=1, keepdim=True)
+        p_max = pos.amax(dim=1, keepdim=True)
+        diag = (p_max - p_min).pow(2).sum(-1).sqrt().clamp(min=1e-6)  # [B, 1]
+
+        sdf = pos.new_zeros(B, N)
+        is_af = pos.new_zeros(B, N)
+        for b in range(B):
+            af_idx = idcs_airfoil[b]
+            af = pos[b, af_idx]  # [M, 3]
+            if af.shape[0] > self.sdf_samples:
+                sel = torch.randperm(af.shape[0], device=af.device)[:self.sdf_samples]
+                af = af[sel]
+            # Chunked cdist to avoid ~100k * 1k memory spikes
+            d_list = []
+            for i in range(0, N, 20000):
+                d = torch.cdist(pos[b, i:i + 20000], af).min(dim=-1).values
+                d_list.append(d)
+            sdf[b] = torch.cat(d_list)
+            is_af[b, af_idx] = 1.0
+        sdf_norm = sdf / diag  # [B, N]
+        return sdf_norm.unsqueeze(-1), is_af.unsqueeze(-1)
+
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, 5, N, 3]
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
         fpos = self._fourier(pos)
-        x = torch.cat([pos, fpos, v_feat], dim=-1)
+        sdf, is_af = self._geom_features(pos, idcs_airfoil)
+        x = torch.cat([pos, fpos, v_feat, sdf, is_af], dim=-1)
         x = self.proj_in(x)
 
         for blk in self.blocks:
@@ -227,6 +256,7 @@ class Config:
     grid_size: int = 32
     n_fourier: int = 8
     grad_clip: float = 1.0
+    bf16: bool = True
 
 
 def main():
@@ -300,15 +330,18 @@ def main():
         epoch_loss = 0.0
         n_batches = 0
 
+        amp_enabled = cfg.bf16 and device.type == "cuda"
+
         for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
             v_in = v_in.to(device, non_blocking=True)
             v_out = v_out.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)
-            vel_std = model.vel_std
-            loss = ((pred - v_out) / vel_std).pow(2).mean()
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp_enabled):
+                pred = model(v_in, pos, t, idcs)
+                vel_std = model.vel_std
+                loss = ((pred - v_out) / vel_std).pow(2).mean()
 
             optimizer.zero_grad()
             loss.backward()

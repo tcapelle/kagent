@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — exp4: exp2 arch + bf16 + SDF-to-airfoil
+- **Hypothesis:** Exp2 train loss still dropping at timeout → need more epochs, not more params (exp3 disproved scale-up). bf16 autocast at exp2 sizes halves step time (48→47ms bench) → ~50 epochs in 30min vs exp2's 38. Also add a strong physics prior: signed distance to nearest airfoil point + is_airfoil binary. No-slip BC is a hard constraint near the airfoil; giving the model a distance signal should help it learn wake/boundary-layer structure.
+- **Change:** Revert to hidden=256/n_blocks=4/grid=32 (exp2 sizes). Added bf16 autocast around forward+loss. Added `_geom_features()` in BaselineMLP: chunked cdist to 1024-sample airfoil subset → normalized SDF + is_airfoil indicator, both appended to input features (+2 channels). Fixed VoxelMixer dtype bug (h.dtype not x.dtype) for autocast safety.
+- **Result:** TBD. Bench: 47ms/step bf16 (vs exp2 fp32 ~65ms/step), peak 3.2GB.
+- **Verdict:** TBD
+- **Notes:** SDF computed per-sample each fwd (no caching). sdf_samples=1024 keeps cdist cheap (chunked over 20k pts). is_airfoil is exact (from idcs_airfoil). Target: beat exp2 1.0595.
+
+### 2026-04-16 — exp3: scale up hidden=384/n_blocks=6 + bf16 (DISCARDED)
+- **Hypothesis:** Exp2 underfit — scale hidden 256→384 and n_blocks 4→6 (52M params, 3.3x). Add bf16 so bigger model still trains in 30min.
+- **Change:** Config defaults bumped + bf16 autocast. Fixed VoxelMixer dtype bug.
+- **Result:** val/l2=1.1058 @ epoch 21 (30min timeout). train=0.0142 (vs exp2 0.010).
+- **Verdict:** DISCARDED — worse than exp2 by 0.05. Larger model under-trained: bf16 gained speed but 82s/epoch still only yielded 21 epochs vs exp2's 38. Train loss was 50% higher than exp2's converged level, confirming not enough steps.
+- **Notes:** Lesson: with a fixed 30min budget, "go bigger" must be paired with enough speedup. 3.3x params needed >3x speedup to equalize step count — bf16 only gave ~1.5x. For future scale-ups: combine bf16 + subsample points + lower batch iters.
+
 ### 2026-04-16 — exp1: residual + normalize + no-slip
 - **Hypothesis:** Predicting delta from `velocity_in[-1]` should be much easier than absolute velocity (|delta|=1.17 vs |v|=14 raw). Normalizing by vel_std balances loss across Ux/Uy/Uz. Hard no-slip on airfoil is a physical constraint baseline ignores.
 - **Change:** BaselineMLP: normalized v_in features, predicts delta_norm (zero-init head), denorms, adds to last frame, zeros airfoil indices. hidden=384, n_blocks=8 (~4.7M params). Loss is MSE on normalized error.
