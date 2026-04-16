@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-16 — exp11: chained warm-start from exp10 + lr=1e-4
+- **Hypothesis:** Exp10 (0.9742) hit minimum mid-run (E36) then slowly climbed — the 2e-4 cosine was slightly too high late, allowing oscillation. Chain another warm-start from exp10 with lr=1e-4 (half), adds 30 more min of fine annealing. Train=0.0070 suggests capacity room remains. Each warm-start cycle has diminishing returns but should add 10-20% improvement per run until plateau.
+- **Change:** Run train.py with --warm_start=<exp10 ckpt> --lr=1e-4.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** If val plateaus before E40, try yet lower LR 5e-5. If val continues to drop, keep chaining.
+
 ### 2026-04-16 — exp10: warm-start from exp8 + 30 more min
 - **Hypothesis:** Exp8 val was still dropping linearly at 30min timeout (best 1.0137). Rather than architectural change, reload exp8 ckpt and train another 30min with a fresh cosine LR schedule at lower peak (2e-4 vs 5e-4). Effectively doubles training budget without needing arch changes. SGDR-style warm restart: new annealing cycle may find better minima from a pre-trained init.
 - **Change:** train.py: Added `warm_start: str | None` to Config; loads state_dict post model init. Set cfg.lr=2e-4 for fine-tune run.
