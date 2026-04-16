@@ -95,6 +95,12 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    arch: str = "mlp"         # "mlp" or "gnn"
+    hidden: int = 384
+    n_blocks: int = 8          # used for mlp
+    n_gnn: int = 3             # used for gnn
+    k: int = 16                # KNN neighbors for gnn
+    loss: str = "raw"          # "raw" MSE or "norm" MSE-on-normalized
 
 
 cfg = sp.parse(Config)
@@ -113,7 +119,10 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = build_model(stats, hidden=384, n_blocks=8, expand=4, dropout=0.0).to(device)
+if cfg.arch == "mlp":
+    model = build_model(stats, arch="mlp", hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+else:
+    model = build_model(stats, arch="gnn", hidden=cfg.hidden, n_gnn=cfg.n_gnn, k=cfg.k).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -177,7 +186,11 @@ for epoch in range(MAX_EPOCHS):
         t = t.to(device, non_blocking=True)
 
         pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-        loss = (pred - v_out).pow(2).mean()
+        if cfg.loss == "norm":
+            mean, std = model.vel_mean, model.vel_std
+            loss = ((pred - v_out) / std).pow(2).mean()
+        else:
+            loss = (pred - v_out).pow(2).mean()
 
         optimizer.zero_grad()
         loss.backward()
@@ -226,7 +239,11 @@ if best_metrics:
 if best_metrics and not cfg.debug:
     import subprocess
     print("\nGenerating test predictions...")
-    pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
+    pred_cmd = [
+        "python", "predict.py", "--checkpoint", str(model_path),
+        "--arch", cfg.arch, "--hidden", str(cfg.hidden),
+        "--n_blocks", str(cfg.n_blocks), "--n_gnn", str(cfg.n_gnn), "--k", str(cfg.k),
+    ]
     if cfg.agent:
         pred_cmd += ["--agent", cfg.agent]
     result = subprocess.run(pred_cmd, capture_output=True, text=True)

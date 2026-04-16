@@ -32,6 +32,11 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
+    arch: str = "mlp"
+    hidden: int = 384
+    n_blocks: int = 8
+    n_gnn: int = 3
+    k: int = 16
 
 
 cfg = sp.parse(Config)
@@ -40,7 +45,10 @@ splits_dir = Path(cfg.splits_dir)
 
 _, _, stats = load_data(cfg.splits_dir)
 from model import build_model
-model = build_model(stats, hidden=384, n_blocks=8, expand=4, dropout=0.0).to(device)
+if cfg.arch == "mlp":
+    model = build_model(stats, arch="mlp", hidden=cfg.hidden, n_blocks=cfg.n_blocks).to(device)
+else:
+    model = build_model(stats, arch="gnn", hidden=cfg.hidden, n_gnn=cfg.n_gnn, k=cfg.k).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 
 model.eval()
