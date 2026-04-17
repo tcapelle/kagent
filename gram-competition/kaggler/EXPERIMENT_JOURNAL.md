@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — dropout p=0.1 in point ResBlocks
+- **Hypothesis:** At the end of exp 12 training loss was 0.0088 (very low) while val/l2 plateaued at 0.9277 — the point MLP is likely fitting noise in the per-point mapping. Add standard MLP dropout (p=0.1, after GELU in each ResBlock) to regularize the point head. No other changes.
+- **Change:** `model.py/ResBlock` — optional `dropout` param (default 0) inserted as `nn.Dropout(p)` between GELU and second Linear. `VoxelFlowNet.__init__` — new `point_dropout` arg wired to ResBlocks. `train.py` + `predict.py` — `point_dropout=0.1`.
+- **Result:** val/l2_error = **0.9193** (epoch 27 of 28 @ 30.3 min, 8.5 GB peak). Train loss 0.0096. **0.9 % improvement over exp 12 (0.9277 → 0.9193)**, even though dropout added ~4 s/epoch and cost the final epoch (27 of 28 ran).
+- **Verdict:** Kept. Clear, single-factor win; regularization is underexploited even at modest p=0.1.
+- **Notes:** Per-epoch cost: 63 s → 67 s (+6 %), pushed finish to 30.3 min which tripped the 30-min MAX_TIMEOUT check after epoch 27 (epoch 28 would've completed at ~31.4 min). Val kept improving through ep 27 (0.9202 → 0.9197 → 0.9193), so cosine not fully annealed either — another 0.001–0.002 likely available if we drop `cfg.epochs` to 27 so the schedule fully anneals within 30 min. Train/val gap still large (train 0.0096 vs val equiv much higher), so p=0.15 or 0.2 may help further. Gap to leader 0.75 now 0.17. Next candidates: (a) higher dropout (p=0.15) with cfg.epochs=27 to stay in budget cleanly, (b) multi-factor: dropout + deeper point head (since regularization was the bottleneck, capacity is now uncorked), (c) structural: U-Net voxel CNN for multi-scale features.
+
 ### 2026-04-17 — trilinear splatting voxelization [discarded]
 - **Hypothesis:** At G=80 most cells are empty (512k cells vs 100k points ⇒ ~80 % empty) and hard-scatter creates sharp cross-cell discontinuities. Trilinear splatting distributes each point's contribution to its 8 surrounding cell centers with trilinear weights summing to 1 → fewer empty cells and smoother grid features. Mean-pool uses splat; max-pool stays hard-assigned (max is not linear).
 - **Change:** `model.py/_voxelize` — replace single `scatter_add_` for mean with 8-fold splat loop over (dx,dy,dz) ∈ {0,1}³, accumulating weighted feature and weight sums; normalize by weight sum.
