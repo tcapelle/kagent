@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — scale-up voxel (ch=96, blocks=6, p=512/8) + airfoil-mask + y-flip [discarded]
+- **Hypothesis:** A larger voxel CNN + an explicit airfoil-occupancy channel + y-flip augmentation (geometries are near-symmetric about the x–z plane) should push past 1.00. Added all three in one run.
+- **Change:** `VoxelFlowNet` with grid_ch=96, n_grid_blocks=6, point_hidden=512, n_point_blocks=8; airfoil mask scattered alongside occupancy (17 input channels); y-flip augmentation in `train.py` (50% probability per batch, flip y-coord of pos and y-component of v_in/v_out).
+- **Result:** val/l2_error = **1.1446** (epoch 17 of 18 @ 31.3 min, 12.4 GB peak). Train loss only fell to 0.017 vs 0.008 for the smaller model at its final epoch.
+- **Verdict:** Discarded. The bigger model is 2× slower per epoch (104 s vs 52 s), and the cosine-annealed LR is tied to `cfg.epochs=50`, so when we only complete 18/50 epochs the LR barely decays. Result: more capacity, less learning. Reset to the exp-2 checkpoint.
+- **Notes:** Lessons — (a) do not scale capacity AND add augmentation in the same run; can't tell which hurt. (b) Always check whether cosine annealing will actually reach its min inside `MAX_TIMEOUT_MIN`; if the model is slower per epoch, reduce `cfg.epochs` or switch to step-based scheduling. Next: keep the smaller voxel CNN (48/ch64/b4) but add airfoil-mask + y-flip one at a time to isolate the win.
+
 ### 2026-04-17 — voxel-grid 3D CNN (G=48, ch=64, 4 dilated blocks) + point MLP
 - **Hypothesis:** The point-wise MLP stalled at 1.36 because it has no spatial context — each point is treated independently. Airflow is a PDE so neighboring points matter. Give the model a real receptive field by scattering per-point features onto a [G,G,G] voxel grid, running a small 3D CNN with dilated convolutions, and trilinear-sampling the features back to each point.
 - **Change:** `model.py/VoxelFlowNet` — scatter-mean `v_in` + occupancy to a `48^3` grid (fixed bbox `[-0.1,2.2]×[-0.5,0.5]×[-0.1,1.3]`), 4 residual Conv3d blocks with dilations `[1,2,4,8]` and group-norm, then `F.grid_sample` trilinear back to each point. Per-point head concats `[pos, v_in_norm, voxel_feat]` through a ResMLP (hidden=384, 6 blocks). Residual + no-slip preserved.
