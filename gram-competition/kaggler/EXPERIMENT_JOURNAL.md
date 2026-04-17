@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — higher voxel resolution G=64 ch=48 + epochs=24
+- **Hypothesis:** Exp 4's voxel grid (48³ over a 2.3×1×1.4 m bbox = ~4 cm/cell) is too coarse to resolve boundary layers around the airfoil. Bump grid resolution to 64³ (~3 cm/cell) and compensate for the extra 3D-conv compute by dropping grid channels 64→48 so per-epoch time stays similar. Drop cfg.epochs to 24 so cosine still fully anneals within 30 min.
+- **Change:** `train.py`+`predict.py` — `VoxelFlowNet(grid_res=64, grid_ch=48, n_grid_blocks=4, ...)`, `epochs: int = 24`. Nothing else changed.
+- **Result:** val/l2_error = **0.9640** (epoch 24 of 24 @ 23.7 min, 7.6 GB peak). Train loss 0.0098. 3.2 % improvement over exp 4, ~4 % in absolute val. Finished 6 min under budget.
+- **Verdict:** Kept. Biggest single-change improvement since going from point-MLP → voxel (exp 1→2). Higher spatial resolution clearly matters.
+- **Notes:** Three signals suggest more room to run: (1) finished 6 min before timeout so we have compute slack, (2) val was still dropping at the final epoch (0.9700 → 0.9643 → 0.9640), (3) train loss (0.0098) is close to exp 4's final (0.0082) but val is much better — less spectral bias / better regularization. Next: bump epochs to ~30 to use the slack, OR go G=80 (ch=40 to compensate), OR add SDF-to-airfoil feature now that spatial resolution is higher.
+
 ### 2026-04-17 — Fourier positional encoding (L=8) + cfg.epochs=35 LR fix
 - **Hypothesis:** (a) MLPs struggle to represent high-frequency spatial variation from raw 3-D coords (spectral bias) — adding Fourier features (sin/cos at 8 scales, 2^k·π) should let the per-point head model finer spatial structure. (b) Exp 2 reported val was still dropping at the cosine min; the min wasn't reached because cfg.epochs=50 with MAX_TIMEOUT_MIN=30 and 52 s/epoch → only ~35 epochs actually ran, so LR only decayed to ~21 % of init. Set `cfg.epochs = 35` so cosine fully anneals within the budget.
 - **Change:** `model.py/VoxelFlowNet` — add `_pos_enc` method producing `[pos, sin(w·pos'), cos(w·pos')]` with 8 log-spaced frequencies, replacing raw `pos` in the per-point concat (point input grows by 48). `train.py` — `epochs: int = 35`. No other changes vs exp 2.
