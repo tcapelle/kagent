@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp17: chain warm-start from exp16 + lr=2e-5
+- **Hypothesis:** Exp16 val was still dropping at E33 (0.9422, best E24 0.9420). One more chain at lr=2e-5 should extract the last fine-tuning gains — similar pattern to the exp12→exp13 chain (+0.0025). With a richer arch (mean+max) there may be more to extract.
+- **Change:** --warm_start=<exp16 ckpt model-4fk50oi3> --lr=2e-5. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+
 ### 2026-04-17 — exp16: chain warm-start from exp15 + lr=5e-5
 - **Hypothesis:** Exp15 val was still slightly dropping at E33 (0.9487). The new proj_agg layers were still learning. Another 30min of fine-tuning at lr=5e-5 should let the mean+max aggregation fully mature.
 - **Change:** --warm_start=<exp15 ckpt> --lr=5e-5. No code changes.
