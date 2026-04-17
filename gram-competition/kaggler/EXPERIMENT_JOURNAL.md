@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp19: chain warm-start from exp18 + lr=5e-5
+- **Hypothesis:** Exp18 val was still dropping rapidly at E22-24 (0.9469→0.9411). Coarse branch needs more epochs at a lower LR to refine without destroying fine-branch weights. Chain at lr=5e-5 for 30 more min. If it beats exp17's 0.9396, commit the full multi-scale arch.
+- **Change:** --warm_start=<exp18 ckpt model-5qrjp5if> --lr=5e-5. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** If exp19 beats exp17, exp18+19 arch replaces exp17 chain. If not, revert to exp17 arch + checkpoint for future experiments.
+
 ### 2026-04-17 — exp18: multi-scale voxel (16³ coarse parallel, warm-start from exp17)
 - **Hypothesis:** Chain saturating again. Arch change gave biggest recent win (exp15 Δ=0.0126). Add parallel 16³ coarse voxel branch to each VoxelMixer — captures larger-scale flow structures (wake, separation zones) that 32³ 3×3 conv can't reach. Zero-init (proj_agg_coarse=0, last conv_coarse=0) → sampled_c=0 at init → warm-start equivalent to exp17. Fresh training allows coarse branch to learn contributions.
 - **Change:** VoxelMixer now has a parallel G_coarse=G/2 branch (proj_agg_coarse + conv_coarse) summed with fine output. Zero-init end-to-end. Refactored fine-branch logic into _voxel_mm/_gather helpers.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** 48 missing keys on warm-start (8 blocks × 6 coarse params). Params: 59.7M → 61.1M (+2.3%). lr=2e-4 to train fresh coarse layers.
+- **Result:** val/l2=**0.9411** @ epoch 23 (30.5 min). train=0.0052. run 5qrjp5if. 76s/epoch (38% slower).
+- **Verdict:** HOLD — slightly worse than exp17 (0.9396 vs 0.9411). Val was still rapidly dropping at E22-24 (0.9469→0.9411→0.9494). Coarse branch undertrained — lr=2e-4 was too aggressive + too few epochs. Not committed to git (don't regress).
+- **Notes:** Param count 59.7M→61.1M. 76s vs 55s/epoch. Next: exp19 = chain from exp18 PVC ckpt at lr=5e-5 to let coarse branch mature.
 
 ### 2026-04-17 — exp17: chain warm-start from exp16 + lr=2e-5
 - **Hypothesis:** Exp16 val was still dropping at E33 (0.9422, best E24 0.9420). One more chain at lr=2e-5 should extract the last fine-tuning gains — similar pattern to the exp12→exp13 chain (+0.0025). With a richer arch (mean+max) there may be more to extract.
