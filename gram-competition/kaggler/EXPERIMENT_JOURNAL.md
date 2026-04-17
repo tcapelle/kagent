@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v10 DISCARDED — EMA(0.999) weights regressed ~0.036
+- **Hypothesis:** v6's 0.8707 was likely a lucky raw-val point at `batch_size=1` (val noise ~0.02 between epochs). EMA(0.999) tracks a moving average of weights, which should give a smoother, more reliable val curve and let the best point reflect stable generalization rather than noisy peaks. Isolating EMA from v3's combined EMA+mirror-flip failure.
+- **Change:** `train.py` — added `EMA` class (shadow = clone of params, `update()` after each `optimizer.step()`, `apply()/restore()` around validation + checkpointing). `cfg.ema_decay=0.999`. Otherwise identical to v6.
+- **Result:** val/l2 = **0.9067** at epoch 52 (45.7 min, 53 s/epoch, 6.2 GB). W&B project `kagent-v10`. Val descended monotonically (every epoch a new best) — EMA smoothing worked as expected for noise reduction. But the EMA val magnitude plateaued at ~0.907, well above v6's lucky 0.8707.
+- **Verdict:** discarded — 0.036 worse than v6.
+- **Notes:** The monotone descent is evidence EMA removed val noise. But the average level EMA settles at is higher than the best raw-val point v6 hit — i.e. the variance we smoothed away contained the 0.8707 win. At `decay=0.999` (half-life ~693 steps ≈ 1 epoch) the EMA weights trail the current model by ~1 epoch of progress; with cosine LR decaying over 60 epochs, that lag costs a few hundredths of val/l2. Possible rescue: (a) `decay=0.9995` (half-life ~2 epochs) with a longer run — likely still trails. (b) EMA only over *last N epochs* so early random init doesn't pollute. (c) raw-model checkpoint + tester-side ensembling. For now, reverting to v6. Next (v11): try the one spatial thing not yet done — multi-scale voxel (concatenate outputs of 32³ + 64³ UNets). Gives the model both long-range (32³ bigger effective receptive field) and fine (64³) spatial context. Memory+compute <2× because of how the UNet scales with grid volume.
+
+
+### 2026-04-16 — v9 DISCARDED — hidden=384 per-epoch gain lost to 2.3× slowdown
+- **Hypothesis:** v6 train loss kept descending (0.007 at ep52), val plateauing → generalization limited by capacity, not optimization. Bump `hidden` 256→384 (MLP width), keep everything else v6. Initial try at `epochs=60` aborted because cosine T_max=60 stretched past actual run time (same trap as v8); restarted as v9b with `epochs=30` so cosine anneals to 0 exactly at timeout.
+- **Change:** `train.py` — `hidden: int = 384`, `epochs: int = 30`. Launched with `MAX_TIMEOUT_MIN=60`.
+- **Result:** val/l2 = **0.9222** at epoch 30 (last, 56.3 min, 75–300 s/epoch depending on GPU contention, 8.4 GB). W&B project `kagent-v9`. Per-epoch val was clearly ahead of v6/v8 at the same epoch (ep20 v9b 0.9707 vs v6 ~1.05), confirming the capacity helps — but each epoch took 2.3× longer, so only 30 epochs fit.
+- **Verdict:** discarded — 0.05 worse than v6's 0.8707. Capacity trade-off lost against wall-clock.
+- **Notes:** GPU contention from shared workload caused erratic epoch times (75s best, 295s worst). Even without contention, at ~75s/epoch steady-state we could only fit ~46 epochs in 60 min; still short of v6's 52 well-annealed epochs. The capacity-gain-per-epoch is real but the time tax is too steep on this GPU share. Next (v10): isolate EMA weights (decay=0.999) from v3's combined EMA+mirror failure — EMA is a cheap, known-good variance-reduction for noisy `batch_size=1` val.
+
+
 ### 2026-04-16 — v8 DISCARDED — more training time alone did not beat v6
 - **Hypothesis:** v6 was still descending at timeout (0.8745 → 0.8707 in last 2 epochs). Extend `epochs=60→75` and `MAX_TIMEOUT_MIN=45→60` — same architecture, same features, just more wall-clock and a cosine schedule that stays warmer longer in the ep 50-60 zone where v6 was still finding wins.
 - **Change:** `train.py` — `epochs: int = 75` (no other code change). Launched with `MAX_TIMEOUT_MIN=60`.
