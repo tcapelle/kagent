@@ -22,10 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-17 — iter12: L2-norm loss (matches leaderboard metric exactly)
-- **Hypothesis:** iter11 over-corrected the component balance — fully normalized MSE gave equal gradient weight to all components and hurt Ux (the dominant one in the L2 metric). The competition metric is `(pred-target).norm(dim=3).mean()` — train on *that* directly. Its gradient naturally balances components (a point's Uy gradient is scaled by Uy_err/||err||), which dampens small components only when the big one is large — i.e., exactly the right kind of balancing.
-- **Change:** `train.py` — `loss = (pred - v_out).norm(dim=3).mean()`. Same model (iter8 voxel-unet+attn, grid=48, base_ch=128), same y-flip aug + TTA + 30 epochs.
+### 2026-04-17 — iter13: MSE + input velocity Gaussian noise (σ=0.05·vel_std)
+- **Hypothesis:** val plateaus at 0.97–1.00 while train loss keeps dropping (iter8→iter9→iter11 all show this) = clear overfit. With only 730 train samples, regularization should unlock lower val. Input-noise is the cheapest regularizer: forces model to be robust to small perturbations of `velocity_in`, which physically matches turbulence sensing noise. No capacity change.
+- **Change:** `train.py` — after y-flip aug, `v_in = v_in + torch.randn_like(v_in) * model.vel_std * 0.05`. Reverted iter12's L2 loss back to raw MSE. Else identical to iter8.
 - **Result:** _pending_.
+
+### 2026-04-17 — iter12: L2-norm loss (matches leaderboard metric exactly)
+- **Hypothesis:** iter11 over-corrected the component balance — fully normalized MSE gave equal gradient weight to all components and hurt Ux. L2-norm loss is the exact leaderboard metric and its gradient naturally balances components (a point's Uy gradient ∝ Uy_err/||err||), dampening only when the big one is large — softer, correct balancing.
+- **Change:** `train.py` — `loss = (pred - v_out).norm(dim=3).mean()`. Same model/schedule.
+- **Result:** killed at epoch 5 (val=1.76, barely moved from 1.77 @ e1). L2-norm's unit-magnitude per-point gradients ≈ 10–20× smaller than MSE's err-magnitude gradients → effective LR is too low, can't converge in 30-epoch budget.
+- **Verdict:** discarded. Not fundamentally wrong but needs LR re-tuning to compete; not worth another 30-min run in the time budget.
+- **Notes:** If revisiting: bump LR ≥5× or combine MSE + λ·L2 (MSE drives convergence, L2 does metric-aligned fine-tuning).
 
 ### 2026-04-17 — iter11: normalized MSE loss (divide by vel_std per component)
 - **Hypothesis:** MSE on raw velocity weights gradient by variance; Ux std≈20 dominates Uy std≈7 / Uz std≈9. My MAE ratios (Ux:Uy:Uz = 1:0.52:0.73) are worse than leaders' (alphonse 1:0.47:0.69, thorfinn 1:0.46:0.69) — I'm relatively *most* behind on Uy. Normalizing per-component equalizes gradient weighting and should close the Uy/Uz gap directly.

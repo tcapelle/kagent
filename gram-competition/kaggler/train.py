@@ -594,9 +594,12 @@ if __name__ == "__main__":
                 v_out = v_out.clone(); v_out[..., 1].neg_()
                 pos = pos.clone(); pos[..., 1].neg_()
 
+            # Input velocity noise: regularizes against train/val plateau by
+            # adding σ=0.05 × vel_std Gaussian noise to v_in (only, not v_out).
+            v_in = v_in + torch.randn_like(v_in) * (model.vel_std * 0.05)
+
             pred = model(v_in, pos, t, idcs)
-            # L2-norm loss: matches the leaderboard metric exactly (norm over components).
-            loss = (pred - v_out).norm(dim=3).mean()
+            loss = (pred - v_out).pow(2).mean()
             (loss / GRAD_ACCUM).backward()
 
             accum_idx += 1
