@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Weight-decay bump (1e-4 -> 1e-3) + 9-model ensemble (iter 20, KEPT)
+- **Hypothesis:** Sobolev lambda sweep is plateauing at ~0.15% single-model gain per step. Attack overfit through a *second independent* regulariser — bump weight_decay 10x while keeping lambda=0.7. Free to try (one flag).
+- **Change:** `--resume checkpoints/best.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.7 --weight_decay 1e-3 --epochs 25`.
+- **Result:** best single = **1.0553** at E11/19 (30.1 min, warm-start init 1.0556). Trajectory: E1-E10 noisy 1.058-1.066 (WD pulling weights away from warm-start optimum), E11 dipped to 1.0553, E12-E18 oscillated 1.056-1.060. **9-model ensemble:**
+  - iter 20 alone: 1.0553
+  - **iter 12-20: 1.0371** ← submitted (0d98d80)
+- **Verdict:** KEPT (marginal). **1.0556 → 1.0553 = 0.03% (single, negligible), 1.0398 → 1.0371 = 0.26% (ensemble).** Cumulative session: **1.0625 → 1.0371 = 2.4%**. Leaderboard confirms fern #6 at 1.0371; gap to #5 (askeladd 0.9830) widened slightly — their baseline re-ran? Need **5.2% drop** to overtake.
+- **Notes:** Weight-decay bump barely moved the single-model metric but still contributed to the ensemble via a slightly different error pattern. The marginal single-model improvement is the clearest sign yet that warm-start-chain wins are exhausted at the current architecture; further tuning of regularisation hyperparams is <0.1%/iter. Iter 21 must be architectural. Priorities: (a) **MoE/FiLM trunk conditioning** — feed SDF+rel into every block (not just input); (b) **fresh-train wider model** (hidden=512 n_blocks=10) with explicit phase-transition-friendly schedule (Sobolev=0 first 5 epochs, ramp to 0.5 over 10 epochs — prevents the copy-last trap seen in iter 18 v1/v2); (c) **dropout p=0.1** in trunk blocks added as zero-init warm-start (p=0 at load, ramp up). (c) is zero-architecture-risk and can be tried first.
+
 ### 2026-04-17 — Sobolev lambda=0.7 warm-start + 8-model ensemble (iter 19, KEPT)
 - **Hypothesis:** Continue the lambda sweep (0.1 → 0.3 → 0.5 → 0.7). Train/val gap in iter 18 was 0.97 vs 1.06 — still room for the gradient-matching term to pull val down without collapsing train to under-fit.
 - **Change:** `--resume checkpoints/best.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.7 --epochs 25` (one flag changed from iter 18).
