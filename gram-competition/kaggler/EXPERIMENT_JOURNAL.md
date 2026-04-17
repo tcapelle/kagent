@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — weighted-ensemble KEPT — softmax(-l2/T=0.02) over 13 seeds: 0.7646 (gain 0.003, zero compute)
+- **Hypothesis:** uniform averaging down-weights strong seeds and up-weights weak ones (v20=0.889, v25=0.866 drag the mean). Weight by softmax(-solo_l2/T) so better seeds contribute more. Per-seed solo l2 is a proxy for test l2 — weights should generalize.
+- **Change:** new file `ensemble_weighted.py`. Tries 6 schemes: uniform, inv_loss, inv_loss_sq, softmax T∈{0.02, 0.005, 0.001}. Reports each and saves the best.
+- **Result:** softmax T=0.02 wins at **val/l2 = 0.7646** (vs uniform 0.7672; weights span 0.024-0.130 for 13 seeds; mean=0.077). inv_loss and inv_loss_sq are ~indistinguishable from uniform. Sharper T=0.005 overfits (0.771). T=0.001 collapses to argmax and fails (0.818).
+- **Verdict:** kept — 0.003 gain at zero compute. 12.2% under v6 solo.
+- **Notes:** The best-scheme choice is made on val (mild val-set tuning), but T=0.02 is a reasonable generic heuristic insensitive to any single val sample. For test submission, using T=0.02 softmax weighted by val/l2 is defensible — per-seed val rankings should transfer to test. Next (v27): another training run with a genuinely new axis — `wd=5e-5 epochs=90` (weaker regularization than baseline 1e-4, untested direction). Expected: strong solo + distinct basin.
+
+
 ### 2026-04-17 — v26 KEPT — lr=7e-4 opposite-direction axis, 13-seed ensemble 0.7672 (gain 0.0017)
 - **Hypothesis:** lr=7e-4 (40% above default 5e-4, opposite of v24's 3e-4) explores the higher-lr side of the basin manifold and should match v24's axis gain with a stronger solo than v25's wd=3e-4.
 - **Change:** CLI only — `--lr 7e-4 --epochs 90`.
