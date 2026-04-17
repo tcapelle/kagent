@@ -96,6 +96,7 @@ class Config:
     n_attn_blocks: int = 2      # v16 only: number of VoxelTokenAttn blocks
     layer_scale: float = 1e-4   # v16 only: LayerScale init for attention residual
     amp: bool = False  # enable mixed-precision (bf16 autocast, no scaler needed)
+    yflip_aug: bool = False  # random y-flip data augmentation (50% prob). Doubles effective train data.
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -197,6 +198,16 @@ for epoch in range(MAX_EPOCHS):
         v_out = v_out.to(device, non_blocking=True)
         pos = pos.to(device, non_blocking=True)
         t = t.to(device, non_blocking=True)
+
+        # y-flip augmentation: airfoils are y-symmetric (verified); flowing
+        # reflects y-component of velocity and y-coordinate.
+        if cfg.yflip_aug and torch.rand(1).item() < 0.5:
+            v_in = v_in.clone()
+            v_out = v_out.clone()
+            pos = pos.clone()
+            v_in[..., 1] *= -1
+            v_out[..., 1] *= -1
+            pos[..., 1] *= -1
 
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.amp):
             pred = model(v_in, pos, t, idcs)
