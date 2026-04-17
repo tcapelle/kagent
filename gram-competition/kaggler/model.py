@@ -80,14 +80,18 @@ class VoxelFlowNet(nn.Module):
         n_grid_blocks: int = 4,
         point_hidden: int = 384,
         n_point_blocks: int = 6,
+        fourier_L: int = 8,
     ):
         super().__init__()
         self.grid_res = grid_res
+        self.fourier_L = fourier_L
         self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
         self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
         # Fixed bbox (from dataset inspection), padded slightly.
         self.register_buffer("pos_min", torch.tensor([-0.1, -0.5, -0.1]))
         self.register_buffer("pos_max", torch.tensor([2.2, 0.5, 1.3]))
+        # Fourier frequencies: 2^k * pi for k in [0, L)
+        self.register_buffer("fourier_freqs", (2.0 ** torch.arange(fourier_L)) * torch.pi)
 
         in_ch = T_IN * 3 + 1  # v_in(15) + occupancy
         self.grid_in = nn.Conv3d(in_ch, grid_ch, 1)
@@ -104,7 +108,8 @@ class VoxelFlowNet(nn.Module):
             for i in range(n_grid_blocks)
         ])
 
-        point_in = 3 + T_IN * 3 + grid_ch
+        pos_feat_dim = 3 + 3 * 2 * fourier_L  # raw pos + sin/cos at L scales
+        point_in = pos_feat_dim + T_IN * 3 + grid_ch
         point_out = T_OUT * 3
         self.proj_in = nn.Linear(point_in, point_hidden)
         self.blocks = nn.Sequential(*[ResBlock(point_hidden) for _ in range(n_point_blocks)])
@@ -132,6 +137,14 @@ class VoxelFlowNet(nn.Module):
 
         return grid_flat.reshape(B, G, G, G, nch).permute(0, 4, 1, 2, 3).contiguous()
 
+    def _pos_enc(self, pos):
+        """Fourier feature encoding: concat [pos, sin(w*pos), cos(w*pos)] for w in 2^k * pi."""
+        pos_norm = ((pos - self.pos_min) / (self.pos_max - self.pos_min)) * 2 - 1  # [-1, 1]
+        xw = pos_norm.unsqueeze(-1) * self.fourier_freqs  # [B, N, 3, L]
+        sin_f = torch.sin(xw).flatten(-2)  # [B, N, 3*L]
+        cos_f = torch.cos(xw).flatten(-2)
+        return torch.cat([pos, sin_f, cos_f], dim=-1)  # [B, N, 3 + 2*3*L]
+
     def _interp(self, grid, pos):
         """Trilinear-sample voxel features at each point position."""
         B, C, _, _, _ = grid.shape
@@ -154,7 +167,8 @@ class VoxelFlowNet(nn.Module):
         voxel_feat = self._interp(g, pos)
 
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
-        x = torch.cat([pos, v_feat, voxel_feat], dim=-1)
+        pos_feat = self._pos_enc(pos)
+        x = torch.cat([pos_feat, v_feat, voxel_feat], dim=-1)
         x = self.proj_in(x)
         x = self.blocks(x)
         delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
