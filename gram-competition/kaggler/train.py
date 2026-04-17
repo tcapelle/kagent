@@ -662,6 +662,8 @@ def main():
     git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
     best_val = cfg.best_val_floor  # no save unless val beats this threshold
+    best_run_val = float("inf")  # floor-free best-within-run (captures transient dips)
+    best_run_path = pvc_dir / "best_run.pt"
     best_metrics: dict = {}
     global_step = 0
     train_start = time.time()
@@ -747,6 +749,15 @@ def main():
                 shutil.copyfile(model_path, git_ckpt_path)
             tag = " *"
 
+        # Floor-free best-within-run: captures transient dip-basins (e.g. iter37
+        # E5) that the floor-guarded best_val can miss. Stage this as the ensemble
+        # member when a run doesn't beat the global floor but does have a useful
+        # minimum of its own.
+        if mean_val < best_run_val:
+            best_run_val = mean_val
+            torch.save(model.state_dict(), best_run_path)
+            tag += "+"
+
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
         print(
             f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
@@ -761,6 +772,7 @@ def main():
     final_path = pvc_dir / "final.pt"
     torch.save(model.state_dict(), final_path)
     print(f"Final weights -> {final_path}")
+    print(f"Best-within-run val/l2={best_run_val:.4f} -> {best_run_path}")
 
     if best_metrics:
         print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
