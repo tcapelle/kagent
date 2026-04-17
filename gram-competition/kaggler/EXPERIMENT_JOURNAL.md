@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp24: chain warm-start from exp23 + lr=5e-6
+- **Hypothesis:** Exp23 val stable E14-22 (0.9096-0.9115). Very low LR chain should squeeze last fine-tune. Expected Δ~0.001-0.003.
+- **Change:** --warm_start=<exp23 ckpt model-mnvmn263> --lr=5e-6. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** If saturated, pivot to per-output-timestep FiLM (exp25) — currently FiLM conditions on single scalar, but 5 output timesteps could each have own γ/β.
+
 ### 2026-04-17 — exp23: chain warm-start from exp22 (FiLM refine) + lr=2e-5
 - **Hypothesis:** Exp22 FiLM destabilized by high LR but trending down. Chain at lr=2e-5 should let FiLM params settle without further destroying main weights. If FiLM has signal, this extracts it; if not, we'll plateau around exp22's 0.9281.
 - **Change:** --warm_start=<exp22 ckpt model-79ynl9v3> --lr=2e-5. No code changes.
