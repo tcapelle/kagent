@@ -154,7 +154,8 @@ class BaselineMLP(nn.Module):
         interp = knn_interpolate(pos_n, anchor_pos, anchor_x, k=3)  # [B, N, D]
         spatial_pred = self.spatial_head(interp)   # zero at init
 
-        out_norm = (point_pred + spatial_pred).reshape(B, T_OUT, N, 3)
+        out_combined = (point_pred + spatial_pred).reshape(B, N, T_OUT, 3)
+        out_norm = out_combined.permute(0, 2, 1, 3)  # [B, T_OUT, N, 3]
         out = out_norm * self.vel_std + self.vel_mean
 
         mask = torch.ones(B, N, device=out.device, dtype=out.dtype)
