@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v22 KEPT — 2nd epochs=90 seed, 9-seed ensemble 0.7761 (gain 0.004)
+- **Hypothesis:** v21's heterogeneous (epochs=90) seed gave 3× the homogeneous gain. A second epochs=90 seed should add another significant decorrelation gain, though diminished since both are drawn from the same het distribution.
+- **Change:** No code change from v21. Trained another seed with `epochs=90, MAX_TIMEOUT_MIN=60`.
+- **Result:** v22 solo val/l2 = **0.8577** at epoch 68 (second-best single seed ever, just behind v21's 0.8549). 9-seed ensemble = **0.7761** (vs 8-seed 0.7800). Gain 0.0039 — about 2/3 of v21's het gain, still 2× the homogeneous saturation rate.
+- **Verdict:** kept. 10.9% under v6 solo. Clear pattern: het seeds continue to add value, just with diminishing returns within the het population itself.
+- **Notes:** Two long seeds in a row land ~0.855-0.858 — the long-anneal floor looks tight, mirroring the 0.87-floor of the 60-epoch pack. Next (v23): continue with another epochs=90 seed — expected ~0.003 further gain to ~0.773. If gain <0.002 I'll switch to a genuinely different axis (e.g., `weight_decay=5e-5` or `epochs=120`) to break the het-population correlation.
+
+
 ### 2026-04-17 — v21 KEPT — epochs=90/60min seed broke homogeneous saturation (8-seed 0.7800, gain 0.006)
 - **Hypothesis:** 7 homogeneous seeds were saturating (gain 0.0018). Changing the anneal profile — `epochs=90, MAX_TIMEOUT_MIN=60` — produces a *different* final-weights basin than the 60-epoch cosine all prior seeds saw. Different basin = less-correlated errors = bigger ensemble gain.
 - **Change:** `train.py` — `epochs: int = 90` (was 60). Launched with `MAX_TIMEOUT_MIN=60`. All else identical to v6.
