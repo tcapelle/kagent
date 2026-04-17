@@ -93,7 +93,8 @@ class VoxelFlowNet(nn.Module):
         # Fourier frequencies: 2^k * pi for k in [0, L)
         self.register_buffer("fourier_freqs", (2.0 ** torch.arange(fourier_L)) * torch.pi)
 
-        in_ch = T_IN * 3 + 1  # v_in(15) + occupancy
+        # mean-pool: T_IN*3 + 1 (occupancy); max-pool: T_IN*3 extra
+        in_ch = 2 * T_IN * 3 + 1
         self.grid_in = nn.Conv3d(in_ch, grid_ch, 1)
         dilations = [1, 2, 4, 8]
         self.grid_blocks = nn.ModuleList([
@@ -116,26 +117,39 @@ class VoxelFlowNet(nn.Module):
         self.proj_out = nn.Sequential(nn.LayerNorm(point_hidden), nn.Linear(point_hidden, point_out))
 
     def _voxelize(self, v_in_norm, pos):
-        """Scatter-mean per-point features onto a [B, C, G, G, G] grid."""
+        """Scatter per-point features onto a [B, C, G, G, G] grid using BOTH
+        mean- and max-pooling, concatenated along channels.
+
+        Mean captures typical flow direction in each cell; max captures the
+        most extreme component (useful for turbulent/separation regions).
+        """
         B, T, N, C = v_in_norm.shape
         G = self.grid_res
         pos_norm = ((pos - self.pos_min) / (self.pos_max - self.pos_min)).clamp(0, 1 - 1e-6)
         idx = (pos_norm * G).long()  # [B, N, 3]
         flat_idx = idx[..., 0] * G * G + idx[..., 1] * G + idx[..., 2]  # [B, N]
 
-        feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
-        ones = torch.ones(B, N, 1, device=feat.device, dtype=feat.dtype)
-        feat = torch.cat([feat, ones], dim=-1)  # [B, N, T*C+1]
+        v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
+        ones = torch.ones(B, N, 1, device=v_feat.device, dtype=v_feat.dtype)
+        feat_mean_in = torch.cat([v_feat, ones], dim=-1)  # [B, N, 16] — +occupancy
+        nch_mean = feat_mean_in.shape[-1]
 
-        nch = feat.shape[-1]
-        grid_flat = torch.zeros(B, G * G * G, nch, device=feat.device, dtype=feat.dtype)
-        counts = torch.zeros(B, G * G * G, 1, device=feat.device, dtype=feat.dtype)
-        idx_exp = flat_idx.unsqueeze(-1).expand(-1, -1, nch)
-        grid_flat.scatter_add_(1, idx_exp, feat)
+        # Scatter mean
+        grid_sum = torch.zeros(B, G * G * G, nch_mean, device=v_feat.device, dtype=v_feat.dtype)
+        counts = torch.zeros(B, G * G * G, 1, device=v_feat.device, dtype=v_feat.dtype)
+        idx_m = flat_idx.unsqueeze(-1).expand(-1, -1, nch_mean)
+        grid_sum.scatter_add_(1, idx_m, feat_mean_in)
         counts.scatter_add_(1, flat_idx.unsqueeze(-1), ones)
-        grid_flat = grid_flat / counts.clamp(min=1.0)
+        grid_mean = grid_sum / counts.clamp(min=1.0)
 
-        return grid_flat.reshape(B, G, G, G, nch).permute(0, 4, 1, 2, 3).contiguous()
+        # Scatter max (velocities only — occupancy max == mean, skip)
+        grid_max = torch.zeros(B, G * G * G, T * C, device=v_feat.device, dtype=v_feat.dtype)
+        idx_x = flat_idx.unsqueeze(-1).expand(-1, -1, T * C)
+        grid_max.scatter_reduce_(1, idx_x, v_feat, reduce="amax", include_self=False)
+
+        grid = torch.cat([grid_mean, grid_max], dim=-1)  # [B, G³, 2*T*C+1]
+        nch = grid.shape[-1]
+        return grid.reshape(B, G, G, G, nch).permute(0, 4, 1, 2, 3).contiguous()
 
     def _pos_enc(self, pos):
         """Fourier feature encoding: concat [pos, sin(w*pos), cos(w*pos)] for w in 2^k * pi."""
