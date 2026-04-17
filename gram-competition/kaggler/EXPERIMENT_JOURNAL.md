@@ -22,6 +22,33 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v11: v6 + EMA weights (decay 0.999)
+- **Hypothesis:** batch_size=1 is very noisy. EMA on parameters +
+  validating with EMA weights gives a dampened, monotone trajectory
+  and typically ~1–3% val improvement. Cheapest regularizer worth
+  trying before architecture changes. Target: break 1.17.
+- **Change:** `train.py` — initialize `ema_params` from model params,
+  update each step with `p_ema = 0.999·p_ema + 0.001·p`, swap EMA
+  into model weights around `validate(...)`, save EMA weights in
+  checkpoint. Architecture identical to v6 (10 blocks, hidden 512,
+  VOXEL_MIX_SCALES=(0.12,), MIX_EVERY=2). 70 epochs, 120 min budget.
+- **Result:** Best val/l2=**1.1812** at epoch 67 of 70 (113 min).
+  Train loss 0.044 → 0.0128. Val trajectory (EMA-evaluated):
+  1.36 (ep5), 1.30 (ep10), 1.25 (ep20), 1.23 (ep25, 28), 1.22 (ep30),
+  1.21 (ep35), 1.20 (ep40), 1.192 (ep45), 1.181 (ep53–54, best phase),
+  bounce up to 1.197 (ep59), recover to 1.1812 at ep67, flat to ep70.
+  WandB `edward/v11-v6-ema`.
+- **Verdict:** Discarded — worse than v6 (1.1681) by 0.013. EMA gave
+  a smoother, monotone-looking trajectory early (no wild fluctuations
+  like raw v9 runs) but the final best was still above v6. EMA can't
+  compensate for what appears to be an architecture ceiling.
+- **Notes:** Interestingly, train loss 0.0128 is *lower* than v6's
+  0.014 — EMA-smoothed model fits train data better but doesn't
+  generalize. Confirms the bottleneck is generalization gap, not
+  optimization noise. Next: try actual regularization (dropout in
+  ResBlocks, or stochastic depth) to directly attack the gap, or
+  ensemble multiple v6-family runs from PVC checkpoints.
+
 ### 2026-04-17 — v10: richer VoxelMix (mean + max + Linear fuse)
 - **Hypothesis:** v6's scatter-mean mix destroys within-voxel
   variation — exactly the turbulent signal we need. Adding a scatter
