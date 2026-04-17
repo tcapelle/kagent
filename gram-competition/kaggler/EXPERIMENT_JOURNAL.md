@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter12: ch=128 at grid=(96,48,48) — new best solo + ensemble
+- **Hypothesis:** The 7-model ensemble (0.7468) has members at ch=64/96/128 × grid=(64,32,32)/(96,48,48)/(128,64,48), BUT the best grid (96,48,48) only appears at ch=64. A ch=128 model at grid=(96,48,48) would be a fresh point in architecture space and potentially a stronger individual + better ensemble member. Warm-start from h8pydvbf (ch=128 grid=(64,32,32)) to transfer the ch=128 convolution weights, then re-train with the new grid.
+- **Change:** Launched `train.py --model_type unet --unet_ch_base 128 --unet_grid_x 96 --unet_grid_y 48 --unet_grid_z 48 --init_from model-h8pydvbf --lr 6e-5 --epochs 50 --subsample_points 60000 --yflip_aug True` (run-id 4f88spo7). Best at epoch 37, val/l2=0.8223 at the 27-min timeout.
+- **Result:** iter12 solo+TTA = **0.7923** (best solo, beating iter10's 0.7944). Full-pool greedy now picks 7 members: `[4f88spo7, h0yvcd7w, 7n0ebvue, 9s8v1n69, w3f26spn, n7xe6eud, h8pydvbf]`. Equal-weight = 0.7423; weight-optimized (weights `[0.271, 0.214, 0.163, 0.121, 0.107, 0.078, 0.047]`) = **0.7404** — a **0.006** absolute improvement over iter10 submission. Drops below frozen leaderboard (0.7475) by 0.007.
+- **Verdict:** KEPT. Submission at commit cd83e63.
+- **Notes:** (1) Grid/channel orthogonality: the existing pool had ch=64@(96,48,48) and ch=128@(64,32,32) but NOT ch=128@(96,48,48). Filling this gap was the biggest single ensemble gain yet (0.005+). (2) Warm-start from h8pydvbf transferred cleanly — only `_grid_buf` changed. (3) iter11 (warm-start of h0yvcd7w at lower LR, killed at epoch 5) also cached as `n7xe6eud`, solo+TTA=0.7950 — kept in the ensemble at weight 0.08. (4) Solo+TTA score correlates well with marginal ensemble improvement. Adding more models: saturates at 7. Next: fill more missing architecture points, e.g., ch=96@(96,48,48) and ch=128@(128,64,48).
+
+### 2026-04-17 — iter11: low-LR fine-tune of iter10 (quick experiment)
+- **Hypothesis:** iter10's h0yvcd7w (val/l2=0.8241) might still have headroom at a lower LR with higher train resolution (80k points vs 60k).
+- **Change:** `--init_from h0yvcd7w --lr 3e-5 --subsample_points 80000 --epochs 40 --yflip_aug True`. Killed at epoch 5 because improvement stalled at 0.824.
+- **Result:** Solo+TTA=0.7950 (vs iter10's 0.7944). Marginal.
+- **Verdict:** KEPT as ensemble member only (small weight=0.08).
+- **Notes:** LR=3e-5 was too small to escape local min; higher-res subsample didn't compensate. Lesson: low-LR fine-tune plateaus quickly when starting from a converged warm-start.
+
 ### 2026-04-17 — iter10: arch-diverse warm-start member + full-pool greedy + weighted ensemble
 - **Hypothesis:** (1) Warm-starting from the strongest solo ckpt (bn20n6rl, solo+TTA=0.7981) with a different random train order + small LR would give decorrelated predictions and improve the ensemble. (2) Doing greedy forward selection over the **full pool of 49 PVC ckpts** (instead of iter9's smaller search) and then optimizing convex weights (softmax of free params, Adam on L2) would find a better combination than equal-weight.
 - **Change:** Launched `train.py --model_type unet --unet_ch_base 64 --unet_grid_x 96 --unet_grid_y 48 --unet_grid_z 48 --init_from model-bn20n6rl --lr 8e-5 --epochs 60 --subsample_points 60000 --yflip_aug True` (run-id h0yvcd7w). Built `ensemble_explore.py` + `ensemble_weights.py`: cache per-ckpt val+TTA preds on PVC, greedy forward selection, gradient-descent convex weight opt.
