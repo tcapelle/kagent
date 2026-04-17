@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v25 KEPT — wd=3e-4 new reg axis, 12-seed ensemble 0.7689 (gain 0.0016)
+- **Hypothesis:** regularization strength (WD) is an axis neither `epochs` nor `lr` touched. Triple WD from 1e-4 to 3e-4 → different weight-norm-constrained basin.
+- **Change:** CLI only — `--weight_decay 3e-4 --epochs 90` (default lr=5e-4).
+- **Result:** v25 solo val/l2 = **0.8660** at ep69 (weakest of the long seeds — higher WD costs ~0.01 on solo). 12-seed ensemble = **0.7689** (vs 11-seed 0.7705). Gain 0.0016.
+- **Verdict:** kept (any improvement banked). Gain right at the 0.002 threshold; a weaker solo limits ensemble contribution.
+- **Notes:** Lesson: weaker solos add less ensemble value even on a fresh axis. Next (v26): try `lr=7e-4` (opposite-direction lr axis vs v24's 3e-4). Baseline lr was 5e-4, v24 was 3e-4; 7e-4 explores the higher-lr side of the basin manifold and may match v24's 0.003 gain while keeping a strong solo.
+
+
 ### 2026-04-17 — v24 KEPT — lr=3e-4 new axis, 11-seed ensemble 0.7705 (gain 0.003)
 - **Hypothesis:** within-het gain was saturating (0.006→0.004→0.003). Switch axis: keep `epochs=90` but halve lr to 3e-4 (from 5e-4). Slower learning trajectory → different basin → refresh ensemble gain.
 - **Change:** CLI only — `--lr 3e-4 --epochs 90` (train.py default epochs=90 from v21; lr flag is CLI-only, train.py untouched).
