@@ -15,4 +15,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 9 | violet | `8c0d16c` | 1.2414 | 0.8398 | 0.3728 | 0.5783 |
 | 10 | frieren | `346fdf6` | 1.7494 | 1.1624 | 0.5048 | 0.8494 |
 
-*Last updated: 2026-04-17 19:44 UTC*
+*Last updated: 2026-04-17 19:45 UTC*
