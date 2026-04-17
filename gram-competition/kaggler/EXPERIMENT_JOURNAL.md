@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Per-block FiLM-lite geometry bias + 10-model ensemble (iter 21, KEPT)
+- **Hypothesis:** SDF+rel are currently injected only *once* at the input (zero-init residual branches, iter 15-16). Each trunk block after that has no direct access to geometry — it has to remember it through the features alone. Add a per-block zero-init additive MLP that maps the combined (Fourier-encoded) geometry feature into `hidden` and adds it *before* each block. This is FiLM-lite: shift-only, no scale. 8 new zero-init branches (one per block). Warm-start is exact identity because the final Linear of each is zero-init (load_state_dict strict=False; 32 missing keys matching 8 branches × 4 params).
+- **Change:** `train.py` BaselineMLP — added `self.block_geom = ModuleList([MLP(36→H→H) for _ in blocks])` with zero-init on each tail Linear. In forward, after computing `sdf_feat`/`rel_feat`, cat them to a [B, N, 36] geometry feature and apply `x = x + block_geom[i](geom_feat)` before each block. Also added `geom_feat_dim` attribute for clarity. Hyperparams: `--resume --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --epochs 25`.
+- **Result:** best single = **1.0530** at E8/18 (31.3 min, warm-start init 1.0553). Trajectory: E1 regression 1.067 (new branches kicking in), recovered by E3 to 1.060, E7 touched floor at 1.057, **E8 dipped to 1.0530**, noisy 1.056-1.060 thereafter (overfit — train fell from 0.98 to 0.89 while val stayed near 1.057). VRAM 17.0 GB (up from 15.7). **10-model ensemble:**
+  - iter 21 alone: 1.0530
+  - **iter 12-21: 1.0347** ← submitted
+- **Verdict:** KEPT. **1.0553 → 1.0530 = 0.2% (single, first real architectural lift since iter 15), 1.0371 → 1.0347 = 0.23% (ensemble).** Cumulative session (iter 16 start): **1.0625 → 1.0347 = 2.6%**. Cumulative since iter 10: **1.2218 → 1.0347 = 15.3%**.
+- **Notes:** Per-block geometry injection broke the warm-start plateau that the lambda-sweep + WD bump had flattened. Each block now has its own geometry-conditional shift, learned independently. The fact that train loss dropped to 0.89 (vs 0.97-1.05 in prior iters) suggests the new branches are adding real capacity — the challenge is containing that capacity with regularisation. Iter 22 priorities: (a) **bump Sobolev to lambda=0.7 on top of FiLM** — lambda was still 0.5 here, should push val further down; (b) **full FiLM (scale + shift)** — currently only shift; scale could help amplify/suppress per-block features; (c) **longer cosine** (50 epochs) since the new FiLM branches are still descending at end. (a) is the easiest continuation.
+
 ### 2026-04-17 — Weight-decay bump (1e-4 -> 1e-3) + 9-model ensemble (iter 20, KEPT)
 - **Hypothesis:** Sobolev lambda sweep is plateauing at ~0.15% single-model gain per step. Attack overfit through a *second independent* regulariser — bump weight_decay 10x while keeping lambda=0.7. Free to try (one flag).
 - **Change:** `--resume checkpoints/best.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.7 --weight_decay 1e-3 --epochs 25`.

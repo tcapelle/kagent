@@ -278,6 +278,25 @@ class BaselineMLP(nn.Module):
             PhysicsAttentionBlock(hidden, n_slices=n_slices, n_heads=n_heads)
             for _ in range(n_blocks)
         ])
+        # Per-block zero-init additive "FiLM-lite" branch: each block gets its own
+        # MLP that maps the combined geometry feature (sdf + rel, Fourier-encoded)
+        # to a per-point shift added into the trunk *before* that block. This lets
+        # each block condition on geometry separately instead of the single-shot
+        # injection at the input (iter 15-16). Zero-init on the final Linear keeps
+        # warm-start identical to iter 20.
+        geom_feat_dim = sdf_feat_dim + rel_feat_dim   # 9 + 27 = 36
+        self.geom_feat_dim = geom_feat_dim
+        self.block_geom = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(geom_feat_dim, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, hidden),
+            )
+            for _ in range(n_blocks)
+        ])
+        for m in self.block_geom:
+            nn.init.zeros_(m[-1].weight)
+            nn.init.zeros_(m[-1].bias)
         # Time-conditioned decoder: shared across output steps, but each step gets
         # its own time embedding as additional input.
         self.time_embed = nn.Embedding(T_OUT, time_embed_dim)
@@ -319,7 +338,10 @@ class BaselineMLP(nn.Module):
         x = x + self.sdf_embed(sdf_feat)
         rel_feat = fourier_encode(rel, self.rel_n_freqs)                # [B, N, 27]
         x = x + self.rel_embed(rel_feat)
-        for block in self.blocks:
+        # Combined geometry feature fed into each block's FiLM-lite branch.
+        geom_feat = torch.cat([sdf_feat, rel_feat], dim=-1)             # [B, N, 36]
+        for i, block in enumerate(self.blocks):
+            x = x + self.block_geom[i](geom_feat)
             x = block(x)
         x = self.ln_dec(x)  # [B, N, hidden]
 
