@@ -22,8 +22,10 @@ git config user.email "kagent-organizer@kagent"
 
 push_leaderboard() {
     [ -f "$LEADERBOARD_PVC" ] || return 0
-    # Create or update the leaderboard branch without leaving the current branch.
-    # We use a detached worktree-style approach: commit directly to the branch ref.
+    # Sync the local ref with origin first so a restarted pod builds on top
+    # of what's already published, not on its own empty history.
+    git fetch origin "$LEADERBOARD_BRANCH:refs/heads/$LEADERBOARD_BRANCH" >/dev/null 2>&1 || true
+
     cp "$LEADERBOARD_PVC" /tmp/leaderboard.md
     TREE=$(git hash-object -w /tmp/leaderboard.md)
     NEW_TREE=$(printf "100644 blob %s\tleaderboard.md\n" "$TREE" | git mktree)
@@ -38,7 +40,12 @@ push_leaderboard() {
     fi
 
     git update-ref "refs/heads/$LEADERBOARD_BRANCH" "$COMMIT"
-    git push origin "$LEADERBOARD_BRANCH" 2>/dev/null || echo "  Leaderboard push failed"
+    # Force-with-lease: the leaderboard is single-writer state, so a diverging
+    # remote means another organizer pod is alive — fall back to a hard force.
+    git push origin "$LEADERBOARD_BRANCH" 2>/dev/null \
+        || git push --force-with-lease origin "$LEADERBOARD_BRANCH" 2>/dev/null \
+        || git push --force origin "$LEADERBOARD_BRANCH" 2>/dev/null \
+        || echo "  Leaderboard push failed"
 }
 
 echo "=== Organizer ready ==="
