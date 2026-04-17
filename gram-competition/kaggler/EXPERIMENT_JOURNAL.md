@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — FiLM + Sobolev lambda=0.7 (iter 22, single DISCARDED, ensemble-only KEPT)
+- **Hypothesis:** Continue Sobolev sweep (0.5 → 0.7) on the new FiLM architecture. With per-block geometry conditioning having already loaded the capacity side, a stronger Sobolev should pull val down another 0.1-0.2%.
+- **Change:** `--resume checkpoints/best.pt --sobolev_lambda 0.7 --lr 1e-4 --warmup_steps 30 --epochs 25` (one-flag change from iter 21).
+- **Result:** best within-run = 1.0545 at E5/19 (30.7 min), never beat floor 1.0530 → `best.pt` untouched. Final.pt (E19 weights) stored in ensemble_ckpts/iter22.pt. **11-model ensemble (iter 12-22, using iter 22's E19 final.pt):**
+  - **1.0326** ← submitted (0.20% drop from 1.0347)
+- **Verdict:** Single-model DISCARDED (worse than iter 21). Ensemble inclusion **KEPT** — the worse single-model still contributed decorrelated errors. Cumulative session: **1.0625 → 1.0326 = 2.8%**.
+- **Notes:** First time in this session where the `--best_val_floor` guard protected the repo checkpoint — iter 21's 1.0530 stayed in `best.pt` even though iter 22 produced a diverging model. Interesting data point: a worse single-model checkpoint can still help an ensemble, but only when its errors are sufficiently different from existing members (FiLM + λ=0.7 diverged enough via the Sobolev regularisation pulling weights to a different mode). Iter 23 priorities: (a) **lower LR warm-start** from iter 21 (lr=5e-5, 30 warmup) — squeeze a few more 0.01% gains out of the FiLM model; (b) **full FiLM (scale + shift)** — currently only shift branches; (c) **fresh train with FiLM arch** at 60-min budget — still the only real path to break the current warm-start chain plateau long-term.
+
 ### 2026-04-17 — Per-block FiLM-lite geometry bias + 10-model ensemble (iter 21, KEPT)
 - **Hypothesis:** SDF+rel are currently injected only *once* at the input (zero-init residual branches, iter 15-16). Each trunk block after that has no direct access to geometry — it has to remember it through the features alone. Add a per-block zero-init additive MLP that maps the combined (Fourier-encoded) geometry feature into `hidden` and adds it *before* each block. This is FiLM-lite: shift-only, no scale. 8 new zero-init branches (one per block). Warm-start is exact identity because the final Linear of each is zero-init (load_state_dict strict=False; 32 missing keys matching 8 branches × 4 params).
 - **Change:** `train.py` BaselineMLP — added `self.block_geom = ModuleList([MLP(36→H→H) for _ in blocks])` with zero-init on each tail Linear. In forward, after computing `sdf_feat`/`rel_feat`, cat them to a [B, N, 36] geometry feature and apply `x = x + block_geom[i](geom_feat)` before each block. Also added `geom_feat_dim` attribute for clarity. Hyperparams: `--resume --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --epochs 25`.
