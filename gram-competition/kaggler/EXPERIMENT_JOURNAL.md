@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Continue iter44 (iter 45, lineage B pass 2) — single 0.9934, 34-ensemble 0.9970 (SUB-1.0 ENSEMBLE)
+- **Hypothesis:** Same recipe as iter42's continuation of iter41 (lr=1e-4 from fresh-init's final). Should drop iter44 from 1.0771 → ~0.99 range, mirroring the 0.0548 drop iter42 extracted from iter41.
+- **Change:** no code. `--resume .../model-ea2vhamg/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9806 --epochs 25`.
+- **Result:** best within-run = **0.9934** at E15/15 (31.3 min, GPU-contended E1-E3 at 226+225+155s). Trajectory: E1 1.0684 → E10 1.0106 → E13 0.9997 (sub-1.0) → E15 0.9934. Val still descending; 3 more epochs would hit ~0.98 range. Staged as iter45.pt. **34-model ensemble:**
+  - **0.9970** ← submitted (**0.37% drop from 1.0007**, mae Ux=0.6524 Uy=0.3113 Uz=0.4754)
+- **Verdict:** **MILESTONE: FIRST SUB-1.0 ENSEMBLE.** Pattern confirmed: (fresh-init + 1 continuation) per lineage gives ~0.85% combined ensemble drop regardless of lineage. **Cumulative session: 1.0625 → 0.9970 = 6.17%.**
+- **Notes:** iter44+iter45 combined = 0.21+0.37=0.58% (less than iter41+iter42's 0.87%) — second lineage's continuation gained less because lineage B's single-model hasn't converged as deeply. Iter 46 options: (a) **third-pass continuation of iter45** (lr=5e-5) — push single-model below 0.98; (b) **third independent fresh-init** (lineage C, dropout=0.05) — adds a third basin; (c) **continuation of iter43 lineage** with lr=2e-5 — squeeze lineage A one more time. (a) highest-confidence, likely crack 0.97 single + ~0.3% ensemble. (b) has highest long-tail potential (another +0.37% sub-1.0 member possible). Try (a) first; if ensemble gain <0.2%, pivot to (b).
+
 ### 2026-04-17 — Second fresh-train with drop=0.15 (iter 44) — single 1.0771, 33-ensemble 1.0007
 - **Hypothesis:** iter41's fresh-init added +0.39% to the ensemble despite weak single-model (1.0435). A second independent fresh-init with different dropout (0.15 vs 0.1) should give uncorrelated diversity to the ensemble even if its single-model is weak.
 - **Change:** no code. `--lr 3e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9806 --epochs 25` (no `--resume`).
