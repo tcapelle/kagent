@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — absolute-velocity-violet-e2
+- **Hypothesis:** Predicting absolute velocity (not residual) with richer features + no-slip BC + 512×8 MLP should beat baseline 0.80. Thought e1 failed because residual pinned model to v_last (noisy).
+- **Change:** `train.py` `PointNet` — predict absolute v_out via normalization-denormalization, added `v_in.mean(time)` feature, kept all others from e1.
+- **Result:** val/l2 = **1.2618** (same failure as e1). 49 epochs × 37 s, 6.6 GB. train_loss 8.87 → 3.34. Run `dg4gt…` (AMP).
+- **Verdict:** discarded — same floor as e1.
+- **Notes:** Revised hypothesis: the baseline's apparent "reshape bug" (`velocity_in.reshape(B, N, T*C)` without permute) is actually **accidental spatial aggregation** — it scrambles velocity info across 5 adjacent memory-points (often spatially adjacent after preprocessing), forcing the model to learn `f(pos) → mean-flow-field` instead of fitting instantaneous turbulence. Fixing the reshape removes this implicit pooling AND exposes the model to pointwise-turbulent `v_in`, which the point-wise MLP overfits to. Both e1 and e2 train loss drops to ~3.3 while val sits at ~1.26 → clear overfit to turbulent noise. **Next: anchor residual on `v_in.mean(time)` (a less-noisy per-sample estimate of mean flow) and/or add real spatial aggregation.**
+
 ### 2026-04-17 — residual-prediction-violet-e1
 - **Hypothesis:** Residual prediction (output = v_last + delta) should beat absolute-velocity prediction since v_last is a strong prior; adding no-slip BC + richer features (temporal diffs, magnitudes, dt_out, per-sample pos normalization) + 8-block 512-hidden MLP with AMP bf16 should crush the baseline (0.80).
 - **Change:** rewrote `train.py` with `PointResNet`: residual head, no-slip via mask, permuted reshapes (fixed the baseline's reshape that scrambles points vs pos), bf16 autocast, AdamW+cosine.
