@@ -22,12 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-17 — exp15: mean+max voxel aggregation (warm-start partial)
-- **Hypothesis:** Current voxel aggregation is scatter_add/count (mean) — loses extreme features (high-velocity gradients, shear layers). Add parallel scatter_reduce(amax) branch, concat with mean (2×dim), project back via Conv3d(2*dim, dim). This captures peaks per voxel (turbulent events). Pre-voxel layers weights can warm-start from exp13, only VoxelMixer.conv needs fresh training.
-- **Change:** VoxelMixer: add scatter amax aggregation, conv input dim doubles. Requires strict=False load.
+### 2026-04-17 — exp16: chain warm-start from exp15 + lr=5e-5
+- **Hypothesis:** Exp15 val was still slightly dropping at E33 (0.9487). The new proj_agg layers were still learning. Another 30min of fine-tuning at lr=5e-5 should let the mean+max aggregation fully mature.
+- **Change:** --warm_start=<exp15 ckpt> --lr=5e-5. No code changes.
 - **Result:** TBD
 - **Verdict:** TBD
-- **Notes:** Warm-start will skip the 8 conv layers (~5MB) but transfer ResBlocks + projections. Need training-from-partial-init — lr=2e-4 to allow new conv to learn.
+
+### 2026-04-17 — exp15: mean+max voxel aggregation (warm-start partial)
+- **Hypothesis:** Current voxel aggregation is scatter_add/count (mean) — loses extreme features (high-velocity gradients, shear layers). Add parallel scatter_reduce(amax) branch, concat with mean (2×dim), project back via Conv3d(2*dim, dim). This captures peaks per voxel (turbulent events). Pre-voxel layers weights can warm-start from exp13, only new proj_agg needs fresh training.
+- **Change:** VoxelMixer adds scatter amax + 1x1 Conv3d(2D→D) projection. Identity init on mean half, zero on max half → first forward pass identical to exp13 baseline. Warm-start with strict=False.
+- **Result:** val/l2=**0.9487** @ epoch 33 (30.1 min). train=0.0050. 4.8GB peak. run 4cun281z. 54s/epoch.
+- **Verdict:** KEPT — +0.0126 over exp13 (0.9613). Mean+max captures voxel-local peaks the mean-only lost. Val still dropping at E33 (last epoch).
+- **Notes:** Larger single-experiment gain than recent chain steps. This is the first successful arch change in a while. Next: chain-finetune exp15 with lower LR.
 
 ### 2026-04-17 — exp14: pos jitter=0.5 (DISCARDED)
 - **Hypothesis:** Warm-start + pos jitter (0.5 × voxel_size Gaussian noise) as regularization to unstick saturated chain.
