@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp26: chain warm-start from exp25 (triple-scale refine) + lr=2e-5
+- **Hypothesis:** Exp25 showed same undertrained pattern as exp18/22. Following recipe: chain at lr=2e-5 for 30 more min to let ucoarse branch refine while preserving main weights. If pattern holds, should beat exp24 (0.9091) by 0.005-0.015.
+- **Change:** --warm_start=<exp25 ckpt model-lkb1o42z> --lr=2e-5. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Slower epochs (100s) so fewer iterations. May need to chain twice.
+
 ### 2026-04-17 — exp25: triple-scale voxel (add 8³ ultra-coarse branch)
 - **Hypothesis:** Multi-scale voxel (exp18/19) showed coarse branch added real signal. Extend same pattern: add parallel G/4=8³ ultra-coarse branch per VoxelMixer. Captures scene-level context (wing upper vs lower, wake near vs far). Zero-init (proj_agg_ucoarse=0, last conv_ucoarse=0) → warm-start safe.
 - **Change:** VoxelMixer adds proj_agg_ucoarse + conv_ucoarse (G/4 grid). Forward adds sampled_u to output.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** 48 missing keys on warm-start (8 blocks × 6 ucoarse params). Params: 61.7M → 91.1M (+48%). Triple the voxel compute in each VoxelMixer (expect slower epochs). lr=2e-4 for fresh layers.
+- **Result:** val/l2=**0.9192** @ epoch 16 (30.0 min). train=0.0044. Val oscillated 0.9192-0.9534. 100s/epoch.
+- **Verdict:** HOLD — worse than exp24 (0.9091) by 0.0101. Same undertrained pattern as exp18/22. Val still chaotic at timeout.
+- **Notes:** Following the established recipe: exp26 = chain at lr=2e-5 to stabilize and extract. Expect exp26 to recover and surpass 0.9091 like exp19/23 did.
 
 ### 2026-04-17 — exp24: chain warm-start from exp23 + lr=5e-6
 - **Hypothesis:** Exp23 val stable E14-22 (0.9096-0.9115). Very low LR chain should squeeze last fine-tune. Expected Δ~0.001-0.003.
