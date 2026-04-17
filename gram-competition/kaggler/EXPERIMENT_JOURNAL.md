@@ -25,9 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — iter23: warm-start fine-tune from iter19 ckpt (extend effective budget)
 - **Hypothesis:** iter19 (val 0.9316) + every capacity-bump iter21/22 loses because a single 30-min run can't fit both capacity *and* the full cosine tail. Warm-starting from iter19's checkpoint with a short cosine (lr=1e-4, 20 ep, warmup=50) effectively extends total training to ~48 epochs, squeezing more annealing out of the existing architecture at no capacity cost.
 - **Change:** `train.py` — add `--resume_from` CLI flag; load state_dict and use a shorter warmup (50 steps) when resuming.
-- **Result:** pending.
-- **Verdict:** pending.
-- **Notes:** Budget-saving, not capacity-adding. If this works, the same trick can chain across runs.
+- **Result:** val/l2 = **0.9193** at epoch 12 / 20 (best). 57 s/ep, 19.1 min wallclock, 7.7 GB peak. Run `wmn53ce5`. MAE Ux=0.591, Uy=0.311, Uz=0.435. Preds saved to `nezuko/d62e091`. Trajectory: e1=0.938 (warmup perturbation) → e6=0.931 (recovered iter19) → e10=0.925 → e12=0.919 → plateau at 0.920 for e13-20 as LR→0 (mild overfit, train 1.08→0.76).
+- **Verdict:** **kept** — new personal best val, beats iter19 by 0.012 (-1.3%). LB pending.
+- **Notes:** Warm-start chain works. Budget-saving trick confirmed: effective 28+20=48 epochs across runs. Best was at e12 (not e20) — schedule overshoots; e12-e15 is the plateau. Next iter: (a) warm-start from iter23 again (chain), (b) try lr=5e-5 for 15 ep (shorter, tighter anneal), or (c) y-flip TTA already baked in at predict-time, so LB should land well.
 
 ### 2026-04-17 — iter22: base_ch 128→160 (DISCARDED)
 - **Hypothesis:** wider voxel features close the gap; bf16 headroom from iter18 should absorb the 25% cost bump.
