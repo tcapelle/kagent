@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v24 KEPT — lr=3e-4 new axis, 11-seed ensemble 0.7705 (gain 0.003)
+- **Hypothesis:** within-het gain was saturating (0.006→0.004→0.003). Switch axis: keep `epochs=90` but halve lr to 3e-4 (from 5e-4). Slower learning trajectory → different basin → refresh ensemble gain.
+- **Change:** CLI only — `--lr 3e-4 --epochs 90` (train.py default epochs=90 from v21; lr flag is CLI-only, train.py untouched).
+- **Result:** v24 solo val/l2 = **0.8565** at ep68 (2nd-best single seed ever, just 0.0016 behind v21's 0.8549). 11-seed ensemble = **0.7705** (vs 10-seed 0.7735). Gain 0.0030 — same as v23 but from a truly distinct axis rather than within-het diminishing.
+- **Verdict:** kept. 11.5% under v6 solo. New-axis hypothesis validated.
+- **Notes:** Interesting: the lower-lr seed also lands near the long-anneal solo floor (0.856 vs 0.854). LR and anneal length are somewhat degenerate in their effect on final val (both control 'how much did the model fine-tune at low LR'). But ensemble-gain-wise they contribute orthogonally. Next (v25): try yet another distinct axis — `weight_decay=3e-4` (3× default) with epochs=90, lr=5e-4 — regularization is an axis neither touched by epochs nor lr.
+
+
 ### 2026-04-17 — v23 KEPT — 3rd epochs=90 seed, 10-seed ensemble 0.7735 (gain 0.003)
 - **Hypothesis:** continue adding het (epochs=90) seeds. Expected gain ~0.003 if within-het diversity is diminishing.
 - **Change:** No code change. Another seed with `epochs=90, MAX_TIMEOUT_MIN=60`.
