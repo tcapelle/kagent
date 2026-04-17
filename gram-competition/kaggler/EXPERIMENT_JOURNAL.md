@@ -25,9 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — exp38: y-flip data augmentation (bilateral symmetry)
 - **Hypothesis:** F1 wings are mirror-symmetric about y=0 (Uy mean ≈ 0.5 from stats confirms). Mirror-flip pos_y around bbox center and negate Uy to double effective training data. Pure generalization fix (no arch change). Chain from exp33 @ lr=5e-6.
 - **Change:** train.py: Config.yflip_prob=0.5. In train loop after subsampling, with p=0.5 flip pos_y around bbox-y-center, negate v_in[...,1] and v_out[...,1]. No architecture change — pure augmentation.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** 4 consecutive arch-add failures (exp34-37). Pattern shift: more capacity overfits. Need generalization boost. Launching.
+- **Result:** val/l2=**0.8839** @ epoch 10 (30.6 min, 11 epochs). Ckpt: model-mgo03egs. Trajectory: E1 0.8902 → E4 0.8850 → E8 0.8846 → E10 0.8839. Train loss dropped 0.0131 → 0.0098 as model adapted to augmentation.
+- **Verdict:** KEPT — +0.0036 over exp33 (0.8875). First generalization win after 4 arch-add failures. Breaks the overfitting pattern.
+- **Notes:** Train loss starts HIGH (0.0131) vs previous ~0.003 because initially model can't handle flipped Uy distribution (mean shift of ~0.15 in normalized). Adapts over 10 epochs. Distance to leader (thorfinn=0.7475): 0.136. Next: (a) chain exp38 @ lr=2e-6, (b) add TTA to predict.py for stacking inference-time gain, (c) add input Gaussian noise aug.
 
 ### 2026-04-17 — exp37: 2 extra Res+Voxel pairs (depth extension)
 - **Hypothesis:** Model hasn't saturated capacity-wise (16 blocks→20). Add 2 extra zero-init Res+Voxel pairs after main stack + dedicated time encoder. Chain from exp33 @ lr=2e-5.
