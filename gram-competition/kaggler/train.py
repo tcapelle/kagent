@@ -36,37 +36,81 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 
-class ResBlock(nn.Module):
-    def __init__(self, dim):
+class SliceAttentionBlock(nn.Module):
+    """Transolver-style linear-complexity attention via learnable soft slices.
+
+    Each point soft-assigns to M slices; slices aggregate point features into
+    M tokens; tokens self-attend; tokens scatter back to points. O(NMD + M^2 D).
+    """
+
+    def __init__(self, dim, num_slices=64, num_heads=4, mlp_ratio=2.0):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
-            nn.GELU(),
-            nn.Linear(dim * 2, dim),
-        )
+        self.num_slices = num_slices
+        self.slice_proj = nn.Linear(dim, num_slices)
+        self.temp = nn.Parameter(torch.ones(1) * 0.5)
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+        self.norm_t = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads, batch_first=True)
+        h = int(dim * mlp_ratio)
+        self.mlp = nn.Sequential(nn.Linear(dim, h), nn.GELU(), nn.Linear(h, dim))
 
     def forward(self, x):
-        return x + self.net(x)
+        B, N, D = x.shape
+        xn = self.norm1(x)
+        logits = self.slice_proj(xn) / self.temp.clamp(min=0.1)  # [B, N, M]
+        w = logits.softmax(dim=-1)  # soft assignment per point
+        w_sum = w.sum(dim=1, keepdim=True).clamp(min=1e-6)  # [B, 1, M]
+        tokens = torch.einsum("bnm,bnd->bmd", w, xn) / w_sum.transpose(1, 2)  # [B, M, D]
+        attn_out, _ = self.attn(tokens, tokens, tokens, need_weights=False)
+        tokens = tokens + attn_out
+        tokens = tokens + self.mlp(self.norm_t(tokens))
+        y = torch.einsum("bnm,bmd->bnd", w, tokens)  # scatter back
+        return x + y
 
 
 class BaselineMLP(nn.Module):
-    """Baseline + no-slip BC (velocity = 0 on airfoil surface)."""
+    """Transolver-style slice-attention model with normalization + residual anchor + no-slip BC."""
 
-    def __init__(self, hidden=256, n_blocks=6):
+    def __init__(self, hidden=192, n_blocks=4, num_slices=64, num_heads=4,
+                 vel_mean=None, vel_std=None):
         super().__init__()
-        in_dim = 3 + T_IN * 3
+        in_dim = 3 + T_IN * 3  # normalized pos + normalized v_in
         out_dim = T_OUT * 3
         self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        self.blocks = nn.ModuleList([
+            SliceAttentionBlock(hidden, num_slices, num_heads) for _ in range(n_blocks)
+        ])
+        self.norm_out = nn.LayerNorm(hidden)
+        self.proj_out = nn.Linear(hidden, out_dim)
+        nn.init.zeros_(self.proj_out.weight)
+        nn.init.zeros_(self.proj_out.bias)
+
+        if vel_mean is None:
+            vel_mean = torch.zeros(3)
+        if vel_std is None:
+            vel_std = torch.ones(3)
+        self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
+        self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
 
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)
+        v_norm = (velocity_in - self.vel_mean) / self.vel_std
+        v_flat = v_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
+        pos_min = pos.amin(dim=1, keepdim=True)
+        pos_max = pos.amax(dim=1, keepdim=True)
+        pos_n = (pos - pos_min) / (pos_max - pos_min + 1e-6) * 2 - 1
+
+        x = torch.cat([pos_n, v_flat], dim=-1)  # [B, N, 18]
         x = self.proj_in(x)
-        x = self.blocks(x)
-        out = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm_out(x)
+        delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
+
+        v_last_norm = v_norm[:, -1:]  # [B, 1, N, 3] anchor
+        out_norm = delta + v_last_norm
+        out = out_norm * self.vel_std + self.vel_mean
 
         mask = torch.ones(B, N, device=out.device, dtype=out.dtype)
         for b in range(B):
@@ -164,7 +208,10 @@ def main():
         for name, ds in val_splits.items()
     }
 
-    model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+    model = BaselineMLP(
+        hidden=192, n_blocks=4, num_slices=64, num_heads=4,
+        vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
+    ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
