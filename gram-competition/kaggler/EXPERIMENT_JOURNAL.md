@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp27: chain warm-start from exp26 + lr=5e-6
+- **Hypothesis:** Exp26 val stable 0.9035-0.9061. Very low LR chain for last refinement. Expected Δ~0.001-0.003.
+- **Change:** --warm_start=<exp26 ckpt> --lr=5e-6. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Cheap harvest. After this, pivot to arch (per-timestep FiLM or ResBlock MLP expansion).
+
 ### 2026-04-17 — exp26: chain warm-start from exp25 (triple-scale refine) + lr=2e-5
 - **Hypothesis:** Exp25 showed same undertrained pattern as exp18/22. Following recipe: chain at lr=2e-5 for 30 more min to let ucoarse branch refine while preserving main weights. If pattern holds, should beat exp24 (0.9091) by 0.005-0.015.
 - **Change:** --warm_start=<exp25 ckpt model-lkb1o42z> --lr=2e-5. No code changes.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Slower epochs (100s) so fewer iterations. May need to chain twice.
+- **Result:** val/l2=**0.9035** @ epoch 11 (30.1 min). train=0.0035. Val stable 0.9035-0.9061 E11-18.
+- **Verdict:** KEPT — +0.0056 over exp24 (0.9091). Pattern validated 3rd time: arch-add regresses, chain recovers + beats. Δ pattern: multi-scale 0.016, FiLM 0.010, triple-scale 0.006 (diminishing returns but still positive).
+- **Notes:** Distance to leader: 0.9035 - 0.7750 = 0.129. Still closing. Next: exp27 chain at lr=5e-6 for cheap harvest, then arch.
 
 ### 2026-04-17 — exp25: triple-scale voxel (add 8³ ultra-coarse branch)
 - **Hypothesis:** Multi-scale voxel (exp18/19) showed coarse branch added real signal. Extend same pattern: add parallel G/4=8³ ultra-coarse branch per VoxelMixer. Captures scene-level context (wing upper vs lower, wake near vs far). Zero-init (proj_agg_ucoarse=0, last conv_ucoarse=0) → warm-start safe.
