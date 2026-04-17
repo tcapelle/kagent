@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter31b: ensemble-subset ablation — best is 4-model (iter24 + 3×grid=64)
+- **Hypothesis:** the 8-model ensemble (0.8116) might be dragged down by correlated weak grid=48 models (iter26/27/28). Try every subset of {grid=48 models} × {all 3 grid=64 models} to find the minimal winning combination.
+- **Change:** no code changes. Ran ensemble_predict.py over every plausible subset.
+- **Result:** rank of 4-model combos (1 grid=48 + 3 grid=64):
+  - iter24 + 3 grid=64: **0.7994** ← best
+  - iter19 + 3 grid=64: 0.8057
+  - iter27 + 3 grid=64: 0.8061
+  - iter28 + 3 grid=64: 0.8067
+  - iter26 + 3 grid=64: 0.8072
+  - pure 3 grid=64 only: 0.8128
+  - 8-model all: 0.8116
+- **Verdict:** **kept the 4-model subset as the submission for d9c173f** (overwrote 8-model predictions at that hash). −0.012 vs 8-model. Gap to alphonse (0.7761) now **0.023**.
+- **Notes:** (a) iter24 is the best-contributing grid=48 model — probably because iter24 was a chain warm-start from iter23, putting it in a different loss basin than iter26/27/28 which are just fresh-inits like iter30/31. (b) Pairs {iter24 + any other grid=48} + 3 grid=64 land at 0.801-0.807, all worse than 4-model — adding more correlated grid=48 models hurts. (c) Next iter: a 4th grid=64 fresh-init (iter32) should give the biggest remaining gain since each strong grid=64 has added −0.017 and −0.011.
+
 ### 2026-04-17 — iter31: third fully-trained grid=64 + 8-model ensemble
 - **Hypothesis:** iter30 proved fully-trained grid=64 gives a strong individual model (0.8644) and big ensemble gain. A third grid=64 fresh-init should keep stacking diversity — expected −0.005 to −0.010 on ensemble.
 - **Change:** no code changes — `MAX_TIMEOUT_MIN=65 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter31-grid64-3rd`. Ran the full 28 epochs this time (57 min actual).
