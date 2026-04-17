@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-17 — exp42: chain exp41 kNN-mixer @ lr=5e-6 (arch-add refine)
-- **Hypothesis:** exp41 showed kNN-mixer helps (+0.0007). At lr=2e-5 explore, the new block got rough initialization; chain at lr=5e-6 should refine. Expected +0.001-0.003.
-- **Change:** No code changes. --warm_start <exp41 ckpt model-er5pk3oc> --lr 5e-6.
+### 2026-04-17 — exp43: chain exp42 kNN @ lr=2e-6 (fine refine)
+- **Hypothesis:** exp42 val was monotonically decreasing through E5 (0.8810 → 0.8807 → 0.8805). Not saturated. Chain at lr=2e-6 for slow refine.
+- **Change:** --warm_start <exp42 ckpt model-jay6zniz> --lr 2e-6.
 - **Result:** TBD
 - **Verdict:** TBD
 - **Notes:** Launching.
+
+### 2026-04-17 — exp42: chain exp41 kNN-mixer @ lr=5e-6 (arch-add refine)
+- **Hypothesis:** exp41 showed kNN-mixer helps (+0.0007). At lr=2e-5 explore, the new block got rough initialization; chain at lr=5e-6 should refine. Expected +0.001-0.003.
+- **Change:** No code changes. --warm_start <exp41 ckpt model-er5pk3oc> --lr 5e-6.
+- **Result:** val/l2=**0.8805** @ epoch 5 (34.4 min). Ckpt: model-jay6zniz. Trajectory: E1 0.8810 → E2 0.8817 → E3 0.8817 → E4 0.8807 → E5 0.8805. Train loss 0.0084 → 0.0078.
+- **Verdict:** KEPT — +0.0022 over exp41 (0.8827). Arch-add+chain recipe: arch gave +0.0007, chain gave +0.0022. Net from exp40 (pre-kNN): +0.0029.
+- **Notes:** Monotonic decline through E5 — not saturated. Distance to leader (thorfinn=0.7475): 0.133.
 
 ### 2026-04-17 — exp41: kNN neighbor aggregation (k=16, zero-init)
 - **Hypothesis:** Voxels (G=32, 16, 8) give coarse spatial context, but miss fine local neighborhood. Add a single KNNMixer block after main stack that gathers mean+max features from 16 nearest spatial neighbors per point. Zero-init output projection → identity at warm-start.
