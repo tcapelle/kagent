@@ -88,6 +88,7 @@ class Config:
     epochs: int = 50
     hidden: int = 512
     n_blocks: int = 8
+    dropout_p: float = 0.0  # dropout in ResBlock (between GELU and 2nd Linear); 0 = off
     amp: bool = False  # enable mixed-precision (bf16 autocast, no scaler needed)
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
@@ -117,6 +118,7 @@ model = ResidualMLP(
     vel_std=stats["vel_std"],
     hidden=cfg.hidden,
     n_blocks=cfg.n_blocks,
+    dropout_p=cfg.dropout_p,
 ).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())

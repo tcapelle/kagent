@@ -59,9 +59,15 @@ def voxel_stats(pos, feats, voxel_size):
     return mean_at, std_at, dev, offset
 
 
+import torch.nn.functional as F
+
+
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    # Dropout applied functionally so state_dict keys match v6 checkpoints
+    # (enables loading old weights and ensembling). dropout_p=0 disables.
+    def __init__(self, dim, dropout_p=0.0):
         super().__init__()
+        self.dropout_p = dropout_p
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
@@ -70,7 +76,14 @@ class ResBlock(nn.Module):
         )
 
     def forward(self, x):
-        return x + self.net(x)
+        # Split net into pre/post; drop between them only during training
+        h = self.net[0](x)          # LN
+        h = self.net[1](h)          # Linear(d, 2d)
+        h = self.net[2](h)          # GELU
+        if self.training and self.dropout_p > 0:
+            h = F.dropout(h, p=self.dropout_p, training=True)
+        h = self.net[3](h)          # Linear(2d, d)
+        return x + h
 
 
 class VoxelMix(nn.Module):
@@ -106,13 +119,13 @@ class ResidualMLP(nn.Module):
     #   + laplacian(3)
     IN_DIM = 3 + T_IN * 3 + (T_IN - 1) * 3 + 1 + 1 + len(VOXEL_SCALES) * 12 + 3
 
-    def __init__(self, vel_mean, vel_std, hidden=512, n_blocks=12):
+    def __init__(self, vel_mean, vel_std, hidden=512, n_blocks=12, dropout_p=0.0):
         super().__init__()
         self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
         self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
 
         self.proj_in = nn.Linear(self.IN_DIM, hidden)
-        self.blocks = nn.ModuleList([ResBlock(hidden) for _ in range(n_blocks)])
+        self.blocks = nn.ModuleList([ResBlock(hidden, dropout_p=dropout_p) for _ in range(n_blocks)])
         # One mix per every MIX_EVERY blocks
         self.n_mixes = n_blocks // MIX_EVERY
         self.mixes = nn.ModuleList(

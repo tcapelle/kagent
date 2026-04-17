@@ -22,11 +22,16 @@ PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 SPLITS_DIR = Path("/mnt/new-pvc/datasets/gram/splits")
 CKPT_DIR = Path("/mnt/new-pvc/kagent/apr16/edward/checkpoints")
 
-# Three strongest v6-arch checkpoints (val/l2: 1.1681, 1.1812, 1.1828)
+# Ensemble members (val/l2 in isolation):
+#   jnseenin 1.1681 (v6 canonical)
+#   9vaz4wrn 1.1812 (v11 EMA)
+#   w8rxftm4 1.1828 (v9 long-train)
+#   oxopax5h 1.1176 (v13 dropout=0.1)
 MEMBERS = [
     CKPT_DIR / "model-jnseenin" / "checkpoint.pt",
     CKPT_DIR / "model-9vaz4wrn" / "checkpoint.pt",
     CKPT_DIR / "model-w8rxftm4" / "checkpoint.pt",
+    CKPT_DIR / "model-oxopax5h" / "checkpoint.pt",
 ]
 
 

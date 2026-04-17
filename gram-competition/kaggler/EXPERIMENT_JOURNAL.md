@@ -22,6 +22,40 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v13: v6 + dropout p=0.1 in ResBlock (added to ensemble)
+- **Hypothesis:** v11 showed the bottleneck is generalization gap,
+  not optimization noise. Dropout is the textbook fix for overfitting
+  on a small dataset (730 train samples). Functional dropout between
+  GELU and 2nd Linear of each ResBlock keeps state_dict compatible
+  with existing v6 checkpoints (so one model class loads both).
+  Aims: beat v6's 1.1681 and add a diverse member to v12's ensemble.
+- **Change:** `model.py::ResBlock` — keep `nn.Sequential` the same
+  (so state_dict keys match), call `F.dropout` in forward between
+  GELU and final Linear when `self.training`. `ResidualMLP.__init__`
+  takes `dropout_p`. `train.py` adds `--dropout_p` CLI flag, passes
+  through. Config same as v6: 10 blocks, hidden 512,
+  VOXEL_MIX_SCALES=(0.12,), MIX_EVERY=2. 70 epochs, 120 min budget.
+  Added v13 checkpoint (`oxopax5h`) to `ensemble.py` as 4th member.
+- **Result:**
+  - Single model: val/l2=**1.1176** at ep69 of 70 (119 min, 102s/ep).
+    Train loss 0.043 → 0.0118. Trajectory: 1.44 (ep10), 1.31 (ep20),
+    1.22 (ep29), 1.188 (ep33), 1.158 (ep41), 1.148 (ep45),
+    1.13 (ep49), 1.128 (ep52), 1.124 (ep54), 1.120 (ep58),
+    1.118 (ep67), 1.118 (ep69). WandB `edward/v13-v6-dropout01`.
+  - **4-member ensemble (v12 + v13): val/l2=1.0861.**
+    Improvement of 0.023 over v12 (1.1093), 0.082 over v6 (1.1681).
+- **Verdict:** Kept — v13 alone beats all prior single models by a
+  huge margin (1.1176 vs v6 1.1681, −0.050); adding it to the
+  ensemble drops the score another 0.023. Dropout is clearly the
+  right regularization here.
+- **Notes:** Remarkable — dropout alone gave nearly the same gain
+  as ensembling 3 v6-family runs. Training dynamics were different:
+  dropout forces each sub-network to be self-sufficient, which seems
+  to find a qualitatively better solution on this data volume. Next:
+  (1) train 1-2 more dropout variants with different seeds / scales
+  / dropout rates to further diversify; (2) try higher dropout
+  (0.2, 0.3) — 0.1 may be conservative given the small dataset.
+
 ### 2026-04-17 — v12: ensemble 3 v6-family checkpoints (mean of predictions)
 - **Hypothesis:** v6, v9, v11 all hit ~1.17–1.18 val from different
   seeds and training schedules — same architecture, plausibly
