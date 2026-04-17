@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp25: triple-scale voxel (add 8³ ultra-coarse branch)
+- **Hypothesis:** Multi-scale voxel (exp18/19) showed coarse branch added real signal. Extend same pattern: add parallel G/4=8³ ultra-coarse branch per VoxelMixer. Captures scene-level context (wing upper vs lower, wake near vs far). Zero-init (proj_agg_ucoarse=0, last conv_ucoarse=0) → warm-start safe.
+- **Change:** VoxelMixer adds proj_agg_ucoarse + conv_ucoarse (G/4 grid). Forward adds sampled_u to output.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** 48 missing keys on warm-start (8 blocks × 6 ucoarse params). Params: 61.7M → 91.1M (+48%). Triple the voxel compute in each VoxelMixer (expect slower epochs). lr=2e-4 for fresh layers.
+
 ### 2026-04-17 — exp24: chain warm-start from exp23 + lr=5e-6
 - **Hypothesis:** Exp23 val stable E14-22 (0.9096-0.9115). Very low LR chain should squeeze last fine-tune. Expected Δ~0.001-0.003.
 - **Change:** --warm_start=<exp23 ckpt model-mnvmn263> --lr=5e-6. No code changes.

@@ -103,6 +103,18 @@ class VoxelMixer(nn.Module):
         )
         nn.init.zeros_(self.conv_coarse[-1].weight)
         nn.init.zeros_(self.conv_coarse[-1].bias)
+        # Ultra-coarse branch ((G/4)³): zero-init end-to-end for warm-start safety.
+        self.G_ucoarse = max(4, grid_size // 4)
+        self.proj_agg_ucoarse = nn.Conv3d(2 * dim, dim, 1)
+        nn.init.zeros_(self.proj_agg_ucoarse.weight)
+        nn.init.zeros_(self.proj_agg_ucoarse.bias)
+        self.conv_ucoarse = nn.Sequential(
+            nn.Conv3d(dim, dim, 3, padding=1),
+            nn.GELU(),
+            nn.Conv3d(dim, dim, 3, padding=1),
+        )
+        nn.init.zeros_(self.conv_ucoarse[-1].weight)
+        nn.init.zeros_(self.conv_ucoarse[-1].bias)
 
     def _voxel_mm(self, h, p_norm, G):
         B, N, D = h.shape
@@ -147,7 +159,12 @@ class VoxelMixer(nn.Module):
         vf_c = vf_c + self.conv_coarse(vf_c)
         sampled_c = self._gather(vf_c, p_norm, B, N)
 
-        return x + sampled + sampled_c
+        vm_u, vx_u = self._voxel_mm(h, p_norm, self.G_ucoarse)
+        vf_u = self.proj_agg_ucoarse(torch.cat([vm_u, vx_u], dim=1))
+        vf_u = vf_u + self.conv_ucoarse(vf_u)
+        sampled_u = self._gather(vf_u, p_norm, B, N)
+
+        return x + sampled + sampled_c + sampled_u
 
 
 class TimeEncoder(nn.Module):
