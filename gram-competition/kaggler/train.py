@@ -499,7 +499,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 20
+    epochs: int = 30
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -595,7 +595,8 @@ if __name__ == "__main__":
                 pos = pos.clone(); pos[..., 1].neg_()
 
             pred = model(v_in, pos, t, idcs)
-            loss = (pred - v_out).pow(2).mean()
+            # Normalized MSE — balances component weights (Ux std≈20 else dominates Uy≈7, Uz≈9).
+            loss = ((pred - v_out) / model.vel_std).pow(2).mean()
             (loss / GRAD_ACCUM).backward()
 
             accum_idx += 1

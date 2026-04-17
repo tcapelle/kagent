@@ -22,6 +22,24 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter11: normalized MSE loss (divide by vel_std per component)
+- **Hypothesis:** MSE on raw velocity weights gradient by variance; Ux std≈20 dominates Uy std≈7 / Uz std≈9. My MAE ratios (Ux:Uy:Uz = 1:0.52:0.73) are worse than leaders' (alphonse 1:0.47:0.69, thorfinn 1:0.46:0.69) — I'm relatively *most* behind on Uy. Normalizing per-component equalizes gradient weighting and should close the Uy/Uz gap directly.
+- **Change:** `train.py` — `loss = ((pred - v_out) / model.vel_std).pow(2).mean()`. 1-line change, back on iter8 base (reverted iter9/iter10).
+- **Result:** _pending_.
+
+### 2026-04-17 — iter10: stacked bottleneck self-attention (depth=3)
+- **Hypothesis:** iter8's bottleneck had only 1 self-attn block; stacking 3 should give more global mixing capacity on the 12³=1728 tokens at the coarsest grid, targeted at the Uy/Uz gap.
+- **Change:** `train.py` — `attn_depth=3` in `VoxelUNet`, same rest as iter8.
+- **Result:** epoch 14 val/l2=1.0366 before process hung in disk wait; trajectory matches iter5 (depth=1 baseline) rather than beating iter8's 0.9670. Train loss 1.79 at e14 vs iter5 e20 was 1.02 — deeper attn converges slower.
+- **Verdict:** discarded. Reverted to iter8 base.
+- **Notes:** Key realization: MSE loss is mis-specified. My MAE ratio `Ux:Uy:Uz = 1:0.52:0.73` vs leaders' `1:0.47:0.69` says I'm relatively worst on Uy. Adding architectural capacity can't fix a loss that under-weights Uy/Uz gradient by a factor of ~8 (variance ratio).
+
+### 2026-04-16 — iter9: EMA shadow model (decay=0.999)
+- **Hypothesis:** iter8 plateaued at e25 and noised up. EMA averaging the last many epochs should smooth late-training variance and find a better minimum.
+- **Change:** `train.py` — `ema_model = deepcopy(model)`; update after each optimizer step with decay 0.999; validate + save EMA weights.
+- **Result:** val/l2 = 0.9866 at epoch 23 (EMA); 0.9610 on leaderboard (EMA + TTA).
+- **Verdict:** discarded. EMA needs *longer* training for MA to catch up to online weights; with only 23 epochs reached, EMA lagged online by ~10 epochs.
+
 ### 2026-04-16 — iter7: TTA y-flip averaging on iter5 checkpoint (no retrain)
 - **Hypothesis:** averaging `f(x)` and `flip(f(flip(x)))` gives a free ensemble with uncorrelated errors; should improve over iter5's 0.9867 without any retraining cost.
 - **Change:** `predict.py` — replace single forward with `0.5 * (p1 + flip(p2))` over y. Training-loop y-flip aug reverted (was only in iter6).
