@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v15 KEPT — 2-seed ensemble (v6 + fresh seed) landed 0.8265, 5% under v6
+- **Hypothesis:** v6's 0.8707 is partly a lucky single-epoch dip in bs=1 val noise. Multiple single-run tweaks (v7-v14) all landed 0.87-0.92 without reliably beating it. Averaging predictions across independent seeds of the same arch should cancel independent prediction error (bias-variance: ensemble bias ≈ single-model bias, ensemble variance ≈ var/k). Zero arch risk, directly attacks the noise floor.
+- **Change:** `ensemble.py` (new) — loads k checkpoints, runs val inference on each, averages predictions [B,5,N,3], reports `val/l2_error` on the averaged preds, saves to standard predictions dir. v6-arch trained a 2nd time (implicit random seed) for 45 min (52s/epoch × 47 useful epochs, best val/l2=0.8784 alone at ep47); `_v6seed.pt` + `_v15seed.pt` in `checkpoints/`. `train.py` unchanged.
+- **Result:** Ensemble val/l2 = **0.8265** (2 models, 80 val samples). Individual: v6 seed = 0.8707, v15 seed2 = 0.8784. Ensemble beats both — the errors genuinely partially cancel, not correlate. W&B project `kagent-v15`.
+- **Verdict:** kept — 0.044 absolute / 5.1% relative improvement over v6. Biggest jump since v5→v6.
+- **Notes:** Confirms the plateau was a prediction-noise floor, not an architectural capacity limit. The 2nd seed landing at 0.8784 (vs v6's 0.8707) puts the single-run floor at ~0.875 ± 0.005, exactly where SWA (v13) smoothed to — consistent story. Strong evidence a 3rd or 4th seed would keep shrinking the ensemble error (1/sqrt(k) law). With 45min/seed budget and competition structure allowing batched experiments, doubling the seed count is cheap. Next (v16): **3-seed ensemble** — train one more v6-arch seed, re-run `ensemble.py` with 3 checkpoints. Expected val/l2 ~0.81 if the diminishing-returns curve follows the typical 1/sqrt(k) shape.
+
+
+### 2026-04-17 — v14 DISCARDED — multi-scale voxel (32³+64³) landed 0.8869 (above v6's 0.8707)
+- **Hypothesis:** v6 uses a single 64³ voxel grid — fine local detail, but 64-cell aperture gives limited global wake/boundary context. Add a parallel 32³ UNet branch on the same features, concat fine+coarse outputs and project back. Zero-init merge so training starts at v6 identity. First true architectural expansion since v5.
+- **Change:** `train.py` — `VoxelSpatial` grew `unet_coarse=UNet3D` at `res_coarse=32`, `merge=nn.Linear(dim*2, dim)` with zero-init weights+bias; `_voxel_pass()` helper runs scatter→UNet→gather at arbitrary res; forward concatenates fine+coarse and projects. Params 7.69M → ~8.7M.
+- **Result:** val/l2 = **0.8869** at epoch 38 (timeout hit at epoch 38, 45.0 min, ~71s/epoch due to 2× UNet forward, 7.4 GB). W&B project `kagent-v14`. Val descended but never reached v6's 0.8707 band.
+- **Verdict:** discarded — 0.016 worse than v6; 2× UNet cost per step means only 38 epochs fit vs v6's 52, so anneal tail was cut short.
+- **Notes:** Multi-scale did not help within budget — the extra global context is real but doesn't overcome the lost anneal epochs. If I kept multi-scale, I'd need to either shrink `voxel_mid` or go to `MAX_TIMEOUT=60` (untested). Given v7-v14 all landed 0.87-0.92 without beating v6, the evidence points to v6's 0.8707 being a lucky single-epoch dip in bs=1 val noise. Next (v15): **multi-seed ensemble** — train a 2nd v6-arch seed, average predictions with v6. Independent-error cancellation typically gives 1–10% error reduction on ensembled predictions with zero arch change. This directly attacks the noise-floor rather than trying to move the mean down.
+
+
 ### 2026-04-17 — v13 DISCARDED — SWA over last 23 epochs landed 0.8753 (above v6's lucky 0.8707)
 - **Hypothesis:** v6's 0.8707 is likely a lucky single-epoch dip in batch_size=1 val noise. Stochastic Weight Averaging (SWA) over the cosine-anneal phase averages model weights across the late-training basin — a memoryless alternative to v10's EMA that is not dragged down by early random init. Classic noise-floor reduction for small-val regimes.
 - **Change:** `train.py` — `cfg.swa_start: int = 30` (1-indexed), `swa_state` dict updated by running-mean after each `scheduler.step()` starting at epoch ≥ swa_start. After training, SWA weights loaded into model, validated; replaces raw-best checkpoint if SWA val < raw best.
