@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v30 KEPT — 3rd full-cosine seed 0.8516, 17-seed weighted 0.7563 (gain 0.0016)
+- **Hypothesis:** another full-cosine seed gives ~0.002 gain (within-axis diminishing).
+- **Change:** same as v28/v29 — `MAX_TIMEOUT_MIN=90, --epochs 90`.
+- **Result:** v30 solo val/l2 = **0.8516** at ep87 (2nd-best solo, between v29 0.8420 and v28 0.8541). 17-seed weighted = **0.7563** (gain 0.0016). 13.1% under v6 solo.
+- **Verdict:** kept.
+- **Notes:** 3 full-cosine seeds span 0.842-0.854 — tight. Within-axis diminishing: 1st (v28) 0.0022, 2nd (v29) 0.0028 — unusual, that was v29's strong solo winning out. 3rd (v30) back to 0.0016 as expected. Next (v31): combine the two proven winning axes — `lr=3e-4 + full-cosine` (both gave strong individual gains). Could produce a distinctly new basin with strong solo.
+
+
 ### 2026-04-17 — v29 KEPT — 2nd full-cosine smashed solo to 0.8420, 16-seed weighted 0.7579 (gain 0.0028)
 - **Hypothesis:** full-cosine is the strongest single regime (v28 proved it). Another full-cosine seed expected to give ~0.002 gain.
 - **Change:** same config as v28 — `MAX_TIMEOUT_MIN=90, --epochs 90`. Different random init (implicit).
