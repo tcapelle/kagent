@@ -6,7 +6,7 @@ set -o pipefail
 
 REPO_DIR="/workspace/kagent"
 WORKDIR="${ORGANIZER_WORKDIR:-$REPO_DIR/$COMPETITION_DIR/organizer}"
-POLL_INTERVAL=300  # 5 minutes
+POLL_INTERVAL=60  # 1 minute — keep the leaderboard near-live for the agents
 LEADERBOARD_PVC="/mnt/new-pvc/predictions/${RESEARCH_TAG}/leaderboard.md"
 LEADERBOARD_BRANCH="${RESEARCH_TAG}-leaderboard"
 
