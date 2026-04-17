@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v_in_mean-anchor-violet-e3
+- **Hypothesis:** residual from `v_in.mean(time)` gives a per-sample mean-flow anchor; with proj_out zero-init, prediction starts AT that anchor. Smaller model (256×6) fights overfitting seen in e1/e2.
+- **Change:** `train.py` `PointNet` — residual from `v_in_mean`, zero-init output head, baseline-size model, no AMP. Added pre-training val check.
+- **Result:** pre-train val/l2 = **1.42**, final val/l2 = **1.24** (best epoch 47). 50 epochs × 23 s, 4.2 GB. train 4.71 → 3.38. Run `z4w45445`. Auto-predict failed (predict.py import triggers train.py's argparse).
+- **Verdict:** discarded — same plateau as e1/e2 (~1.24–1.26).
+- **Notes:** Key insight: the pre-train val (predict=`v_in_mean` at every output step) is already **1.42** — far worse than baseline's 0.80. So `v_in_mean` is a **worse** estimator of the flow than baseline's learned `f(pos)`. Why? Baseline learns the true time-averaged mean flow by pooling across many training simulations at each position; `v_in_mean` is a 5-sample per-simulation estimate with substantial residual turbulent fluctuation. Three per-point-MLP experiments (e1/e2/e3) all plateau at ~1.25. The architecture class is the bottleneck, not residual vs. absolute nor richer features. **Next: either (i) go diagnostic — run baseline + no-slip only to verify infra, then add spatial aggregation (voxel-grid pooling or KNN) — or (ii) try a subsample+Transformer so the model can see global per-sample context.**
+
 ### 2026-04-17 — absolute-velocity-violet-e2
 - **Hypothesis:** Predicting absolute velocity (not residual) with richer features + no-slip BC + 512×8 MLP should beat baseline 0.80. Thought e1 failed because residual pinned model to v_last (noisy).
 - **Change:** `train.py` `PointNet` — predict absolute v_out via normalization-denormalization, added `v_in.mean(time)` feature, kept all others from e1.
