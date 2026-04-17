@@ -22,6 +22,48 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — dual-branch-refinement-violet-e9
+- **Hypothesis:** Pure per-point MLP plateaus at ~1.25. Dual branches — per-point MLP (baseline) + zero-init transformer on 4096 anchor points + KNN-interpolate — lets the spatial branch *add* global corrections without ever making the base prediction worse than baseline.
+- **Change:** `train.py` `BaselineMLP` — point branch (hidden=256, 6 ResBlocks) + spatial branch (3 TransformerBlocks, `nn.init.zeros_(spatial_head)`), interpolate via chunked `torch.cdist` KNN. Fixed critical output reshape bug: `[B,N,15].reshape(B,N,T,3).permute(0,2,1,3)`.
+- **Result:** val/l2 = **1.2414** at epoch 44. 44 epochs × 41 s, 4.6 GB. train 0.04 → 0.02 (normalized). Run `rztko89s`. Leaderboard l2=1.2414 (rank 10).
+- **Verdict:** kept (first valid submission) — but effectively same ceiling as e1–e3 (~1.24).
+- **Notes:** **CRITICAL INSIGHT**: leaderboard score = W&B `val/l2_error` exactly (confirmed). Leaders thorfinn (0.74, EdgeConv) and alphonse (0.76, cross-attn+sub20k) are 40%+ better. The per-point-MLP architecture class caps at ~1.24 regardless of refinement head; spatial refinement via transformer on subsampled anchors + KNN-interp does *not* break past the ceiling. **Pivot next: dynamic-graph GNN (EdgeConv)** — operate directly on neighborhoods in point cloud, not on subsampled anchors.
+
+### 2026-04-17 — subsample-transformer-violet-e8
+- **Hypothesis:** Subsample 4096 anchor points, transformer attends globally, interpolate back to 100k via KNN. Should break the per-point-MLP ceiling because each output point can see long-range context.
+- **Change:** `train.py` — subsample with stride, 4 TransformerBlocks (hidden=192), concat [point_feat, interp_feat] → Linear → out.
+- **Result:** train loss plateau at **0.79** (normalized MSE), val/l2 ≈ predict-mean-velocity garbage. Killed early.
+- **Verdict:** discarded — same plateau as e6/e7.
+- **Notes:** At init, interpolated anchor features were noise and the concat treated them symmetrically with point features, polluting predictions. Fix was to split into dual branches with zero-init on the spatial head → became e9.
+
+### 2026-04-17 — transolver-norm-loss-violet-e7
+- **Hypothesis:** e6 Transolver got pinned to v_last by zero-init output + residual anchor. Removing residual + using normalized-space loss (`((pred-v_out)/vel_std).pow(2).mean()`) should let gradients flow regardless of velocity magnitude.
+- **Change:** `train.py` — removed residual anchor, removed zero-init, switched loss to normalized MSE, lr=1e-3, grad clip 1.0.
+- **Result:** train loss stuck at **0.79** (normalized), never descends. Softmax temperature likely degenerate — slice attention not learning.
+- **Verdict:** discarded — same plateau.
+- **Notes:** Transolver's slice-attention softmax collapses to uniform at init because slice logits are near-zero; the model effectively predicts the mean and gets stuck in a very flat region.
+
+### 2026-04-17 — transolver-violet-e6
+- **Hypothesis:** Transolver (physics-surrogate SOTA on Navier-Stokes benchmarks) should beat per-point MLP via learned slice-attention over the point cloud.
+- **Change:** `train.py` rewritten — SliceAttentionBlock stack, residual anchor `v_in[:, -1]`, zero-init `proj_out`.
+- **Result:** val/l2 ≈ **1.76** (equivalent to predicting v_last). 50 epochs. Killed.
+- **Verdict:** discarded.
+- **Notes:** Zero-init output + residual anchor pins model to v_last with near-zero gradient, and what gradient does exist is dominated by noise in v_last. Removed both in e7.
+
+### 2026-04-17 — baseline-replica-violet-e5
+- **Hypothesis:** Before pivoting to a fancy architecture, replicate the *literal* baseline (with its `reshape(B, N, T*C)` "bug") to verify infra — competition claims baseline hits 0.88.
+- **Change:** `train.py` — minimal baseline MLP, no-slip mask, no extra features.
+- **Result:** val/l2 plateau at **1.84**. Not 0.88.
+- **Verdict:** discarded.
+- **Notes:** Major discrepancy — competition-advertised baseline gets 0.88 but my replica gets 1.84. Suspected a setup/normalization difference. Eventually tracked: leaderboard score matches W&B val/l2 exactly, so 0.88 for "baseline" on the leaderboard must come from a *different* architecture than the repo's template (or the repo's README claim is outdated).
+
+### 2026-04-17 — voxel-features-violet-e4
+- **Hypothesis:** Add voxel-grid mean/std velocity features (5³=125 voxels) to each point's input so the point MLP sees neighborhood statistics — cheap spatial aggregation without an attention mechanism.
+- **Change:** `train.py` — added voxel encoder that pools v_in stats per grid cell, concatenated into point features.
+- **Result:** val/l2 plateau at **1.83**. Worse than e1.
+- **Verdict:** discarded.
+- **Notes:** Voxel mean/std had huge magnitude (Ux std ≈ 20), destabilized optimization despite normalization. Reverted.
+
 ### 2026-04-17 — v_in_mean-anchor-violet-e3
 - **Hypothesis:** residual from `v_in.mean(time)` gives a per-sample mean-flow anchor; with proj_out zero-init, prediction starts AT that anchor. Smaller model (256×6) fights overfitting seen in e1/e2.
 - **Change:** `train.py` `PointNet` — residual from `v_in_mean`, zero-init output head, baseline-size model, no AMP. Added pre-training val check.
