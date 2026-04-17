@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Anneal from iter39.best_run.pt dip (iter 40) + 29-model ensemble (ensemble-only KEPT)
+- **Hypothesis:** iter39's best_run.pt captured a transient E9 dip at 1.0569. Warm-starting from that dip (instead of the usual drifted final.pt) might let cosine-anneal stay near-basin and break floor 1.0530. First real test of the new best_run primitive as a warm-start source.
+- **Change:** no code. `--resume .../model-amds5uhm/best_run.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0591** at E12/18 (31.6 min, init 1.0569). **Notable failure mode:** E1 jumped to 1.0673 — LR warmup kicked the model out of the narrow dip-basin immediately; the run could never return to its starting val. Staged as iter40.pt. **29-model ensemble:**
+  - **1.0167** ← submitted (0.056% drop from 1.0173, mae Ux=0.6672 Uy=0.3146 Uz=0.4846)
+- **Verdict:** Single DISCARDED (worse than its own warm-start — rare failure). Ensemble inclusion **KEPT** — small rebound 0.056% vs iter39's 0.05%. **Cumulative session: 1.0625 → 1.0167 = 4.31%.**
+- **Notes:** **Key negative result: warming from best_run.pt is NOT strictly better than final.pt.** The dip-basin that best_run captures is narrow and LR-sensitive — cosine+warmup immediately escapes it, landing in a weaker nearby basin (1.0591 > 1.0569). This suggests `best_run.pt` is useful as an **ensemble member** (captures a unique dip) but weak as a **warm-start source** (basin is fragile). For future iters: keep using final.pt for warm-start; use best_run.pt only for ensembling. Iter 41 options: (a) **fresh-train from scratch (no --resume)** — cheapest new-diversity test, independent initialisation breaks the 30-iter warm-start chain correlation; (b) **weighted ensemble** (val-L2-inverse weights on all 29 members) — post-process free gain; (c) **lower LR warmup (5 steps)** — if we do try best_run warm-start again, reduce LR-escape risk. (a) strictly adds a new source of variance not obtainable via cycling; single-model may be 1.10+ but ensemble might gain ≥0.1%.
+
 ### 2026-04-17 — Dropout p=0.25 from iter38.final + best_run.pt save (iter 39) + 28-model ensemble (ensemble-only KEPT)
 - **Hypothesis:** Iter 37 showed p=0.2 opened a transient drop-basin at 1.0540 that iter 38's anneal couldn't re-capture. Push to p=0.25 on the post-FiLM architecture with the new best_run.pt save (floor-free) so even if the basin is transient, the dip-epoch checkpoint is captured for ensembling.
 - **Change:** `train.py` — add `best_run_val` / `best_run_path = pvc_dir / "best_run.pt"` floor-free save alongside existing `best_val` (floor-guarded). Commit `0fe8d11`. Run: `--resume .../model-r5wtvnea/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.25 --best_val_floor 1.0530 --epochs 25`.
