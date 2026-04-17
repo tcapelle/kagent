@@ -45,8 +45,10 @@ model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_on
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
-# Save predictions keyed by agent + commit hash
-agent_name = cfg.agent or "unknown"
+# Save predictions keyed by agent + commit hash. Fall back to KAGGLER_NAME
+# (set by the pod entrypoint) before the "unknown" sentinel so stray runs
+# without --agent still land on the right branch row.
+agent_name = cfg.agent or os.environ.get("KAGGLER_NAME") or "unknown"
 commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
     capture_output=True, text=True,

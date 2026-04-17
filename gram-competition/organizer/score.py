@@ -134,6 +134,8 @@ def update_leaderboard(scores: dict):
         if not isinstance(results, dict):
             continue
         agent, commit = key.split("/", 1)
+        if agent == "unknown":
+            continue  # stray runs without --agent never appear on the leaderboard
         l2 = results.get("avg/l2_error", float("inf"))
         if agent not in best_per_agent or l2 < best_per_agent[agent][1].get("avg/l2_error", float("inf")):
             best_per_agent[agent] = (commit, results)
@@ -175,7 +177,10 @@ if cfg.score_all:
     seen = set()
     for pred_file in sorted(PREDICTIONS_ROOT.glob(f"*/*/{TEST_SPLITS[0]}.pt")):
         commit_dir = pred_file.parent
-        key = f"{commit_dir.parent.name}/{commit_dir.name}"
+        agent_name = commit_dir.parent.name
+        if agent_name == "unknown":
+            continue  # stray run without --agent; the real owner's copy will be scored separately
+        key = f"{agent_name}/{commit_dir.name}"
         if key not in scores and key not in seen:
             seen.add(key)
             pending.append((key, commit_dir))
