@@ -22,6 +22,39 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v19: v6-arch + yflip aug only (DISCARDED)
+- **Hypothesis:** v17 combined yflip+v16-arch (1.1493). Isolating yflip
+  on v6-arch would give either (a) improved single over v14's 1.1041
+  via 2x effective train data, or (b) arch-matched but yflip-diverse
+  ensemble member.
+- **Change:** `--model_version v6 --n_blocks 10 --dropout_p 0.2
+  --epochs 44 --yflip_aug True`. 44 epochs because v19 ran at 162s/ep
+  (60% slower than v14's 102s/ep — unclear why; same arch, same
+  hardware, just yflip added; GPU was idle otherwise).
+- **Result:**
+  - Single: val/l2=**1.2316** at ep44 of 44 (119.1 min). Trajectory:
+    1.49 (ep5), 1.43 (ep6), 1.33 (ep20), 1.25 (ep34), 1.24 (ep36),
+    1.23 (ep44). WandB `edward/v19-v6-yflip` (1m23al87). Much worse
+    than v14 (1.1041). Plausible causes: (1) only 44 effective epochs
+    vs v14's 70; (2) yflip halves the training signal per pass because
+    model sees each sample in original OR flipped form, not both;
+    (3) airfoils are approximately y-symmetric but the flow isn't
+    (inflow direction, wing incidence).
+  - **7-member ensemble: 1.0743** (WORSE than 1.0681). Same failure
+    mode as v18 — too weak to decorrelate productively.
+- **Verdict:** DISCARDED.
+- **Notes:** Two-in-a-row pattern: any new single with val/l2 > 1.20
+  hurts our current 6-member ensemble (best singles 1.10–1.18).
+  Takeaway — to improve the ensemble, new members need **quality
+  parity** (val/l2 ≲ 1.18) AND architectural diversity. v17 was the
+  sweet spot (1.1493 + diff arch). Options for v20:
+  (A) v17-arch rerun with different seed (stable ≈1.14 diverse member)
+  (B) v16-arch at hidden=768 (bigger capacity, slower but potentially
+      1.10-ish)
+  (C) go big: new arch (kNN graph message passing, or actual SetAttn)
+  Also noted: the aggressive overwrite of val.pt by auto-predict.py
+  happened again. Continuing to re-run ensemble.py defensively.
+
 ### 2026-04-17 — v18: v6-arch + near-airfoil weighted loss (DISCARDED)
 - **Hypothesis:** errors concentrate in boundary layer (mean err 2.4
   within 0.05m vs 0.3 beyond 0.1m of airfoil). Up-weighting the loss
