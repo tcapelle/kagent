@@ -47,7 +47,7 @@ _vel_std = torch.tensor(_stats_raw["vel_std"], dtype=torch.float32)
 from train import BaselineMLP
 model = BaselineMLP(
     hidden=256, n_blocks=6, edge_blocks=5, edge_k=16, n_anchors=10000,
-    vel_mean=_vel_mean, vel_std=_vel_std,
+    fourier_freqs=8, vel_mean=_vel_mean, vel_std=_vel_std,
 ).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 

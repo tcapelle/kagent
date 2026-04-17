@@ -130,6 +130,20 @@ def knn_interpolate(pos_full, pos_anchor, feat_anchor, k=3, chunk=8192):
     return out
 
 
+class FourierEmbed(nn.Module):
+    """Multi-resolution sinusoidal encoding for positions. pos ∈ [-1, 1]^3 → [B, N, 6*n_freqs]."""
+    def __init__(self, n_freqs=8, base=2.0):
+        super().__init__()
+        freqs = (base ** torch.arange(n_freqs).float()) * torch.pi
+        self.register_buffer("freqs", freqs.view(1, 1, 1, -1))  # [1, 1, 1, n_freqs]
+        self.n_freqs = n_freqs
+        self.out_dim = 3 * 2 * n_freqs
+
+    def forward(self, pos):  # [B, N, 3] in [-1, 1]
+        proj = pos.unsqueeze(-1) * self.freqs  # [B, N, 3, n_freqs]
+        return torch.cat([proj.sin(), proj.cos()], dim=-1).flatten(-2)  # [B, N, 6*n_freqs]
+
+
 class BaselineMLP(nn.Module):
     """Baseline MLP + EdgeConv GNN refinement branch (zero-init).
 
@@ -139,11 +153,12 @@ class BaselineMLP(nn.Module):
     """
 
     def __init__(self, hidden=256, n_blocks=6, edge_blocks=4, edge_k=16,
-                 n_anchors=8192, vel_mean=None, vel_std=None):
+                 n_anchors=8192, fourier_freqs=8, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_anchors = n_anchors
         self.edge_k = edge_k
-        in_dim = 3 + T_IN * 3
+        self.fourier = FourierEmbed(n_freqs=fourier_freqs)
+        in_dim = 3 + self.fourier.out_dim + T_IN * 3
         out_dim = T_OUT * 3
 
         # --- Per-point MLP branch (baseline-equivalent) ---
@@ -174,7 +189,8 @@ class BaselineMLP(nn.Module):
         pos_max = pos.amax(dim=1, keepdim=True)
         pos_n = (pos - pos_min) / (pos_max - pos_min + 1e-6) * 2 - 1
 
-        x_in = torch.cat([pos_n, v_flat], dim=-1)  # [B, N, 18]
+        pos_feat = self.fourier(pos_n)             # [B, N, 6*n_freqs]
+        x_in = torch.cat([pos_n, pos_feat, v_flat], dim=-1)
         x = self.proj_in(x_in)                     # [B, N, D]
         x = self.point_blocks(x)                   # [B, N, D]
         point_pred = self.point_head(x)            # [B, N, out_dim]
