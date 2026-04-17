@@ -77,7 +77,7 @@ class VoxelFlowNet(nn.Module):
         vel_std,
         grid_res: int = 48,
         grid_ch: int = 64,
-        grid_dilations: tuple = (1, 2, 4, 8),
+        n_grid_blocks: int = 4,
         point_hidden: int = 384,
         n_point_blocks: int = 6,
         fourier_L: int = 8,
@@ -96,16 +96,17 @@ class VoxelFlowNet(nn.Module):
         # mean-pool: T_IN*3 + 1 (occupancy); max-pool: T_IN*3 extra
         in_ch = 2 * T_IN * 3 + 1
         self.grid_in = nn.Conv3d(in_ch, grid_ch, 1)
+        dilations = [1, 2, 4, 8]
         self.grid_blocks = nn.ModuleList([
             nn.Sequential(
-                nn.Conv3d(grid_ch, grid_ch, 3, padding=d, dilation=d),
+                nn.Conv3d(grid_ch, grid_ch, 3, padding=dilations[i % 4], dilation=dilations[i % 4]),
                 nn.GroupNorm(8, grid_ch),
                 nn.GELU(),
                 nn.Conv3d(grid_ch, grid_ch, 3, padding=1),
                 nn.GroupNorm(8, grid_ch),
                 nn.GELU(),
             )
-            for d in grid_dilations
+            for i in range(n_grid_blocks)
         ])
 
         pos_feat_dim = 3 + 3 * 2 * fourier_L  # raw pos + sin/cos at L scales
