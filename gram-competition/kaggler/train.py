@@ -36,53 +36,98 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 
-class SliceAttentionBlock(nn.Module):
-    """Transolver-style linear-complexity attention via learnable soft slices.
-
-    Each point soft-assigns to M slices; slices aggregate point features into
-    M tokens; tokens self-attend; tokens scatter back to points. O(NMD + M^2 D).
-    """
-
-    def __init__(self, dim, num_slices=64, num_heads=4, mlp_ratio=2.0):
+class ResBlock(nn.Module):
+    def __init__(self, dim):
         super().__init__()
-        self.num_slices = num_slices
-        self.slice_proj = nn.Linear(dim, num_slices)
-        self.temp = nn.Parameter(torch.ones(1) * 0.5)
+        self.net = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim * 2),
+            nn.GELU(),
+            nn.Linear(dim * 2, dim),
+        )
+
+    def forward(self, x):
+        return x + self.net(x)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, dim, num_heads=4, mlp_ratio=2.0):
+        super().__init__()
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
-        self.norm_t = nn.LayerNorm(dim)
         self.attn = nn.MultiheadAttention(dim, num_heads, batch_first=True)
         h = int(dim * mlp_ratio)
         self.mlp = nn.Sequential(nn.Linear(dim, h), nn.GELU(), nn.Linear(h, dim))
 
     def forward(self, x):
-        B, N, D = x.shape
         xn = self.norm1(x)
-        logits = self.slice_proj(xn) / self.temp.clamp(min=0.1)  # [B, N, M]
-        w = logits.softmax(dim=-1)  # soft assignment per point
-        w_sum = w.sum(dim=1, keepdim=True).clamp(min=1e-6)  # [B, 1, M]
-        tokens = torch.einsum("bnm,bnd->bmd", w, xn) / w_sum.transpose(1, 2)  # [B, M, D]
-        attn_out, _ = self.attn(tokens, tokens, tokens, need_weights=False)
-        tokens = tokens + attn_out
-        tokens = tokens + self.mlp(self.norm_t(tokens))
-        y = torch.einsum("bnm,bmd->bnd", w, tokens)  # scatter back
-        return x + y
+        a, _ = self.attn(xn, xn, xn, need_weights=False)
+        x = x + a
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
+def knn_interpolate(pos_full, pos_anchor, feat_anchor, k=3, chunk=8192):
+    """For each point in pos_full, gather k nearest anchors' features (inverse-dist weighted).
+
+    pos_full:    [B, N, 3]
+    pos_anchor:  [B, K, 3]
+    feat_anchor: [B, K, D]
+    Returns:     [B, N, D]
+    """
+    B, N, _ = pos_full.shape
+    _, K, D = feat_anchor.shape
+    out = torch.empty(B, N, D, device=feat_anchor.device, dtype=feat_anchor.dtype)
+    for b in range(B):
+        pf = pos_full[b]      # [N, 3]
+        pa = pos_anchor[b]    # [K, 3]
+        fa = feat_anchor[b]   # [K, D]
+        for s in range(0, N, chunk):
+            e = min(s + chunk, N)
+            dist = torch.cdist(pf[s:e].unsqueeze(0), pa.unsqueeze(0)).squeeze(0)  # [chunk, K]
+            topk_d, topk_i = dist.topk(k, dim=-1, largest=False)  # [chunk, k]
+            w = 1.0 / (topk_d + 1e-6)
+            w = w / w.sum(dim=-1, keepdim=True)
+            gathered = fa[topk_i]  # [chunk, k, D]
+            out[b, s:e] = (gathered * w.unsqueeze(-1)).sum(dim=1)
+    return out
 
 
 class BaselineMLP(nn.Module):
-    """Transolver-style slice-attention model with normalization + residual anchor + no-slip BC."""
+    """Subsample + Transformer + KNN-interpolate.
 
-    def __init__(self, hidden=192, n_blocks=4, num_slices=64, num_heads=4,
+    1. Per-point stem encodes (pos_n, v_in_norm) -> [N, D].
+    2. Subsample K anchors (stride-based for reproducibility).
+    3. Full self-attention on anchors.
+    4. Interpolate anchor features back to N points via 3-NN inverse-distance.
+    5. Concat [point_feat, interp_anchor_feat] and decode to normalized v_out.
+    6. Denormalize, apply no-slip BC mask.
+    """
+
+    def __init__(self, hidden=192, n_blocks=4, num_heads=4, n_anchors=4096,
                  vel_mean=None, vel_std=None):
         super().__init__()
-        in_dim = 3 + T_IN * 3  # normalized pos + normalized v_in
+        self.n_anchors = n_anchors
+        in_dim = 3 + T_IN * 3
         out_dim = T_OUT * 3
-        self.proj_in = nn.Linear(in_dim, hidden)
+        # Per-point stem
+        self.stem = nn.Sequential(
+            nn.Linear(in_dim, hidden),
+            ResBlock(hidden),
+        )
+        # Transformer on anchors
         self.blocks = nn.ModuleList([
-            SliceAttentionBlock(hidden, num_slices, num_heads) for _ in range(n_blocks)
+            TransformerBlock(hidden, num_heads) for _ in range(n_blocks)
         ])
-        self.norm_out = nn.LayerNorm(hidden)
-        self.proj_out = nn.Linear(hidden, out_dim)
+        self.norm_anchor = nn.LayerNorm(hidden)
+        # Decoder: combine point feat + interpolated anchor feat
+        self.decoder = nn.Sequential(
+            nn.LayerNorm(hidden * 2),
+            nn.Linear(hidden * 2, hidden),
+            ResBlock(hidden),
+            nn.LayerNorm(hidden),
+            nn.Linear(hidden, out_dim),
+        )
 
         if vel_mean is None:
             vel_mean = torch.zeros(3)
@@ -94,17 +139,31 @@ class BaselineMLP(nn.Module):
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
         v_norm = (velocity_in - self.vel_mean) / self.vel_std
-        v_flat = v_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
+        v_flat = v_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
         pos_min = pos.amin(dim=1, keepdim=True)
         pos_max = pos.amax(dim=1, keepdim=True)
         pos_n = (pos - pos_min) / (pos_max - pos_min + 1e-6) * 2 - 1
 
-        x = torch.cat([pos_n, v_flat], dim=-1)  # [B, N, 18]
-        x = self.proj_in(x)
+        x_in = torch.cat([pos_n, v_flat], dim=-1)  # [B, N, 18]
+        x_point = self.stem(x_in)  # [B, N, D]
+
+        # Stride-based anchor selection (simple, reproducible)
+        K = min(self.n_anchors, N)
+        stride = max(N // K, 1)
+        idx = torch.arange(0, stride * K, stride, device=x_point.device)[:K]
+        anchor_x = x_point[:, idx]         # [B, K, D]
+        anchor_pos = pos_n[:, idx]         # [B, K, 3]
+
+        # Self-attention on anchors
         for block in self.blocks:
-            x = block(x)
-        x = self.norm_out(x)
-        out_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
+            anchor_x = block(anchor_x)
+        anchor_x = self.norm_anchor(anchor_x)
+
+        # Interpolate back to all N points
+        interp = knn_interpolate(pos_n, anchor_pos, anchor_x, k=3)  # [B, N, D]
+
+        combined = torch.cat([x_point, interp], dim=-1)  # [B, N, 2D]
+        out_norm = self.decoder(combined).reshape(B, T_OUT, N, 3)
 
         out = out_norm * self.vel_std + self.vel_mean
 
@@ -205,7 +264,7 @@ def main():
     }
 
     model = BaselineMLP(
-        hidden=192, n_blocks=4, num_slices=64, num_heads=4,
+        hidden=192, n_blocks=4, num_heads=4, n_anchors=4096,
         vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     ).to(device)
 
