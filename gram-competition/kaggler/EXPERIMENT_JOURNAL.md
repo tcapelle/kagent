@@ -25,8 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — exp16: chain warm-start from exp15 + lr=5e-5
 - **Hypothesis:** Exp15 val was still slightly dropping at E33 (0.9487). The new proj_agg layers were still learning. Another 30min of fine-tuning at lr=5e-5 should let the mean+max aggregation fully mature.
 - **Change:** --warm_start=<exp15 ckpt> --lr=5e-5. No code changes.
-- **Result:** TBD
-- **Verdict:** TBD
+- **Result:** val/l2=**0.9420** @ epoch 24 (30.0 min). train=0.0047. run 4fk50oi3. 54s/epoch.
+- **Verdict:** KEPT — +0.0067 over exp15 (0.9487). Early epochs looked bad (E1 0.9513, E2 0.9603) but converged cleanly after E10. Mean+max aggregation wasn't saturated yet.
+- **Notes:** Lesson: don't trust early chain epochs; give at least 15-20 epochs before bailing. Val still dropping E30→E33 (0.9450→0.9422). Another chain at lr=2e-5 might squeeze more. Chain progression: Δ=0.040→0.006→0.004→0.0025→(arch)→0.0067. Distance to leader: 0.9420 - 0.8245 = 0.1175.
 
 ### 2026-04-17 — exp15: mean+max voxel aggregation (warm-start partial)
 - **Hypothesis:** Current voxel aggregation is scatter_add/count (mean) — loses extreme features (high-velocity gradients, shear layers). Add parallel scatter_reduce(amax) branch, concat with mean (2×dim), project back via Conv3d(2*dim, dim). This captures peaks per voxel (turbulent events). Pre-voxel layers weights can warm-start from exp13, only new proj_agg needs fresh training.
