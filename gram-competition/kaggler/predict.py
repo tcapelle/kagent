@@ -38,8 +38,12 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from model import BaselineMLP
-model = BaselineMLP(hidden=512, n_blocks=8).to(device)
+from model import VoxelFlowNet
+model = VoxelFlowNet(
+    vel_mean=torch.zeros(3), vel_std=torch.ones(3),
+    grid_res=48, grid_ch=64, n_grid_blocks=4,
+    point_hidden=384, n_point_blocks=6,
+).to(device)
 # Stats live in the state_dict as registered buffers, so just load everything.
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 

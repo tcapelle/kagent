@@ -113,7 +113,11 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=512, n_blocks=8, vel_mean=stats["vel_mean"], vel_std=stats["vel_std"]).to(device)
+model = VoxelFlowNet(
+    vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
+    grid_res=48, grid_ch=64, n_grid_blocks=4,
+    point_hidden=384, n_point_blocks=6,
+).to(device)
 vel_std_gpu = stats["vel_std"].to(device).view(1, 1, 1, 3)
 
 n_params = sum(p.numel() for p in model.parameters())
