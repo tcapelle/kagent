@@ -699,7 +699,22 @@ def main():
     if best_metrics and not cfg.debug:
         import subprocess
         print("\nGenerating test predictions...")
-        pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
+        # If an ensemble directory exists on PVC, submit the ensemble (current
+        # checkpoint + every prior checkpoint in the ensemble dir) instead of
+        # the lone current checkpoint. Iter 16 found this bought ~0.9% val drop
+        # for free (1.0628 single -> 1.0537 5-model). Any file matching iter*.pt
+        # in that dir is included plus the just-trained model_path.
+        ensemble_dir = Path(f"/mnt/new-pvc/kagent/{RESEARCH_TAG}/{KAGGLER_NAME}/ensemble_ckpts")
+        ensemble_members = sorted(ensemble_dir.glob("iter*.pt")) if ensemble_dir.exists() else []
+        if ensemble_members:
+            # Keep only members strictly better than the (single-) current ckpt?  No —
+            # including iter 12 (val 1.14) still helped the 5-model ensemble; blanket
+            # include everything. The leaderboard metric is robust to weak members.
+            ckpt_list = [str(p) for p in ensemble_members] + [str(model_path)]
+            pred_cmd = ["python", "predict.py", "--checkpoints", ",".join(ckpt_list)]
+            print(f"Ensemble predict: {len(ckpt_list)} checkpoints")
+        else:
+            pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
         if cfg.agent:
             pred_cmd += ["--agent", cfg.agent]
         result = subprocess.run(pred_cmd, capture_output=True, text=True)
