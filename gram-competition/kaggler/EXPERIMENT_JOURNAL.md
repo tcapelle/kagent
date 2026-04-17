@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Dropout cycle 6 (p=0.3 from iter32.final) + 22-model ensemble (iter 33, ensemble-only KEPT)
+- **Hypothesis:** Extrapolate p sweep from {0.10, 0.15, 0.20, 0.25} → 0.30. Prior pattern: higher p produced slightly bigger basin drift (iter 29 at p=0.2 tied floor). Test whether p=0.3 continues the 0.10-0.12%/step cycle or saturates.
+- **Change:** no code. `--resume .../model-qhn6enhi/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.3 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0571** at E10/18 (31.1 min, init ~1.058). Final.pt (val≈1.0602) staged as iter33.pt. **22-model ensemble:**
+  - **1.0216** ← submitted (0.09% drop from 1.0225)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — 8th consecutive cycle gain, but **first sign of decay** (0.09% vs the prior 0.10-0.12% band). **Cumulative session: 1.0625 → 1.0216 = 3.9%.**
+- **Notes:** Higher p=0.3 gave slightly worse single-model (1.0571 vs p=0.25's 1.0547) and slightly weaker ensemble marginal (0.09%). Possible explanations: (i) p=0.3 is past the sweet spot for this chain; (ii) saturation starting at 22 members. Iter 34 priorities: (a) **anneal from iter33.final at dropout=0** — completes the cycle and tests whether decay is p-sweep-specific or saturation; (b) **second FiLM layer post-blocks** — first architectural lift in 8 iters, warm-start zero-init branch; (c) **try lambda=0.3 with dropout** (mix regularisers on the drop-step). (a) is the cheapest next read on whether cycle is dying; if iter 34 gain is also ≤0.09%, pivot to (b).
+
 ### 2026-04-17 — Anneal cycle 5 (dropout=0 from iter31.final) + 21-model ensemble (iter 32, ensemble-only KEPT)
 - **Hypothesis:** Continue the anneal-side of the cycle from iter 31 (p=0.25 drop end-state).
 - **Change:** no code. `--resume .../model-42qyl35y/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
