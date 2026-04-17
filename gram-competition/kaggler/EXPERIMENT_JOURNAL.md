@@ -22,12 +22,26 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp30: temporal-derivative aux features (warm-start from exp29)
+- **Hypothesis:** v_diff = v_in[:, 1:] - v_in[:, :-1] is an acceleration signal (Δv/Δt). Turbulent/vortex dynamics show up in acceleration, not just position. Also feed per-point mean+std of input trajectory (moments). Current input uses v_in concatenated as 15 features — model has to learn to compute diffs. Handing them directly should let early blocks focus on dynamics.
+- **Change:** train.py: BaselineMLP adds self.proj_aux (Linear 18→hidden, zero-init). Forward computes v_diff_feat [12] + v_mean [3] + v_std [3] → aux [18], then x += proj_aux(aux).
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** 2 missing keys (proj_aux.{weight,bias}). Zero-init verified. Params: 91.33M (+4.9K). Launching next with --lr=2e-4.
+
+### 2026-04-17 — exp29: chain exp28 (out_refine) + lr=2e-5
+- **Hypothesis:** Exp28 regressed to 0.9110 from 0.9027 (same arch-add pattern). Chain at lr=2e-5 to recover the fresh out_refine layer while preserving main weights. Based on recipe: multi-scale (+0.016), FiLM (+0.010), triple-scale (+0.006) → out_refine expected +0.003-0.005.
+- **Change:** --warm_start=<exp28 ckpt model-kgxzr9zm> --lr=2e-5. No code changes.
+- **Result:** val/l2=**0.8965** @ epoch 14 (30.2 min). train=0.0033. mae_Ux=0.6032, mae_Uy=0.2717, mae_Uz=0.4154. Val plateaued E2 onwards (0.8965-0.8984).
+- **Verdict:** KEPT — +0.0062 over exp27 (0.9027). 4th arch-add + chain cycle. Pattern: {multi-scale 0.016, FiLM 0.010, triple-scale 0.006, out_refine 0.006}. Diminishing returns on local arch additions.
+- **Notes:** Ckpt: model-hvoch2y9. Distance to leader (thorfinn=0.7670): 0.1295. Need bigger moves — small arch-add saturates. Next: velocity temporal-difference features (acceleration signal) via zero-init proj_aux.
+
 ### 2026-04-17 — exp28: out_refine residual MLP (warm-start from exp27)
 - **Hypothesis:** Per-component MAE shows Ux gap biggest (0.61 vs leader's 0.52). Maybe output stage is the bottleneck. Add a residual MLP (LayerNorm → Linear hidden→2*hidden → GELU → Linear 2*hidden→hidden) between final block and proj_out. Zero-init last Linear → identity at init → warm-start safe. Per-block FiLM already conditioning; this gives extra compute at output.
 - **Change:** train.py: BaselineMLP.__init__ adds self.out_refine Sequential, forward adds `x = x + self.out_refine(x)` before proj_out.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** 6 missing keys (out_refine). Params: 91.1M → 91.3M (tiny). Verified zero-init at warm-start (max abs = 0).
+- **Result:** val/l2=**0.9110** @ epoch 16 (30.3 min). train=0.0041. Val trajectory: 0.9471→0.9278→0.9276→0.9110→0.9133. mae_Ux=0.6134, mae_Uy=0.2768, mae_Uz=0.4211.
+- **Verdict:** HOLD — worse than exp27 (0.9027) by 0.0083. Same arch-add undertrained pattern. Val still climbing at timeout. Will chain.
+- **Notes:** 6 missing keys (out_refine). Params: 91.1M → 91.3M (tiny). Ckpt: model-kgxzr9zm.
 
 ### 2026-04-17 — exp27: chain warm-start from exp26 + lr=5e-6
 - **Hypothesis:** Exp26 val stable 0.9035-0.9061. Very low LR chain for last refinement. Expected Δ~0.001-0.003.

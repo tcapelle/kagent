@@ -208,6 +208,13 @@ class BaselineMLP(nn.Module):
         out_dim = T_OUT * 3
         self.proj_in = nn.Linear(in_dim, hidden)
 
+        # Aux input: temporal derivatives of input velocity ([T_IN-1, 3] diffs + mean + std).
+        # Zero-init → aux contribution = 0 at warm-start.
+        aux_dim = (T_IN - 1) * 3 + 3 + 3  # 4 first-diffs + 3 mean + 3 std
+        self.proj_aux = nn.Linear(aux_dim, hidden)
+        nn.init.zeros_(self.proj_aux.weight)
+        nn.init.zeros_(self.proj_aux.bias)
+
         blocks = []
         for _ in range(n_blocks):
             blocks.append(ResBlock(hidden))
@@ -276,6 +283,14 @@ class BaselineMLP(nn.Module):
         sdf, is_af = self._geom_features(pos, idcs_airfoil)
         x = torch.cat([pos, fpos, v_feat, sdf, is_af], dim=-1)
         x = self.proj_in(x)
+
+        # Aux: temporal derivatives (acceleration proxy) + per-point velocity moments.
+        v_diff = v_in_norm[:, 1:] - v_in_norm[:, :-1]  # [B, 4, N, 3]
+        v_diff_feat = v_diff.permute(0, 2, 1, 3).reshape(B, N, (T - 1) * C)  # [B, N, 12]
+        v_mean = v_in_norm.mean(dim=1)  # [B, N, 3]
+        v_std = v_in_norm.std(dim=1, unbiased=False)  # [B, N, 3]
+        aux = torch.cat([v_diff_feat, v_mean, v_std], dim=-1)
+        x = x + self.proj_aux(aux)
 
         film_all = self.time_enc(t)  # [B, n_blocks_total, 2, hidden]
         for i, blk in enumerate(self.blocks):
