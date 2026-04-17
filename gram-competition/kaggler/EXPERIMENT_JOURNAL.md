@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v28 KEPT — full-cosine (epochs=90 MAX_TIMEOUT=90) solo-best ever, 15-seed weighted 0.7607 (gain 0.0022)
+- **Hypothesis:** every prior long seed cut at ~ep69 with LR still ~0.06× init — model never reached the LR→0 settled minimum. Completing the full 90-epoch cosine schedule should give both (a) a stronger solo (more fine-tuning at low LR) and (b) a genuinely new basin (ending at LR=0 vs cut at LR=0.06).
+- **Change:** CLI + env — `MAX_TIMEOUT_MIN=90 python train.py --epochs 90`. train.py untouched.
+- **Result:** v28 solo val/l2 = **0.8541** at ep89 — **new single-seed best** (beats v21 0.8549). 15-seed weighted (softmax T=0.02) = **0.7607** (vs 14-seed weighted 0.7629). Gain 0.0022 — noticeably above the 0.0017 plateau of the last few axes. 12.6% under v6 solo.
+- **Verdict:** strongly kept. Both a new solo-best and a meaningful ensemble gain.
+- **Notes:** Hypothesis validated on both fronts. The last 21 epochs at near-zero LR matter a lot. Full-cosine is now the strongest single training regime. Next (v29): train **another** full-cosine seed. If het-within-axis diminishing applies here the same way as for epochs=90-cut, we'd still expect ~0.0015-0.0020 further gain. Longer-term, v30+ should try `epochs=120 MAX_TIMEOUT=90` — slower anneal to LR=0, may dig deeper.
+
+
 ### 2026-04-17 — v27 KEPT — wd=5e-5 (half baseline), 14-seed weighted 0.7629 (gain 0.0017)
 - **Hypothesis:** v25 (wd=3e-4, 3× baseline) had a weaker solo (0.866). The opposite direction — wd=5e-5 (half baseline) — should give stronger solo (less regularization) while still being an untested basin.
 - **Change:** CLI — `--weight_decay 5e-5 --epochs 90`.
