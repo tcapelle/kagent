@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v7: two-scale voxel-mix (0.08 + 0.25)
+- **Hypothesis:** v6 used a single mix scale 0.12. Adding a coarser
+  second scale (0.25) should capture longer-range structure while
+  keeping fine detail at 0.08 — covering wake + near-airfoil regions.
+- **Change:** `model.py` → `VOXEL_MIX_SCALES = (0.08, 0.25)`. Same
+  `MIX_EVERY=2`, 10 ResBlocks, hidden=512. 90 min budget.
+- **Result:** Best val/l2=**1.1824** at epoch 36 of 36 (90 min timeout).
+  Train 0.044 → 0.0155. Per-epoch 136s (vs v6 ~105s average). v7 was
+  ahead of v6 at matched epoch count (ep29: v7=1.22 vs v6=1.26) but
+  the extra mix scale slowed epochs so v6 got 52 vs v7's 36.
+  WandB `edward/v7-multiscale-mix`.
+- **Verdict:** Discarded — worse than v6 (1.1681). Architecture is
+  per-epoch better but slower, and cosine schedule (epochs=100) didn't
+  fully anneal at timeout.
+- **Notes:** If retrying, either set `epochs` closer to the expected
+  budget so LR actually decays, or drop the coarser scale. Better
+  next step: real learned aggregation on voxel tokens, not gated
+  mean-pooling.
+
 ### 2026-04-16 — v6: iterative voxel-mix + 90 min budget
 - **Hypothesis:** v4's per-point MLP never mixes latent representations
   across space. Adding lightweight scatter-mean message passing between
