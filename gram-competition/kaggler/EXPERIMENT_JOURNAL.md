@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Anneal cycle 5 (dropout=0 from iter31.final) + 21-model ensemble (iter 32, ensemble-only KEPT)
+- **Hypothesis:** Continue the anneal-side of the cycle from iter 31 (p=0.25 drop end-state).
+- **Change:** no code. `--resume .../model-42qyl35y/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0546** at E12/18 (31.1 min, init 1.0580) — tightest iter-32 dip (0.0016 from floor). Final.pt (E18, val=1.0585) staged as iter32.pt. **21-model ensemble:**
+  - **1.0225** ← submitted (0.11% drop from 1.0236)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — 7th consecutive cycle gain. **Cumulative session: 1.0625 → 1.0225 = 3.8%.**
+- **Notes:** The anneal step from higher-p (p=0.25) source gave slightly better best-within-run (1.0546) than prior anneal steps from p=0.15/0.2 sources (1.0547, 1.0557). Pattern suggests higher drop p generates a weight configuration that's easier to anneal toward floor. Iter 33 priorities: (a) **continue drop-step at p=0.3** (extrapolate p sweep); (b) **second FiLM layer post-blocks**; (c) **skip a few iters back to iter 21/23 lineage and branch off with noise injection** (different recipe). (a) continues proven path.
+
 ### 2026-04-17 — Dropout cycle 5 (p=0.25 from iter30.final) + 20-model ensemble (iter 31, ensemble-only KEPT)
 - **Hypothesis:** Continue drop-step of cycle with p=0.25 (sweeping p ∈ {0.10, 0.15, 0.20, 0.25}).
 - **Change:** no code. `--resume .../model-ngv9y4uc/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.25 --best_val_floor 1.0530 --epochs 25`.
