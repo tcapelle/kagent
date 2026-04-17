@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp20: chain warm-start from exp19 + lr=2e-5
+- **Hypothesis:** Exp19 val stable at 0.9238-0.9283 (E12-23). Best at E12 suggests quick overfit. Chain at lr=2e-5 should refine without moving too far. Expect Δ~0.003-0.007.
+- **Change:** --warm_start=<exp19 ckpt model-fdr738d3> --lr=2e-5. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Multi-scale arch ckpt doesn't fit in git (122MB fp16). Code is in git; ckpt stays in PVC only. Predictions on PVC are sufficient for leaderboard.
+
 ### 2026-04-17 — exp19: chain warm-start from exp18 + lr=5e-5
 - **Hypothesis:** Exp18 val was still dropping rapidly at E22-24 (0.9469→0.9411). Coarse branch needs more epochs at a lower LR to refine without destroying fine-branch weights. Chain at lr=5e-5 for 30 more min. If it beats exp17's 0.9396, commit the full multi-scale arch.
 - **Change:** --warm_start=<exp18 ckpt model-5qrjp5if> --lr=5e-5. No code changes.
