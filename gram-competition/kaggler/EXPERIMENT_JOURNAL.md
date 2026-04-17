@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter26: fresh-init training for ensemble diversity + best 3-model ensemble
+- **Hypothesis:** iter25 ensemble gain came almost entirely from iter19+iter24 (the chain endpoints). A *fresh-initialized* model will have genuinely decorrelated errors (different local minimum basin), so swapping iter23 for a fresh model should give a bigger ensemble gain. Train iter26 from scratch with same config as iter19 — diversity is in the init, not the architecture.
+- **Change:** re-ran `python train.py --epochs 28 --agent nezuko` (no `--resume_from`). Different random seed by default.
+- **Result:** iter26 standalone val/l2 = **0.9377** at e25/28 (worse than iter19's 0.9316 — slightly different init, slightly worse optimum, expected). BUT ensemble results transform:
+  - iter19 + iter24 + **iter26** (3-model): val l2 = **0.8622** (direct, with TTA)
+  - iter19 + iter23 + iter24: val l2 = 0.8784 (previous iter25 best)
+  - iter19 + iter23 + iter24 + iter26 (4-model): val l2 = 0.8634 (iter23 adds correlated noise)
+- **Verdict:** **kept** — new best ensemble. −0.016 vs iter25 (0.8784 → 0.8622). Gap to alphonse (0.7800) narrowed from 0.098 to 0.082. Submission at `nezuko/1f958fd`.
+- **Notes:** Confirms that *diversity of init* beats *depth of chain*: a single fresh-init model contributes more ensemble signal than two chain-continuation models. For future iter: train iter27 with yet another fresh init, or with a deliberately different architectural knob (depth=4, grid=64, different loss) — each genuinely-decorrelated model should halve the remaining gap.
+
 ### 2026-04-17 — iter25: 3-model ensemble (iter19 + iter23 + iter24), each with y-flip TTA
 - **Hypothesis:** chain warm-starts are saturating (iter23→iter24 gained only 0.0014 val). But iter19 and iter24 are 6-7 "equivalent epochs" apart on the chain and converge to slightly different local minima — averaging their predictions at inference should offset uncorrelated errors. Free gain, no training.
 - **Change:** new `ensemble_predict.py` — loads N checkpoints, does y-flip TTA per model, averages. Also prints val l2_error directly.
