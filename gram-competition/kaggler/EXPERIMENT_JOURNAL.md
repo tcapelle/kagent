@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v9: pure v6 + 130 min budget (70 epochs)
+- **Hypothesis:** v6 was still descending at its 52 ep / 90 min timeout.
+  With a properly sized cosine schedule (epochs=70) and 130 min budget
+  the same architecture should land meaningfully below 1.1681.
+- **Change:** No model changes (v6: VOXEL_MIX_SCALES=(0.12,), MIX_EVERY=2,
+  n_blocks=10, hidden=512). Only hyperparams: epochs 52→70,
+  MAX_TIMEOUT_MIN 90→130.
+- **Result:** Best val/l2=**1.1828** at epoch 69 of 70 (130.5 min, 97s/ep).
+  Train loss 0.044 → 0.014. Val trajectory: 1.34 (ep20), 1.30 (ep26),
+  1.29 (ep30), 1.27 (ep34), 1.26 (ep36), 1.24 (ep40), 1.23 (ep43, ep45),
+  1.22 (ep47), 1.21 (ep48, ep50), 1.19 (ep53, ep55, ep57),
+  1.188 (ep58, ep60), 1.184 (ep61, ep66), 1.183 (ep67, ep68, ep69).
+  WandB `edward/v9-v6-long`.
+- **Verdict:** Discarded — matches v6 (1.1681) within noise, does not beat.
+  Confirms v6 architecture is at its plateau; longer training alone
+  won't break through.
+- **Notes:** Val improved ~0.01 over last 10 epochs (ep60→70) as LR
+  finished decaying, so the late-annealing hypothesis was weakly
+  confirmed. But the floor is ~1.18 for this architecture regardless.
+  Next must add genuine capacity or a different inductive bias.
+
 ### 2026-04-17 — v8: + mid-network voxel-token transformer (scale 0.10)
 - **Hypothesis:** v6's iterative scatter-mean mix gives only local
   receptive field. Adding a single mid-network transformer over
