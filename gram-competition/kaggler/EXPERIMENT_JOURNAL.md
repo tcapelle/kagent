@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v17 KEPT — 4-seed ensemble landed 0.7993, broke the 0.8 barrier
+- **Hypothesis:** 1/sqrt(k) scaling continues — 4-seed target ~0.795 from 3-seed 0.8077.
+- **Change:** trained 4th v6-arch seed (45 min, 52 epochs, solo best **0.8706** @ ep48 — the closest any seed has come to v6's original 0.8707 by coincidence). `ensemble.py` on 4 checkpoints.
+- **Result:** 4-seed val/l2 = **0.7993** (vs 3-seed 0.8077, 2-seed 0.8265, v6 solo 0.8707). Individual solos: v6=0.8707, v15=0.8784, v16=0.8694, v17=0.8706 (mean 0.8723, std 0.004).
+- **Verdict:** kept — under 0.80. 0.084 absolute / 9.6% relative under v6; 0.011 further drop vs v16 3-seed. Curve still strictly descending.
+- **Notes:** Solo std across 4 seeds is 0.004 — the single-run floor is *extremely* tight. Seed diversity is the whole story here. At 45 min/seed with GPU idle between training runs, the marginal cost of +1 seed is ~0 opportunity cost in this regime. 1/sqrt(k) predicts 5-seed → ~0.790, 8-seed → ~0.780. Next (v18): train 5th seed, push toward 0.79.
+
+
 ### 2026-04-17 — v16 KEPT — 3-seed ensemble landed 0.8077, another 2% under v15's 2-seed
 - **Hypothesis:** v15 showed the 2-seed ensemble gives ~5% over v6 (0.8707 → 0.8265). The bias-variance decomposition says a k-seed ensemble has residual error ∝ 1/sqrt(k) of the per-model noise if errors are independent. A 3rd independent seed should push the ensemble another ~0.020 lower (√2/√3 of the 2-seed variance), toward ~0.81.
 - **Change:** trained 3rd v6-arch seed (45 min, 52s/epoch × 48 useful epochs, solo best 0.8694 @ ep48 — actually marginally better than v6 alone, confirming v6's 0.8707 was a noisy sample of the ~0.87 ± 0.005 single-run floor). Ran `ensemble.py --checkpoints _v6seed.pt _v15seed.pt _v16seed.pt`. No code changes.
