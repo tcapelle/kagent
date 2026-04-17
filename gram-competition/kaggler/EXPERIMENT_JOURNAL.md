@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp21: chain warm-start from exp20 + lr=1e-5
+- **Hypothesis:** Cheap-harvest: one more chain step at lr=1e-5 should extract last refinement. Expected Δ~0.001-0.002 based on geometric decay (0.0036→half).
+- **Change:** --warm_start=<exp20 ckpt> --lr=1e-5. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** After this, chain likely fully saturated. Pivot to FiLM time conditioning (exp22) — t is still unused and contains useful absolute-time signal (confirmed sample-specific, continuous 0.3-0.4 range).
+
 ### 2026-04-17 — exp20: chain warm-start from exp19 + lr=2e-5
 - **Hypothesis:** Exp19 val stable at 0.9238-0.9283 (E12-23). Best at E12 suggests quick overfit. Chain at lr=2e-5 should refine without moving too far. Expect Δ~0.003-0.007.
 - **Change:** --warm_start=<exp19 ckpt model-fdr738d3> --lr=2e-5. No code changes.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Multi-scale arch ckpt doesn't fit in git (122MB fp16). Code is in git; ckpt stays in PVC only. Predictions on PVC are sufficient for leaderboard.
+- **Result:** val/l2=**0.9202** @ epoch 10 (30.9 min). train=0.0040. Val stable 0.9202-0.9228 E10-24. run run id in PVC model-<exp20>.
+- **Verdict:** KEPT — +0.0036 over exp19 (0.9238). Chain refinement of multi-scale arch. Best at E10 again (similar quick-minimum as exp19). Val floor 0.9202-0.9211 through E24.
+- **Notes:** Multi-scale chain progression: exp18(0.9411 undertrained) → exp19(0.9238, Δ=0.0158 with lr=5e-5) → exp20(0.9202, Δ=0.0036 with lr=2e-5). Geometric decay. Distance to leader: 0.9202 - 0.8132 = 0.107.
 
 ### 2026-04-17 — exp19: chain warm-start from exp18 + lr=5e-5
 - **Hypothesis:** Exp18 val was still dropping rapidly at E22-24 (0.9469→0.9411). Coarse branch needs more epochs at a lower LR to refine without destroying fine-branch weights. Chain at lr=5e-5 for 30 more min. If it beats exp17's 0.9396, commit the full multi-scale arch.
