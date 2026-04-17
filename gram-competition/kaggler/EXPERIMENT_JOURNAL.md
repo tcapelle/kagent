@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — airfoil-mask channel + y-flip augmentation (small voxel 48/64/4) [discarded]
+- **Hypothesis:** After exp 3's failure, isolate on the small architecture: add (a) per-voxel airfoil-occupancy channel and (b) y-flip augmentation (~2× effective data since geometries are near-symmetric across x–z plane). Keep architecture identical to exp 2 so epoch time is unchanged and cosine LR still reaches its planned min.
+- **Change:** `VoxelFlowNet._voxelize` takes `idcs_airfoil` and scatters an extra airfoil-mask channel (17 input channels: 15 v_in + 1 occupancy + 1 airfoil). `train.py` y-flip aug (50% prob: flip pos[...,1], v_in[...,1], v_out[...,1]). No capacity changes.
+- **Result:** val/l2_error = **1.0198** (epoch 34 of 35 @ 30.1 min, 7.0 GB peak). Train loss 0.0111 (vs exp 2's 0.008 at the same point).
+- **Verdict:** Discarded. Slightly worse than exp 2 (1.0049) on both train AND val. Reset to exp 2 checkpoint.
+- **Notes:** Both train AND val regressed → aug/features didn't help fitting. Most likely y-flip is the culprit: F1 front wings are close to but not exactly symmetric (asymmetric wake structure, suspension fairings), so flipping produces slightly invalid (velocity-in, velocity-out) pairs that dilute the signal. Airfoil mask alone is probably neutral-to-helpful but got blamed-by-association. Bundled two factors again — violated the lesson from exp 3. Next: try just the LR schedule fix (cfg.epochs=35 to fully anneal cosine within 30 min), a pure hygiene change with no architectural risk.
+
 ### 2026-04-17 — scale-up voxel (ch=96, blocks=6, p=512/8) + airfoil-mask + y-flip [discarded]
 - **Hypothesis:** A larger voxel CNN + an explicit airfoil-occupancy channel + y-flip augmentation (geometries are near-symmetric about the x–z plane) should push past 1.00. Added all three in one run.
 - **Change:** `VoxelFlowNet` with grid_ch=96, n_grid_blocks=6, point_hidden=512, n_point_blocks=8; airfoil mask scattered alongside occupancy (17 input channels); y-flip augmentation in `train.py` (50% probability per batch, flip y-coord of pos and y-component of v_in/v_out).
