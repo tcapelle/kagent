@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Low-LR squeeze (lr=5e-5, lambda=0.3) + 13-model ensemble (iter 24, ensemble-only KEPT)
+- **Hypothesis:** Iter 23 showed clear overfitting (train 0.75 vs val 1.05, gap 0.30). Back off over-regularisation — lower Sobolev lambda from 0.5/0.7 to 0.3 — but simultaneously drop LR from 1e-4 to 5e-5 to tighten the warm-start into a flatter minimum. Warm-start from iter 23 FiLM checkpoint (1.0530).
+- **Change:** `--resume checkpoints/best.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.3 --epochs 25` (one-line hyperparam change; no architecture change).
+- **Result:** best within-run = 1.0561 at E2/18 (31.1 min timeout), never beat floor 1.0530 → `best.pt` untouched. E3-E18 drifted in 1.057-1.063 band as train slid from 0.786 → 0.745 (overfitting continued). Final.pt (E18 weights, val=1.0628) staged as iter24.pt. **13-model ensemble (iter 12-24):**
+  - **1.0306** ← submitted (0.08% drop from 1.0314)
+- **Verdict:** Single-model DISCARDED (worse than iter 23). Ensemble inclusion **KEPT** — weak solo member still added decorrelation. Cumulative session: **1.0625 → 1.0306 = 3.0%**.
+- **Notes:** Low-LR didn't beat floor; LR=5e-5 was too low to escape iter 23's basin meaningfully — essentially a noisy drift around the same local minimum. Train loss kept dropping while val was flat/climbing, confirming the overfit diagnosis but showing the low-LR tightening doesn't help val. The 0.08% ensemble gain is the smallest so far — ensemble decay curve is approaching zero. **Need fundamentally different training recipe.** Iter 25 priorities: (a) **input dropout as regulariser** — randomly drop input points at train time (p=0.1) to force robustness; zero-cost at inference; (b) **multi-seed diversity** — same hyperparams as iter 23 but with `torch.manual_seed(1337)` (instead of default) to explore a different basin and add true decorrelation; (c) **M=48 slices** (physics attention) — increase capacity along the slice dim. (b) is cheapest and most likely to yield ensemble gain when warm-start chain has stagnated.
+
 ### 2026-04-17 — Full FiLM (scale + shift) + 12-model ensemble (iter 23, KEPT)
 - **Hypothesis:** iter 21's FiLM was shift-only. Adding a per-block zero-init *scale* branch completes the FiLM formulation (`x * (1 + scale) + shift`). Scale=0 at init preserves warm-start identity; over training each block learns a multiplicative geometry gate independent from the additive shift.
 - **Change:** `train.py` — added `self.block_film_scale: ModuleList[8 × MLP(36→H→H)]` alongside the existing `block_geom` (shift). Zero-init on both tail Linears. Forward: `x = x * (1 + scale) + shift` before each block. Warm-start load: 32 missing keys (all `block_film_scale.*`) → all zero-init → identity. Hyperparams: `--resume --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --epochs 25`.
