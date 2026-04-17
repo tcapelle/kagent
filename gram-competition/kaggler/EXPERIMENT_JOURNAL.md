@@ -22,6 +22,30 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v8: + mid-network voxel-token transformer (scale 0.10)
+- **Hypothesis:** v6's iterative scatter-mean mix gives only local
+  receptive field. Adding a single mid-network transformer over
+  voxel tokens (~1.2k tokens at scale 0.10) gives every point one
+  global-receptive-field event. Should beat v6's 1.1681.
+- **Change:** `model.py` → new `VoxelTokenMix` (scatter-mean pool to
+  voxel tokens with positional encoding from voxel centroid, 2-layer
+  self-attention, scatter back via tanh-gated gather). Inserted once
+  after `n_blocks // 2`. Params 8M → 15M. Cosine `epochs=45` to align
+  with 90 min budget (avoid v7's premature-cut LR schedule).
+- **Result:** Best val/l2=**1.2344** at epoch 38 of 45 (77 min).
+  Train loss 0.044 → 0.018 — *higher* than v6's 0.014 despite 2× the
+  params. Val plateaued at ~1.23 from ep28 onward.
+  WandB `edward/v8-token-transformer`.
+- **Verdict:** Discarded — significantly worse than v6 (1.1681).
+  Extra capacity didn't translate to better fit, suggesting the
+  attention block was hard to optimize and/or the tanh-gated residual
+  collapsed to ≈0. Cosine schedule fully decayed by ep42 with no late
+  improvement.
+- **Notes:** Stop adding capacity until we have evidence v6 hit a
+  capacity ceiling (it didn't — v6's train loss kept descending).
+  Next: v9 = pure v6 with longer training budget to see if v6 still
+  has room with more time.
+
 ### 2026-04-17 — v7: two-scale voxel-mix (0.08 + 0.25)
 - **Hypothesis:** v6 used a single mix scale 0.12. Adding a coarser
   second scale (0.25) should capture longer-range structure while
