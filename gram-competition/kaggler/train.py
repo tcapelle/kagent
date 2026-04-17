@@ -578,6 +578,7 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    resume_from: str | None = None  # path to ckpt to warm-start from; short warmup+cosine
 
 
 if __name__ == "__main__":
@@ -599,15 +600,20 @@ if __name__ == "__main__":
 
     model = VoxelUNet(**MODEL_CFG, vel_mean=stats["vel_mean"], vel_std=stats["vel_std"]).to(device)
 
+    if cfg.resume_from:
+        model.load_state_dict(torch.load(cfg.resume_from, map_location=device, weights_only=True))
+        print(f"Resumed from {cfg.resume_from}")
+
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     # Cosine schedule over the actual number of optimizer steps we expect to run.
     steps_per_epoch = max(1, len(train_loader) // GRAD_ACCUM)
     total_steps = steps_per_epoch * MAX_EPOCHS
+    warmup = 50 if cfg.resume_from else WARMUP_STEPS
     def lr_lambda(step):
-        if step < WARMUP_STEPS:
-            return step / max(1, WARMUP_STEPS)
-        progress = (step - WARMUP_STEPS) / max(1, total_steps - WARMUP_STEPS)
+        if step < warmup:
+            return step / max(1, warmup)
+        progress = (step - warmup) / max(1, total_steps - warmup)
         progress = min(max(progress, 0.0), 1.0)
         return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.14159265)).item())
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)

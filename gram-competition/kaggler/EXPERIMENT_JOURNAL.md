@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter23: warm-start fine-tune from iter19 ckpt (extend effective budget)
+- **Hypothesis:** iter19 (val 0.9316) + every capacity-bump iter21/22 loses because a single 30-min run can't fit both capacity *and* the full cosine tail. Warm-starting from iter19's checkpoint with a short cosine (lr=1e-4, 20 ep, warmup=50) effectively extends total training to ~48 epochs, squeezing more annealing out of the existing architecture at no capacity cost.
+- **Change:** `train.py` — add `--resume_from` CLI flag; load state_dict and use a shorter warmup (50 steps) when resuming.
+- **Result:** pending.
+- **Verdict:** pending.
+- **Notes:** Budget-saving, not capacity-adding. If this works, the same trick can chain across runs.
+
+### 2026-04-17 — iter22: base_ch 128→160 (DISCARDED)
+- **Hypothesis:** wider voxel features close the gap; bf16 headroom from iter18 should absorb the 25% cost bump.
+- **Change:** `train.py` — `base_ch=160`, `epochs=22`.
+- **Result:** 82s/ep (too slow) — cosine only reached e20 before 28-min timeout; best val **0.9489**. LB with TTA: **0.9171**.
+- **Verdict:** **discarded** — worse than iter19 (val 0.9316, LB 0.8969) by +0.02 val / +0.02 LB. Same pattern as iter16/17: capacity bump eats the cosine tail.
+- **Notes:** Any change that raises s/epoch above ~60 loses. bf16 headroom is not enough for +25% width when we're already running depth=3.
+
+### 2026-04-17 — iter21: Transolver slice_num 32→64 (retry iter17 with bf16+depth3 context) (DISCARDED)
+- **Hypothesis:** iter17's slice=64 failed because epoch budget ran out (fp32 + depth=2). With bf16 + depth=3 headroom, slice=64 should finally add useful capacity.
+- **Change:** `train.py` — `transolver_slice_num=64`, `epochs=25`.
+- **Result:** val **0.9319** (essentially tied with iter19's 0.9316). LB with TTA: **0.9102** (vs iter19's 0.8969, +0.013).
+- **Verdict:** **discarded** — LB regressed. TTA benefit halved; slice=64 model is less y-flip-robust.
+- **Notes:** Slice count beyond 32 over-parameterizes the physics-clustering; soft-assignments get noisier and break the y-symmetry TTA relies on. Stick with slice=32.
+
 ### 2026-04-17 — iter19: Transolver depth=3 + bf16 (retry iter16 with budget headroom)
 - **Hypothesis:** iter16 (depth=3) failed purely because of budget — 96s/ep × 20 epochs ate the cosine tail. With iter18's bf16 speedup, depth=3 should run at ~60s/ep, fitting 28 epochs in ~28 min. The +1 Transolver block adds a round of global mixing; iter16's curve was 1 epoch ahead of iter15's early, so the architecture is right — it just needs the full cosine.
 - **Change:** `train.py` — `transolver_depth=3` (on top of iter18 bf16 + epochs=28).
