@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Full FiLM (scale + shift) + 12-model ensemble (iter 23, KEPT)
+- **Hypothesis:** iter 21's FiLM was shift-only. Adding a per-block zero-init *scale* branch completes the FiLM formulation (`x * (1 + scale) + shift`). Scale=0 at init preserves warm-start identity; over training each block learns a multiplicative geometry gate independent from the additive shift.
+- **Change:** `train.py` — added `self.block_film_scale: ModuleList[8 × MLP(36→H→H)]` alongside the existing `block_geom` (shift). Zero-init on both tail Linears. Forward: `x = x * (1 + scale) + shift` before each block. Warm-start load: 32 missing keys (all `block_film_scale.*`) → all zero-init → identity. Hyperparams: `--resume --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --epochs 25`.
+- **Result:** best single = **1.0530** at E11/18 (31.1 min, warm-start init 1.0530 — tied with iter 21's best). VRAM 19.7 GB (up from 17.0 w/ shift-only). Trajectory: E1 regression to 1.063, noisy 1.055-1.066 through E10, **E11 tied floor at 1.053** (barely), reverted to 1.056-1.058 thereafter. **12-model ensemble:**
+  - **iter 12-23: 1.0314** ← submitted (0.11% drop from 1.0326)
+- **Verdict:** KEPT (ensemble gain; single tied). Cumulative session: **1.0625 → 1.0314 = 2.9%**. Cumulative since iter 10: **1.2218 → 1.0314 = 15.6%**.
+- **Notes:** Adding the scale branch doubled FiLM params but didn't move single-model past iter 21 — FiLM shift alone captured most of the geometric-conditioning signal. The scale branch still contributed to ensemble diversity (+0.11%). Ensemble gain curve continues to decay (0.4% → 0.35% → 0.3% → 0.23% → 0.2% → 0.11%). Need a genuinely different training recipe to refresh decorrelation. Iter 24 priorities: (a) **low-LR squeeze** (lr=5e-5, lambda=0.3 — back off over-regularisation since train 0.87 vs val 1.05, not under-fitting); (b) **fresh-train with FiLM arch + phase-warmup schedule** (Sobolev=0 for first 3 epochs to escape copy-last, then ramp to 0.3); (c) **multi-seed ensemble**: set torch.manual_seed differently, warm-start from same ckpt, train for 20 epochs — ensemble guaranteed different trajectories. (a) is cheapest first test.
+
 ### 2026-04-17 — FiLM + Sobolev lambda=0.7 (iter 22, single DISCARDED, ensemble-only KEPT)
 - **Hypothesis:** Continue Sobolev sweep (0.5 → 0.7) on the new FiLM architecture. With per-block geometry conditioning having already loaded the capacity side, a stronger Sobolev should pull val down another 0.1-0.2%.
 - **Change:** `--resume checkpoints/best.pt --sobolev_lambda 0.7 --lr 1e-4 --warmup_steps 30 --epochs 25` (one-flag change from iter 21).

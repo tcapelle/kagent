@@ -278,12 +278,14 @@ class BaselineMLP(nn.Module):
             PhysicsAttentionBlock(hidden, n_slices=n_slices, n_heads=n_heads)
             for _ in range(n_blocks)
         ])
-        # Per-block zero-init additive "FiLM-lite" branch: each block gets its own
-        # MLP that maps the combined geometry feature (sdf + rel, Fourier-encoded)
-        # to a per-point shift added into the trunk *before* that block. This lets
-        # each block condition on geometry separately instead of the single-shot
-        # injection at the input (iter 15-16). Zero-init on the final Linear keeps
-        # warm-start identical to iter 20.
+        # Per-block zero-init FiLM branches: each block gets its own MLPs that map
+        # the combined geometry feature (sdf + rel, Fourier-encoded) into a
+        # per-point (scale, shift). Shift (block_geom) was added in iter 21; iter
+        # 23 adds the multiplicative scale (block_film_scale), giving the full
+        # (x * (1 + s) + b) FiLM conditioning instead of shift-only. Both branches
+        # are zero-init on their final Linear so warm-start from iter 21's ckpt
+        # produces exactly identical output at init (missing block_film_scale
+        # defaults to zero → scale=0 → multiplier (1+0)=1, identity).
         geom_feat_dim = sdf_feat_dim + rel_feat_dim   # 9 + 27 = 36
         self.geom_feat_dim = geom_feat_dim
         self.block_geom = nn.ModuleList([
@@ -294,7 +296,18 @@ class BaselineMLP(nn.Module):
             )
             for _ in range(n_blocks)
         ])
+        self.block_film_scale = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(geom_feat_dim, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, hidden),
+            )
+            for _ in range(n_blocks)
+        ])
         for m in self.block_geom:
+            nn.init.zeros_(m[-1].weight)
+            nn.init.zeros_(m[-1].bias)
+        for m in self.block_film_scale:
             nn.init.zeros_(m[-1].weight)
             nn.init.zeros_(m[-1].bias)
         # Time-conditioned decoder: shared across output steps, but each step gets
@@ -338,10 +351,12 @@ class BaselineMLP(nn.Module):
         x = x + self.sdf_embed(sdf_feat)
         rel_feat = fourier_encode(rel, self.rel_n_freqs)                # [B, N, 27]
         x = x + self.rel_embed(rel_feat)
-        # Combined geometry feature fed into each block's FiLM-lite branch.
+        # Combined geometry feature fed into each block's FiLM branch.
         geom_feat = torch.cat([sdf_feat, rel_feat], dim=-1)             # [B, N, 36]
         for i, block in enumerate(self.blocks):
-            x = x + self.block_geom[i](geom_feat)
+            scale = self.block_film_scale[i](geom_feat)                  # [B, N, H]
+            shift = self.block_geom[i](geom_feat)                        # [B, N, H]
+            x = x * (1 + scale) + shift
             x = block(x)
         x = self.ln_dec(x)  # [B, N, hidden]
 
