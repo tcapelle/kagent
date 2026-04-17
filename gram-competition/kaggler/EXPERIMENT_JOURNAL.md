@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Sobolev lambda=0.7 warm-start + 8-model ensemble (iter 19, KEPT)
+- **Hypothesis:** Continue the lambda sweep (0.1 → 0.3 → 0.5 → 0.7). Train/val gap in iter 18 was 0.97 vs 1.06 — still room for the gradient-matching term to pull val down without collapsing train to under-fit.
+- **Change:** `--resume checkpoints/best.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.7 --epochs 25` (one flag changed from iter 18).
+- **Result:** best single = **1.0556** at E13/19 (30.8 min, warm-start init 1.0573). Trajectory: E1 regression 1.066 (Sobolev shock) → E5 1.058 → E9 1.057 → **E13 1.0556** → oscillating 1.057-1.059 thereafter. Train loss 1.06-1.17 (much higher than iter 18's 0.97 — Sobolev term now dominates L2 in the combined loss, but val still improved). **8-model ensemble** (iter 12-19 via auto-submit path):
+  - iter 19 alone: 1.0556
+  - **iter 12-19: 1.0398** ← submitted (b5bed86)
+- **Verdict:** KEPT. **1.0573 → 1.0556 = 0.16% (single), 1.0435 → 1.0398 = 0.35% (ensemble).** Cumulative session (iter 16 start): **1.0625 → 1.0398 = 2.1%**. Cumulative since iter 10: **1.2218 → 1.0398 = 14.9%**.
+- **Notes:** lambda sweep pattern (single-model drop %): 0.1→0.3 = 0.3%, 0.3→0.5 = 0.2%, 0.5→0.7 = 0.16%. Clear diminishing returns; lambda=1.0 likely <0.1% on single, ~0.2% on ensemble. Ensemble diminishing too (0.9→0.6→0.4→0.35%). Gap to leader #5 (askeladd 0.9995) is now ~4.0%; linear λ-sweep extrapolation won't close it. Iter 20 priorities: (a) **weight-decay bump 1e-4→1e-3** stacked on lambda=0.7 (attacks overfit through a second channel, cheap to try), (b) **FiLM conditioning** on trunk blocks using the existing SDF+rel features (richer use of geometry — current branches only add once at input), (c) finally try wider-fresh-train with a 60-min budget. (a) first since it's free and independent.
+
 ### 2026-04-17 — Sobolev lambda=0.5 warm-start + 7-model ensemble (iter 18, KEPT)
 - **Hypothesis:** Continue the lambda sweep (0.1 → 0.3 → 0.5) — train/val gap is still the dominant overfit signal (iter 17 train 0.77 vs val 1.06). Also attempted two fresh-train variants first (A: lambda=0.1, B: lambda=0) to seed a *genuinely decorrelated* ensemble member; both stalled at copy-last (val~1.75) — Sobolev on random init is too destabilising, and no-Sobolev fresh-train was too slow to phase-transition inside budget under transient GPU contention (some epochs spiked to 150-250s). Pivoted to a safer lambda=0.5 warm-start.
 - **Change:** `train.py` — added `--best_val_floor` config arg (gates checkpoint saving; prevents an exploratory run from clobbering a better in-repo best.pt) and unconditionally dumps a `final.pt` at end of training so a "no-improvement" run can still be ensemble-tested. Run: `--resume checkpoints/best.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --epochs 25`.
