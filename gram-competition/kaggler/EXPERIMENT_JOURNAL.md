@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Stochastic Sobolev/gradient-matching loss (iter 14, KEPT)
+- **Hypothesis:** Iter 13 hit an overfitting wall at val≈1.087 (train 0.87 vs val 1.09). Adding a spatial-gradient-matching loss should regularize toward physically smooth fields and reduce the gap. Use a stochastic approximation: at each step pick 1024 random anchor points, compute kNN (k=8) in position space, and penalize `|| (pred[nei] - pred[anchor]) - (gt[nei] - gt[anchor]) ||`.
+- **Change:** `train.py` — added `sobolev_anchor_loss()` (chunked cdist on [1, 1024, 100k] + topk + gather + diff-match). Added `--sobolev_lambda/--sobolev_anchors/--sobolev_k` args. Combined `loss = l2 + λ * sob`. Only ~3ms extra per step after CUDA warmup.
+- **Result:** best val/l2_error = **1.0752** at epoch 15/21 (30 min). `--lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.1`. Warm-started from iter 13's best.pt (val=1.0867 init).
+- **Verdict:** KEPT. **1.0867 → 1.0752 = 1.1% improvement.** Trajectory: 1.0948 (E1, regressed from init 1.087) → 1.089 → 1.091 → 1.095 → 1.093 → 1.090 → 1.086 → 1.083 → 1.082 → 1.084 → 1.080 → 1.078 → 1.077 → 1.079 → **1.075** → 1.078 → 1.077 → 1.076 → 1.076 → 1.076 → 1.076. Val took 6 epochs to recover from Sobolev reshaping, then surpassed iter 13 at E7 (1.086).
+- **Notes:** E1 regressing above warm-start init is expected — adding a new objective pulls weights off the L2-only optimum before settling into the joint optimum. Plateau from E15 onwards suggests we're at the Sobolev-regularised ceiling for this architecture. Cumulative since iter 10: 1.2218 → 1.0752 = **12% drop**. Next (iter 15): either (a) add a signed-distance-to-airfoil (SDF) input feature — richest geometric signal we're missing (use warm-start with zero-init new input weight column), or (b) stronger Sobolev (λ=0.2) with longer cosine. (a) is higher-risk, higher-reward.
+
 ### 2026-04-17 — Warm-start round 2 (iter 13, KEPT)
 - **Hypothesis:** Iter 12 was still descending at timeout (1.1398, lr had only decayed to 1.2e-4). A second warm-start round with even lower peak LR (1.5e-4) and shorter warmup (30 steps) should squeeze more descent out of the same checkpoint.
 - **Change:** same `--resume` arg, launched with `--lr 1.5e-4 --warmup_steps 30 --epochs 25`.
