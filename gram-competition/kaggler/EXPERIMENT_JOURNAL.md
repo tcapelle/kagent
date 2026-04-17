@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Continue iter42 (iter 43, pass 3) — single 0.9806, 32-ensemble 1.0028
+- **Hypothesis:** iter42 val still descending at E15; continuation at lower LR (5e-5 vs 1e-4) should keep drifting downward, with smaller oscillations as we approach a minimum.
+- **Change:** no code. `--resume .../model-wjd0xy50/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9887 --epochs 25`.
+- **Result:** best within-run = **0.9806** at E15/15 (31 min — again truncated by GPU contention with predict, E1-E3 took 220+225+145s vs normal 105s). Trajectory: E1 0.9903 → E5 0.9851 → E9 0.9840 → E12 0.9813 → E15 0.9806. Drop slowing (0.0081 vs iter42's 0.0548 over same 15 epochs). Staged as iter43.pt. **32-model ensemble:**
+  - **1.0028** ← submitted (**0.47% drop from 1.0078**, mae Ux=0.6569 Uy=0.3121 Uz=0.4781)
+- **Verdict:** **WIN.** Single-model 0.9806 (new floor). Ensemble knocking on 1.0000. **Cumulative session: 1.0625 → 1.0028 = 5.62%.**
+- **Notes:** Continuation marginal held: iter42 gave 0.48% ensemble, iter43 gave 0.47%. Rate of single-model drop slowing (5.3× less per epoch) — suggests lineage saturating. To keep momentum, iter44 should **pivot to a second independent fresh-init** (different recipe than iter41: dropout=0.15 + lr=3e-4) — fresh-init is the proven source of major jumps (iter41 gave +0.39% single-handedly). One more continuation (iter44) risks diminishing returns; a new fresh lineage could give another +0.3%+ jump.
+
 ### 2026-04-17 — Continue iter41 training (iter 42) — single 0.9887, 31-ensemble 1.0078
 - **Hypothesis:** iter41 val was still linearly descending at E18 (training was cut short by 30min timeout, no sign of saturation). Resume from iter41.final with lower LR (1e-4 vs 3e-4) and same dropout 0.1; val should continue falling.
 - **Change:** no code. `--resume .../model-s90oxyn9/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 1.0435 --epochs 25`.
