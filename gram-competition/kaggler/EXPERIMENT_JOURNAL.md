@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Continue iter41 training (iter 42) — single 0.9887, 31-ensemble 1.0078
+- **Hypothesis:** iter41 val was still linearly descending at E18 (training was cut short by 30min timeout, no sign of saturation). Resume from iter41.final with lower LR (1e-4 vs 3e-4) and same dropout 0.1; val should continue falling.
+- **Change:** no code. `--resume .../model-s90oxyn9/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 1.0435 --epochs 25`.
+- **Result:** best within-run = **0.9887** at E15/15 (30.6 min — only 15 epochs due to GPU contention with iter41 predict in E1/E2, each took 215-235s). **Val broke below 1.0** at E11 (0.9998) and still monotonically descending at the timeout. Staged as iter42.pt. **31-model ensemble:**
+  - **1.0078** ← submitted (**0.48% drop from 1.0127**, mae Ux=0.6605 Uy=0.3131 Uz=0.4804)
+- **Verdict:** **MAJOR WIN CONFIRMED.** Single-model floor now 0.9887 (was 1.0435 in iter41, 1.0530 before the new lineage). Ensemble sub-1.01. **Cumulative session: 1.0625 → 1.0078 = 5.15%.**
+- **Notes:** Continuation training on the new lineage delivered 0.0548 absolute drop (5.25%) from iter41's 1.0435 in 15 epochs. Trajectory near-linear: 1.0450 → 0.9998 (E11) → 0.9887 (E15). Val still falling at timeout — **iter 43 should continue again**. With 15 more epochs iter43 likely hits 0.96-0.97. New lineage shows it's far from saturated. Iter 43 options: (a) **continue iter42 (lr=5e-5 cosine restart)** — cheapest, highest-confidence win; (b) **launch a SECOND independent fresh-init with different seed on same recipe** — adds more ensemble diversity since iter41/42 are now correlated; (c) **increase dropout to 0.15** on continuation — mild regularisation anneal. (a) first, then (b) as iter 44.
+
 ### 2026-04-17 — FRESH-TRAIN FROM SCRATCH (iter 41) — FLOOR BROKEN 1.0435 + 30-ensemble 1.0127
 - **Hypothesis:** 30 iters of warm-start chain correlation accumulated bias. The post-FiLM architecture never got a fair fresh-init training (iter12 was pre-FiLM). Launch a completely fresh-init training of the current arch to test whether we're stuck in a bad attraction basin.
 - **Change:** no code. **NO `--resume`** — pure random init. `--lr 3e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 1.0530 --epochs 25`.
