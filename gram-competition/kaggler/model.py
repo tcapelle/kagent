@@ -109,7 +109,7 @@ class VoxelFlowNet(nn.Module):
         ])
 
         pos_feat_dim = 3 + 3 * 2 * fourier_L  # raw pos + sin/cos at L scales
-        point_in = pos_feat_dim + T_IN * 3 + grid_ch
+        point_in = pos_feat_dim + T_IN * 3 + grid_ch + 1  # +1 for SDF-to-airfoil
         point_out = T_OUT * 3
         self.proj_in = nn.Linear(point_in, point_hidden)
         self.blocks = nn.Sequential(*[ResBlock(point_hidden) for _ in range(n_point_blocks)])
@@ -145,6 +145,24 @@ class VoxelFlowNet(nn.Module):
         cos_f = torch.cos(xw).flatten(-2)
         return torch.cat([pos, sin_f, cos_f], dim=-1)  # [B, N, 3 + 2*3*L]
 
+    def _airfoil_sdf(self, pos, idcs_airfoil):
+        """Unsigned distance from each point to the nearest airfoil point.
+
+        Chunked along N to keep the [C, M] cdist below ~200 MB; with N=100k
+        and M~5-15k this runs in ~50-100 ms / sample on GPU.
+        """
+        B, N, _ = pos.shape
+        sdf = torch.empty(B, N, 1, device=pos.device, dtype=pos.dtype)
+        for b in range(B):
+            a = pos[b, idcs_airfoil[b]]  # [M, 3]
+            out = torch.empty(N, device=pos.device, dtype=pos.dtype)
+            chunk = 5000
+            for i in range(0, N, chunk):
+                d = torch.cdist(pos[b, i:i + chunk], a)  # [<=chunk, M]
+                out[i:i + chunk] = d.min(dim=-1).values
+            sdf[b, :, 0] = out
+        return sdf
+
     def _interp(self, grid, pos):
         """Trilinear-sample voxel features at each point position."""
         B, C, _, _, _ = grid.shape
@@ -168,7 +186,8 @@ class VoxelFlowNet(nn.Module):
 
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
         pos_feat = self._pos_enc(pos)
-        x = torch.cat([pos_feat, v_feat, voxel_feat], dim=-1)
+        sdf = self._airfoil_sdf(pos, idcs_airfoil)
+        x = torch.cat([pos_feat, v_feat, voxel_feat, sdf], dim=-1)
         x = self.proj_in(x)
         x = self.blocks(x)
         delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
