@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — SDF-to-airfoil per-point feature [discarded]
+- **Hypothesis:** Add per-point unsigned distance to the nearest airfoil point as a scalar feature concatenated with Fourier pos + voxel feat. Strong geometric prior for boundary-layer behavior (airflow close to the surface differs sharply from freestream). Implemented via chunked `torch.cdist` inside the model forward pass.
+- **Change:** `model.py/VoxelFlowNet._airfoil_sdf` — chunked cdist (chunk=5000 along N) to nearest airfoil point; concat result into the per-point feature. `point_in` +1. No other changes vs exp 5.
+- **Result:** val/l2_error = **0.9648** (epoch 23 of 24 @ 31.0 min, 7.6 GB peak). Essentially a tie with exp 5 (0.9640). Per-epoch time jumped 59 s → 81 s (+37 %) from the cdist overhead, so only 23 of 24 epochs completed before timeout.
+- **Verdict:** Discarded. No improvement; the extra compute cost is real and crowds out other experiments. Reverted commit, restored exp 5 checkpoint.
+- **Notes:** Possible reasons SDF didn't help: (a) voxel CNN at G=64 already implicitly encodes distance to the airfoil via the occupancy/scatter signal — SDF is redundant; (b) what's missing may not be geometric info but representational capacity for velocity gradients; (c) no-slip BC is already enforced on output, so the gain from knowing "I'm near the airfoil" in the hidden state may be small. Next: spend the compute budget on more resolution (G=80, ch=32 — actually cheaper than G=64/ch=48 since 80³·32² < 64³·48²) or on more epochs / deeper grid CNN.
+
 ### 2026-04-17 — higher voxel resolution G=64 ch=48 + epochs=24
 - **Hypothesis:** Exp 4's voxel grid (48³ over a 2.3×1×1.4 m bbox = ~4 cm/cell) is too coarse to resolve boundary layers around the airfoil. Bump grid resolution to 64³ (~3 cm/cell) and compensate for the extra 3D-conv compute by dropping grid channels 64→48 so per-epoch time stays similar. Drop cfg.epochs to 24 so cosine still fully anneals within 30 min.
 - **Change:** `train.py`+`predict.py` — `VoxelFlowNet(grid_res=64, grid_ch=48, n_grid_blocks=4, ...)`, `epochs: int = 24`. Nothing else changed.
