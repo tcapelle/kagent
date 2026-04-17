@@ -22,6 +22,37 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v17: v16 arch (Fourier + voxel-token attn) + y-flip aug, added to ensemble
+- **Hypothesis:** v14 (1.1041) saturated the v6-arch diversity dimension.
+  To break the ensemble decorrelation ceiling, need a *qualitatively*
+  different member. v16 arch has: Fourier positional embedding (K=6),
+  voxel-token self-attention with LayerScale, and dropout; plus y-flip
+  data aug (airfoils verified y-symmetric across 20+ samples, mean y≈0,
+  skew <0.15) doubles effective train data. Expect worse-but-diverse
+  single, better ensemble.
+- **Change:** CLI: `--model_version v16 --n_blocks 10 --dropout_p 0.2
+  --n_attn_blocks 2 --layer_scale 1e-3 --yflip_aug True --epochs 40`.
+  120 min budget (181s/epoch with 10 blocks + 2 attn blocks).
+- **Result:**
+  - Single model: val/l2=**1.1493** at ep40 of 40 (120.9 min).
+    MAE Ux=0.776, Uy=0.342, Uz=0.537. WandB run `76oie0fz`
+    (`edward/v17-v16-attn-yflip`). Worse than v14 single (1.1041) as
+    expected — more params + diff arch, same budget.
+  - **6-member ensemble (v6+v9+v11+v13+v14+v17): val/l2=1.0681**
+    (−0.0043 over 5-member 1.0724; −0.10 over best single 1.1041).
+    Mean of individuals = 1.1505. Explored 1/score^k weighted
+    averaging: k=4→1.0657, k=8→1.0637 — marginal, potentially
+    overfits to val. Sticking with uniform mean.
+- **Verdict:** Kept. v17 adds diverse-arch decorrelation to a
+  previously same-arch pool. Modest but real gain.
+- **Notes:** The diminishing-returns curve continues (5→6 members
+  gave −0.004; 4→5 gave −0.014). To go further: need qualitatively
+  different training objective or feature. Ideas for v18:
+  (a) near-airfoil weighted loss (errors concentrate within 0.05m
+  of airfoil: mean err 2.4 vs 0.3 beyond 0.1m) — target the hard
+  boundary-layer region; (b) L1/Huber loss member; (c) fresh seed
+  of v17 arch for within-arch ensemble diversity.
+
 ### 2026-04-17 — v14: v6 + dropout p=0.2 in ResBlock (added to ensemble)
 - **Hypothesis:** v13 at p=0.1 worked well (1.1176); with 730 samples
   and a 10.8M-param model we may still be under-regularized. p=0.2

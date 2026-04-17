@@ -97,6 +97,8 @@ class Config:
     layer_scale: float = 1e-4   # v16 only: LayerScale init for attention residual
     amp: bool = False  # enable mixed-precision (bf16 autocast, no scaler needed)
     yflip_aug: bool = False  # random y-flip data augmentation (50% prob). Doubles effective train data.
+    loss_weight_near_airfoil: float = 0.0  # if >0, up-weight per-point loss by exp(-dist/scale) * weight (0 = uniform)
+    loss_weight_scale: float = 0.05  # spatial scale of near-airfoil weighting
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -209,18 +211,35 @@ for epoch in range(MAX_EPOCHS):
             v_out[..., 1] *= -1
             pos[..., 1] *= -1
 
+        # Optional per-point weighting by proximity to airfoil (boundary layer focus).
+        # w = exp(-dist/scale)^alpha, per-sample normalized so mean(w)=1.
+        # alpha=0 ⇒ uniform; alpha=1 ⇒ moderate near-bias; alpha=2 ⇒ sharp.
+        if cfg.loss_weight_near_airfoil > 0:
+            from model import min_distance_to
+            B, _, N, _ = v_in.shape
+            alpha = cfg.loss_weight_near_airfoil
+            near_w = torch.zeros(B, N, device=device)
+            for b in range(B):
+                d = min_distance_to(pos[b], pos[b, idcs[b].to(device)])
+                near_w[b] = torch.exp(-alpha * d / cfg.loss_weight_scale)
+            near_w = near_w / near_w.mean(dim=1, keepdim=True).clamp_min(1e-8)
+            weights = near_w.view(B, 1, N, 1)
+        else:
+            weights = None
+
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.amp):
             pred = model(v_in, pos, t, idcs)
             # Loss in normalized space (scale components to unit std); gives balanced gradient
             err_norm = (pred - v_out) / model.vel_std
             if cfg.loss_type == "mse":
-                loss = err_norm.pow(2).mean()
+                per_pt = err_norm.pow(2)
             elif cfg.loss_type == "huber":
-                loss = F.huber_loss(err_norm, torch.zeros_like(err_norm), delta=cfg.huber_delta)
+                per_pt = F.huber_loss(err_norm, torch.zeros_like(err_norm), delta=cfg.huber_delta, reduction="none")
             elif cfg.loss_type == "l1":
-                loss = err_norm.abs().mean()
+                per_pt = err_norm.abs()
             else:
                 raise ValueError(f"unknown loss_type: {cfg.loss_type}")
+            loss = (per_pt * weights).mean() if weights is not None else per_pt.mean()
 
         optimizer.zero_grad()
         loss.backward()
