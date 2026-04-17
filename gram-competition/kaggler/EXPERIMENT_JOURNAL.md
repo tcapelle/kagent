@@ -25,7 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — iter19: Transolver depth=3 + bf16 (retry iter16 with budget headroom)
 - **Hypothesis:** iter16 (depth=3) failed purely because of budget — 96s/ep × 20 epochs ate the cosine tail. With iter18's bf16 speedup, depth=3 should run at ~60s/ep, fitting 28 epochs in ~28 min. The +1 Transolver block adds a round of global mixing; iter16's curve was 1 epoch ahead of iter15's early, so the architecture is right — it just needs the full cosine.
 - **Change:** `train.py` — `transolver_depth=3` (on top of iter18 bf16 + epochs=28).
-- **Result:** _pending_.
+- **Result:** val/l2 = **0.9316** at epoch 27 / 28 (best). 57s/ep, 26.8 min wallclock, 7.7 GB peak. Preds saved to `nezuko/8b864d8`. LB with TTA: **0.8969** — jumped to **#3** on leaderboard (passed tanjiro 0.9035). Smooth monotone descent through e27 (0.948, 0.938, 0.935, 0.934, 0.933, 0.933, 0.932).
+- **Verdict:** **kept** — new personal best on both val and LB. Beats iter18 (val 0.939, LB 0.906) by 0.007/0.009. Capacity *did* help once budget allowed it.
+- **Notes:** Confirms iter16's hypothesis was right, budget was wrong. bf16 budget headroom is the lever that unlocks capacity. Next iter: keep pushing — depth=4? Or bigger base_ch? Gap to alphonse (#2 at 0.7993) still 0.10; thorfinn (#1 at 0.7738) 0.12. MAE Uy still the weakest at 0.2993.
 
 ### 2026-04-17 — iter18: bf16 autocast + epochs=28 (use Blackwell mixed precision to run more epochs)
 - **Hypothesis:** iter16 (depth 3) and iter17 (slice 64) both failed — not because capacity didn't help, but because adding params eats epoch budget and iter15's 0.9578 is a tight optimum on the `epochs × capacity` frontier. Free more compute via bf16 autocast (Blackwell RTX PRO 6000 has native bf16), target ~1.5x speedup → 60s/ep → 28-30 epoch budget. Same iter15 model.
