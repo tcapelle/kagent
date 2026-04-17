@@ -22,7 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-17 — Anneal from iter37.final drop-endpoint (iter 38) + 27-model ensemble (ensemble-only KEPT)
+### 2026-04-17 — Dropout p=0.25 from iter38.final + best_run.pt save (iter 39) + 28-model ensemble (ensemble-only KEPT)
+- **Hypothesis:** Iter 37 showed p=0.2 opened a transient drop-basin at 1.0540 that iter 38's anneal couldn't re-capture. Push to p=0.25 on the post-FiLM architecture with the new best_run.pt save (floor-free) so even if the basin is transient, the dip-epoch checkpoint is captured for ensembling.
+- **Change:** `train.py` — add `best_run_val` / `best_run_path = pvc_dir / "best_run.pt"` floor-free save alongside existing `best_val` (floor-guarded). Commit `0fe8d11`. Run: `--resume .../model-r5wtvnea/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.25 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0569** at E9/18 (31.7 min, init 1.0624). Trajectory: E1 1.0603 → E3 1.0574 → E9 1.0569 (dip) → drift 1.058-1.062 through E18. **best_run.pt correctly captured the E9 dip** (which would have been lost under the old save-only-if-beats-floor policy — 1.0569 > 1.0530). Staged as iter39.pt. **28-model ensemble:**
+  - **1.0173** ← submitted (0.05% drop from 1.0178, mae Ux=0.6674 Uy=0.3150 Uz=0.4849)
+- **Verdict:** Single DISCARDED (didn't beat floor). Ensemble inclusion **KEPT** — smallest marginal yet (0.05% vs prior 0.06%). **Cumulative session: 1.0625 → 1.0173 = 4.26%.**
+- **Notes:** New `best_run.pt` save worked as intended (E9 dip captured) but this particular run's dip wasn't deep enough to break the 1.0530 floor. Marginal continues decaying: 0.08% → 0.06% → 0.06% → 0.05%. Pattern suggests ~1.015 asymptote for this ensemble recipe without a new source of diversity. Iter 40 options: (a) **SWA: average iter39.final, E5, E9, E12 weights into one member** — new kind of diversity since each prior member was single-epoch; needs train.py change to save mid-run epochs OR separate SWA script; (b) **fresh-train with different seed + post-FiLM arch** — completely independent member; (c) **weighted ensemble via val-L2-inverse weighting** — post-process gain, no training. (b) is the cheapest new-diversity test; existing members share the same lineage (all warm-started from earlier members), so a fresh seed might add more variance than another cycle step.
+
+
 - **Hypothesis:** iter 37's drop step hit 1.0540 at E5 — the closest miss of floor 1.0530 in 15 iters. Continue with dropout=0 anneal; a cosine-restart from that drop endpoint may find the nearby basin and break floor.
 - **Change:** no code. `--resume .../model-fb4d9q1v/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
 - **Result:** best within-run = **1.0578** at E7/18 (31.6 min, init 1.0590). Did **not** reach iter 37's 1.0540 — the anneal from the drop endpoint landed in a different, weaker basin. Final.pt (E18, val=1.0624) staged as iter38.pt. **27-model ensemble:**
