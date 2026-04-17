@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Fourier positional encoding (L=8) + cfg.epochs=35 LR fix
+- **Hypothesis:** (a) MLPs struggle to represent high-frequency spatial variation from raw 3-D coords (spectral bias) — adding Fourier features (sin/cos at 8 scales, 2^k·π) should let the per-point head model finer spatial structure. (b) Exp 2 reported val was still dropping at the cosine min; the min wasn't reached because cfg.epochs=50 with MAX_TIMEOUT_MIN=30 and 52 s/epoch → only ~35 epochs actually ran, so LR only decayed to ~21 % of init. Set `cfg.epochs = 35` so cosine fully anneals within the budget.
+- **Change:** `model.py/VoxelFlowNet` — add `_pos_enc` method producing `[pos, sin(w·pos'), cos(w·pos')]` with 8 log-spaced frequencies, replacing raw `pos` in the per-point concat (point input grows by 48). `train.py` — `epochs: int = 35`. No other changes vs exp 2.
+- **Result:** val/l2_error = **0.9956** (epoch 35 of 35 @ 30.3 min, 7.0 GB peak). Train loss 0.0082 (same as exp 2). First time below 1.0.
+- **Verdict:** Kept. Small (~1 %) but real improvement; val was *still* improving at epoch 35 (34: 0.9957 → 35: 0.9956), so additional gains may be reachable with more training. Auto-submitted predictions to PVC.
+- **Notes:** Bundled two changes (Fourier + LR fix) so can't isolate which helped. Next candidates: (a) bigger batch via grad accumulation for stabler gradient at the end of cosine, (b) SDF-to-airfoil per-point feature (strong geometric prior for boundary layers), (c) larger grid resolution (G=64 with ch=48 to keep compute) — should help boundary-layer resolution since 48³ over a 2.3×1×1.4 m box = ~4 cm/cell, coarser than boundary-layer thickness. Leader still at 0.7475, so 0.20 gap — need a bigger jump than Fourier+LR gave.
+
 ### 2026-04-17 — airfoil-mask channel + y-flip augmentation (small voxel 48/64/4) [discarded]
 - **Hypothesis:** After exp 3's failure, isolate on the small architecture: add (a) per-voxel airfoil-occupancy channel and (b) y-flip augmentation (~2× effective data since geometries are near-symmetric across x–z plane). Keep architecture identical to exp 2 so epoch time is unchanged and cosine LR still reaches its planned min.
 - **Change:** `VoxelFlowNet._voxelize` takes `idcs_airfoil` and scatters an extra airfoil-mask channel (17 input channels: 15 v_in + 1 occupancy + 1 airfoil). `train.py` y-flip aug (50% prob: flip pos[...,1], v_in[...,1], v_out[...,1]). No capacity changes.
