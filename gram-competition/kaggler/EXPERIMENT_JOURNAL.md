@@ -25,9 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — exp19: chain warm-start from exp18 + lr=5e-5
 - **Hypothesis:** Exp18 val was still dropping rapidly at E22-24 (0.9469→0.9411). Coarse branch needs more epochs at a lower LR to refine without destroying fine-branch weights. Chain at lr=5e-5 for 30 more min. If it beats exp17's 0.9396, commit the full multi-scale arch.
 - **Change:** --warm_start=<exp18 ckpt model-5qrjp5if> --lr=5e-5. No code changes.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** If exp19 beats exp17, exp18+19 arch replaces exp17 chain. If not, revert to exp17 arch + checkpoint for future experiments.
+- **Result:** val/l2=**0.9238** @ epoch 12 (32.0 min). train=0.0040. Val settled 0.9238-0.9283 E12-23. 76-170s/epoch (some batches slower).
+- **Verdict:** KEPT — +0.0158 over exp17 (0.9396). Biggest gain since exp15 (Δ=0.0126). Multi-scale architecture validated: the coarse branch added real signal the 32³ branch couldn't capture. Now #3 or better on leaderboard (was #4 at 0.9487, nezuko=0.9299).
+- **Notes:** Best at E12 is unusual — model quickly adapted + overfit slightly after. E12-23 all within 0.9238-0.9283 (stable basin). Next: exp20 chain at lr=2e-5 to squeeze more.
 
 ### 2026-04-17 — exp18: multi-scale voxel (16³ coarse parallel, warm-start from exp17)
 - **Hypothesis:** Chain saturating again. Arch change gave biggest recent win (exp15 Δ=0.0126). Add parallel 16³ coarse voxel branch to each VoxelMixer — captures larger-scale flow structures (wake, separation zones) that 32³ 3×3 conv can't reach. Zero-init (proj_agg_coarse=0, last conv_coarse=0) → sampled_c=0 at init → warm-start equivalent to exp17. Fresh training allows coarse branch to learn contributions.
