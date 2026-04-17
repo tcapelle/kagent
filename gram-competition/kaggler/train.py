@@ -242,6 +242,40 @@ class BaselineMLP(nn.Module):
 # Validation
 # ---------------------------------------------------------------------------
 
+def sobolev_anchor_loss(pred, gt, pos, n_anchors: int = 1024, k: int = 8):
+    """Stochastic gradient-matching loss.
+
+    For a random subset of `n_anchors` anchor points, compute the kNN (in position
+    space), then penalise ||(pred[nei] - pred[anchor]) - (gt[nei] - gt[anchor])||.
+    This is a Sobolev-style loss: getting the spatial gradient right matters as
+    much as the point value. Matches the local flow shear structure.
+
+    Anchors are resampled every call so the loss covers the full point cloud in
+    expectation without paying the O(N^2) cost of computing the full kNN.
+
+    pred, gt: [B, T, N, 3]
+    pos:      [B, N, 3]
+    """
+    B, T, N, C = pred.shape
+    anchor_idx = torch.randperm(N, device=pos.device)[:n_anchors]           # [M]
+    pos_a = pos[:, anchor_idx]                                              # [B, M, 3]
+    d = torch.cdist(pos_a, pos)                                             # [B, M, N]
+    _, knn = d.topk(k + 1, dim=-1, largest=False)                           # [B, M, k+1]
+    knn = knn[..., 1:]                                                      # drop self -> [B, M, k]
+
+    pred_a = pred[:, :, anchor_idx, :]                                      # [B, T, M, 3]
+    gt_a = gt[:, :, anchor_idx, :]
+
+    knn_flat = knn.reshape(B, -1)                                           # [B, M*k]
+    idx_exp = knn_flat.unsqueeze(1).unsqueeze(-1).expand(B, T, n_anchors * k, C)
+    pred_n = torch.gather(pred, 2, idx_exp).reshape(B, T, n_anchors, k, C)
+    gt_n = torch.gather(gt, 2, idx_exp).reshape(B, T, n_anchors, k, C)
+
+    pred_diff = pred_n - pred_a.unsqueeze(3)
+    gt_diff = gt_n - gt_a.unsqueeze(3)
+    return (pred_diff - gt_diff).norm(dim=-1).mean()
+
+
 def reflect_y(v_in, v_out, pos):
     """Apply y-axis reflection to the whole sample (in-place safe on clones).
 
@@ -342,6 +376,9 @@ class Config:
     agent: str | None = None
     debug: bool = False
     resume: str | None = None  # path to a checkpoint to warm-start from
+    sobolev_lambda: float = 0.0  # weight for stochastic Sobolev/gradient-matching loss
+    sobolev_anchors: int = 1024
+    sobolev_k: int = 8
 
 
 def main():
@@ -443,7 +480,14 @@ def main():
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
                 # L2-per-point loss: matches the val metric; less outlier-dominated than MSE.
-                loss = (pred - v_out).norm(dim=3).mean()
+                l2_loss = (pred - v_out).norm(dim=3).mean()
+                if cfg.sobolev_lambda > 0:
+                    sob = sobolev_anchor_loss(
+                        pred, v_out, pos, cfg.sobolev_anchors, cfg.sobolev_k
+                    )
+                    loss = l2_loss + cfg.sobolev_lambda * sob
+                else:
+                    loss = l2_loss
 
             optimizer.zero_grad()
             loss.backward()
