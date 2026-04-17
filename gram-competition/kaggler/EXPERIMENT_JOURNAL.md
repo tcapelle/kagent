@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — EMA weight averaging (decay=0.999)
+- **Hypothesis:** Cosine-annealed weights near the end of training still oscillate around a local optimum because of the stochastic gradient; averaging the last ~1/(1-decay) ≈ 1000 optimizer steps should land in a flatter region and reduce val noise. Near-zero compute cost (one extra float tensor per parameter and a fused mul-add per step), so cfg.epochs stays at 28.
+- **Change:** `train.py` — `EMA` class (decay=0.999) updated every optimizer step. At validation time, swap EMA weights into the model, run validate, and if best, save **the EMA weights** to `best.pt`. Swap base weights back before next epoch's training.
+- **Result:** val/l2_error = **0.9277** (epoch 28 of 28 @ 29.5 min, 8.0 GB peak). Train loss 0.0088. 0.3 % improvement over exp 9 (0.9304 → 0.9277).
+- **Verdict:** Kept. Small but real, with zero extra epoch time and no architectural risk.
+- **Notes:** EMA visibly lagged the non-EMA trajectory through epoch ~12 (shadow is still catching up from init — half-life ≈ ln(0.5)/ln(0.999) / 63 steps ≈ 11 epochs). By epoch 15 it caught up (0.9611 ≈ exp 8's best), then edged past every subsequent epoch. Val dropped monotonically through ep 28 (0.9283→0.9281→0.9278→0.9278→0.9277) — plateau consistent with LR fully annealed. Decay=0.9995 or cfg.epochs=35 might extract more. Gap to leader 0.75 is still 0.18. Next candidates that don't cost epochs: dropout in the point MLP (regularization), weighted MSE (emphasize near-airfoil / high-velocity points), or a second head on pressure-gradient-like features. If willing to trade epochs: point_hidden 384→512 or n_point_blocks 6→8 (sub-10 % per-epoch cost — can likely absorb within budget).
+
 ### 2026-04-17 — grid dilations extended to (1,2,4,8,16), n_grid_blocks=5 [discarded]
 - **Hypothesis:** Adding a 5th grid block with dilation=16 increases effective receptive field of the 3D CNN from ~30 cells to ~60 cells (at G=80 voxels), useful for capturing large-scale wake structure that forms downstream of the wing. Drop cfg.epochs=28→25 to keep cosine fully annealed within budget.
 - **Change:** `model.py` — replace hardcoded `dilations=[1,2,4,8]` with configurable tuple, bump default to `(1,2,4,8,16)` and `n_grid_blocks=5`. `train.py` — `epochs: int = 25`.
