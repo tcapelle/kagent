@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v16 KEPT — 3-seed ensemble landed 0.8077, another 2% under v15's 2-seed
+- **Hypothesis:** v15 showed the 2-seed ensemble gives ~5% over v6 (0.8707 → 0.8265). The bias-variance decomposition says a k-seed ensemble has residual error ∝ 1/sqrt(k) of the per-model noise if errors are independent. A 3rd independent seed should push the ensemble another ~0.020 lower (√2/√3 of the 2-seed variance), toward ~0.81.
+- **Change:** trained 3rd v6-arch seed (45 min, 52s/epoch × 48 useful epochs, solo best 0.8694 @ ep48 — actually marginally better than v6 alone, confirming v6's 0.8707 was a noisy sample of the ~0.87 ± 0.005 single-run floor). Ran `ensemble.py --checkpoints _v6seed.pt _v15seed.pt _v16seed.pt`. No code changes.
+- **Result:** 3-seed ensemble val/l2 = **0.8077** (vs 2-seed 0.8265, v6 solo 0.8707). Individual val/l2: v6 = 0.8707, v15 = 0.8784, v16 = 0.8694 (solo mean ≈ 0.873, std ≈ 0.005). W&B project `kagent-v16`.
+- **Verdict:** kept — 0.019 further drop from 2-seed, matches predicted diminishing-returns curve.
+- **Notes:** Progression: 1-seed=0.873avg → 2-seed=0.8265 → 3-seed=0.8077. The 1/sqrt(k) model predicts 3-seed=0.82 if starting from 0.873 avg single-model error — we beat that, suggesting some super-linear cancellation (errors less correlated than expected for the hard samples). Next (v17): **4-seed ensemble** — train one more v6-arch seed. Predicted gain: another ~0.012 (to ~0.795). Diminishing returns are real but still favorable: doubling seeds from 2→4 gave 0.8265→~0.795 = 0.031 total = same order as single architectural improvement v2→v5 took 3 experiments to find. Cheap budget wins.
+
+
 ### 2026-04-17 — v15 KEPT — 2-seed ensemble (v6 + fresh seed) landed 0.8265, 5% under v6
 - **Hypothesis:** v6's 0.8707 is partly a lucky single-epoch dip in bs=1 val noise. Multiple single-run tweaks (v7-v14) all landed 0.87-0.92 without reliably beating it. Averaging predictions across independent seeds of the same arch should cancel independent prediction error (bias-variance: ensemble bias ≈ single-model bias, ensemble variance ≈ var/k). Zero arch risk, directly attacks the noise floor.
 - **Change:** `ensemble.py` (new) — loads k checkpoints, runs val inference on each, averages predictions [B,5,N,3], reports `val/l2_error` on the averaged preds, saves to standard predictions dir. v6-arch trained a 2nd time (implicit random seed) for 45 min (52s/epoch × 47 useful epochs, best val/l2=0.8784 alone at ep47); `_v6seed.pt` + `_v15seed.pt` in `checkpoints/`. `train.py` unchanged.
