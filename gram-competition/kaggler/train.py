@@ -22,70 +22,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
-
-
-# ---------------------------------------------------------------------------
-# Baseline MLP — replace with your own architecture
-#
-# Model contract:
-#   Input:  velocity_in [B, 5, N, 3], pos [B, N, 3], t [B, 10], idcs_airfoil list[tensor]
-#   Output: velocity_out [B, 5, N, 3]  (predicted future velocity field)
-#
-# Note: the real competition uses model(t, pos, idcs_airfoil, velocity_in) —
-#       different arg order. If you submit to the real comp, wrap accordingly.
-# ---------------------------------------------------------------------------
-
-
-class ResBlock(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
-            nn.GELU(),
-            nn.Linear(dim * 2, dim),
-        )
-
-    def forward(self, x):
-        return x + self.net(x)
-
-
-class BaselineMLP(nn.Module):
-    """Point-wise ResMLP: residual prediction (delta from last input frame) +
-    input/output normalization + no-slip BC enforcement at airfoil surface.
-    """
-
-    def __init__(self, hidden=512, n_blocks=8, vel_mean=None, vel_std=None):
-        super().__init__()
-        in_dim = 3 + T_IN * 3       # pos(3) + v_in_norm (5*3=15) = 18
-        out_dim = T_OUT * 3          # delta in normalized space (5*3=15)
-        self.proj_in = nn.Linear(in_dim, hidden)
-        self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
-        self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
-
-        if vel_mean is None:
-            vel_mean = torch.zeros(3)
-        if vel_std is None:
-            vel_std = torch.ones(3)
-        # [1,1,1,3] shape so it broadcasts over [B,T,N,3]
-        self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
-        self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
-
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
-        B, T, N, C = velocity_in.shape
-        v_in_norm = (velocity_in - self.vel_mean) / self.vel_std          # [B,T,N,3]
-        # Time dim first so concat preserves per-timestep ordering: [B,N,T*3]
-        v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
-        x = torch.cat([pos, v_feat], dim=-1)                               # [B,N,18]
-        x = self.proj_in(x)
-        x = self.blocks(x)
-        delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)  # [B,5,N,3]
-        last = velocity_in[:, -1:, :, :]                                   # [B,1,N,3]
-        pred = last + delta_norm * self.vel_std                            # denorm delta; residual
-        # No-slip BC: zero velocity at airfoil surface
-        for b, idc in enumerate(idcs_airfoil):
-            pred[b, :, idc, :] = 0.0
-        return pred
+from model import BaselineMLP, VoxelFlowNet
 
 
 # ---------------------------------------------------------------------------
