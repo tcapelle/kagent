@@ -22,10 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter12: L2-norm loss (matches leaderboard metric exactly)
+- **Hypothesis:** iter11 over-corrected the component balance — fully normalized MSE gave equal gradient weight to all components and hurt Ux (the dominant one in the L2 metric). The competition metric is `(pred-target).norm(dim=3).mean()` — train on *that* directly. Its gradient naturally balances components (a point's Uy gradient is scaled by Uy_err/||err||), which dampens small components only when the big one is large — i.e., exactly the right kind of balancing.
+- **Change:** `train.py` — `loss = (pred - v_out).norm(dim=3).mean()`. Same model (iter8 voxel-unet+attn, grid=48, base_ch=128), same y-flip aug + TTA + 30 epochs.
+- **Result:** _pending_.
+
 ### 2026-04-17 — iter11: normalized MSE loss (divide by vel_std per component)
 - **Hypothesis:** MSE on raw velocity weights gradient by variance; Ux std≈20 dominates Uy std≈7 / Uz std≈9. My MAE ratios (Ux:Uy:Uz = 1:0.52:0.73) are worse than leaders' (alphonse 1:0.47:0.69, thorfinn 1:0.46:0.69) — I'm relatively *most* behind on Uy. Normalizing per-component equalizes gradient weighting and should close the Uy/Uz gap directly.
 - **Change:** `train.py` — `loss = ((pred - v_out) / model.vel_std).pow(2).mean()`. 1-line change, back on iter8 base (reverted iter9/iter10).
-- **Result:** _pending_.
+- **Result:** val/l2 = **1.0003** at epoch 24 / 30; train loss 0.0092 at epoch 29; 57 s/epoch, 5.5 GB peak. Run continued to epoch 29; best at 24.
+- **Verdict:** discarded. Worse than iter8's 0.9670. Over-correction: normalized MSE weights Uy/Uz gradient by 1/std² which *over-weights* them relative to Ux, hurting the dominant component. Metric is L2 norm not per-component MSE, so the right balance is weaker than full normalization.
+- **Notes:** L2-norm loss (iter12) naturally picks a softer, metric-aligned balance — that's the right correction direction.
 
 ### 2026-04-17 — iter10: stacked bottleneck self-attention (depth=3)
 - **Hypothesis:** iter8's bottleneck had only 1 self-attn block; stacking 3 should give more global mixing capacity on the 12³=1728 tokens at the coarsest grid, targeted at the Uy/Uz gap.

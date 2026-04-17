@@ -595,8 +595,8 @@ if __name__ == "__main__":
                 pos = pos.clone(); pos[..., 1].neg_()
 
             pred = model(v_in, pos, t, idcs)
-            # Normalized MSE — balances component weights (Ux std≈20 else dominates Uy≈7, Uz≈9).
-            loss = ((pred - v_out) / model.vel_std).pow(2).mean()
+            # L2-norm loss: matches the leaderboard metric exactly (norm over components).
+            loss = (pred - v_out).norm(dim=3).mean()
             (loss / GRAD_ACCUM).backward()
 
             accum_idx += 1
