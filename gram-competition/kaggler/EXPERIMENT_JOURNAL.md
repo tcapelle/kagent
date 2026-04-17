@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter28: third fresh-init training + 5-model ensemble
+- **Hypothesis:** iter26→iter27 gave −0.007 ensemble gain. If the diminishing-returns curve is shallow, a third fresh-init model (iter28, new seed, same arch/config) should give another −0.003 to −0.005. Adding it to the existing 4-model ensemble tests whether additional decorrelated inits keep paying off.
+- **Change:** no code changes. `python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter28-fresh3` — vanilla fresh-init run with a different PyTorch init RNG (default seed behavior).
+- **Result:** iter28 standalone val/l2 = **0.9356** at e26/28 (same ballpark as iter26=0.9377 and iter27=0.9348 — fresh inits converge to similar quality). Ensemble tests:
+  - iter19 + iter24 + iter26 + iter27 + **iter28** (5-model): val l2 = **0.8516** (direct, with TTA) — **new best**
+- **Verdict:** **kept** — −0.0037 vs 4-model iter27 (0.8553 → 0.8516). Diminishing returns continuing but each fresh-init still adds signal. Submission at this commit.
+- **Notes:** Gap to alphonse (0.7761) narrowed from 0.079 to 0.076. Extrapolating: iter29 fresh-init → ~−0.002. Likely hitting the noise floor of pure seed-diversity; next iter should push *architectural* diversity (depth=4 or grid=64 or different loss) which won't load into the existing ensemble's state-dict but brings genuinely decorrelated errors.
+
 ### 2026-04-17 — iter27: second fresh-init training + 4-model ensemble
 - **Hypothesis:** iter26's fresh-init gave −0.016 ensemble gain. If the gain scales with *diversity of inits*, a second fresh-init model (iter27) should give another −0.005 to −0.010.
 - **Change:** re-ran `python train.py --epochs 28 --agent nezuko` fresh (another seed by default).
