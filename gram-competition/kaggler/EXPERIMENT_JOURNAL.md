@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter18: bf16 autocast + epochs=28 (use Blackwell mixed precision to run more epochs)
+- **Hypothesis:** iter16 (depth 3) and iter17 (slice 64) both failed — not because capacity didn't help, but because adding params eats epoch budget and iter15's 0.9578 is a tight optimum on the `epochs × capacity` frontier. Free more compute via bf16 autocast (Blackwell RTX PRO 6000 has native bf16), target ~1.5x speedup → 60s/ep → 28-30 epoch budget. Same iter15 model.
+- **Change:** `train.py` — wrap train/val forward in `torch.amp.autocast('cuda', dtype=torch.bfloat16)`, cast val `pred` back to fp32 for metrics; bump `epochs: 22→28`.
+- **Result:** _pending_.
+
+### 2026-04-17 — iter17: Transolver slice_num 32→64 (DISCARDED)
+- **Hypothesis:** more physics-slice tokens = more expressive soft-clustering without budget cost (N*M*C scatter doubles but dominated by MLP/qkv cost, ~5% epoch-time impact).
+- **Change:** `train.py` — `transolver_slice_num=64`.
+- **Result:** val/l2=**0.9662** at epoch 20, 88s/ep × 21 = 31 min (timed out before e22). LB with TTA: **0.9315** (worse than iter15's 0.9266). Run commit `b79d0ff`.
+- **Verdict:** **discarded** — trained slightly slower (88 vs 83 s/ep), got one fewer epoch, and more slices didn't help optimization. 32 slices are apparently enough; doubling just added optimization noise.
+- **Notes:** Pattern emerging: iter15 sits on a tight frontier — *any* change that reduces total epoch count (or subtly complicates optimization) loses. Need to either (a) extend the budget via compute efficiency (bf16, torch.compile), or (b) find an orthogonal improvement that doesn't touch the cosine schedule.
+
+### 2026-04-17 — iter16: Transolver depth 2→3 (DISCARDED)
+- **Hypothesis:** more global mixing via one extra Transolver block should close the 0.10 gap to alphonse.
+- **Change:** `train.py` — `transolver_depth=3`, `epochs=20`.
+- **Result:** val/l2=**0.9668** at epoch 19 (timeout). 96s/ep × 19 = 30.4 min; 9.5 GB. LB with TTA: **0.9375** (worse than iter15's 0.9266). Run commit `c5fdd77`.
+- **Verdict:** **discarded** — depth=3 converged one epoch earlier than iter15 (e8 val 1.10 vs iter15 e9 1.10) but the shorter cosine schedule (20 vs 22) meant the annealed tail — the most productive epochs — was shorter. Capacity ≠ free.
+- **Notes:** Key lesson: adding layers without extending total compute loses the cosine tail. For capacity bumps, prefer knobs that *don't* reduce epoch count (slice_num, head_dim). Also VRAM jumped 8.2→9.5 GB (headroom for 4 blocks if wanted — but not the right axis).
+
 ### 2026-04-17 — iter15: Transolver hybrid + epochs=22 (match schedule to budget)
 - **Hypothesis:** iter14 converged faster than iter11 (e9 val 1.10 vs 1.19; e14 val 1.03 vs 1.08) — Transolver works — but the 30-epoch cosine was too long for the 83s/ep budget, and the run hung at e17 before LR had annealed. Shortening to 22 epochs makes the schedule fully anneal within the achievable window.
 - **Change:** `train.py` — `epochs: int = 22`. Everything else identical to iter14 (Transolver depth=2, slice=32).

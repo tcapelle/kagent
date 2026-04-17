@@ -506,7 +506,9 @@ def validate(model, val_loaders, device, global_step):
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                    pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                pred = pred.float()
 
                 # L2 velocity error (competition hint metric)
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))  # [B]
@@ -570,7 +572,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 22
+    epochs: int = 28
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -665,8 +667,9 @@ if __name__ == "__main__":
                 v_out = v_out.clone(); v_out[..., 1].neg_()
                 pos = pos.clone(); pos[..., 1].neg_()
 
-            pred = model(v_in, pos, t, idcs)
-            loss = (pred - v_out).pow(2).mean()
+            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                pred = model(v_in, pos, t, idcs)
+                loss = (pred - v_out).pow(2).mean()
             (loss / GRAD_ACCUM).backward()
 
             accum_idx += 1
