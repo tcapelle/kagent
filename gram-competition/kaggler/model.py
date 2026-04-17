@@ -12,12 +12,13 @@ from data import T_IN, T_OUT
 
 
 class ResBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(dim * 2, dim),
         )
 
@@ -81,6 +82,7 @@ class VoxelFlowNet(nn.Module):
         point_hidden: int = 384,
         n_point_blocks: int = 6,
         fourier_L: int = 8,
+        point_dropout: float = 0.0,
     ):
         super().__init__()
         self.grid_res = grid_res
@@ -113,7 +115,7 @@ class VoxelFlowNet(nn.Module):
         point_in = pos_feat_dim + T_IN * 3 + grid_ch
         point_out = T_OUT * 3
         self.proj_in = nn.Linear(point_in, point_hidden)
-        self.blocks = nn.Sequential(*[ResBlock(point_hidden) for _ in range(n_point_blocks)])
+        self.blocks = nn.Sequential(*[ResBlock(point_hidden, dropout=point_dropout) for _ in range(n_point_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(point_hidden), nn.Linear(point_hidden, point_out))
 
     def _voxelize(self, v_in_norm, pos):
