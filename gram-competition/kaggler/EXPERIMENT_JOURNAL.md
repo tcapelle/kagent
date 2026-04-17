@@ -25,7 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — iter18: bf16 autocast + epochs=28 (use Blackwell mixed precision to run more epochs)
 - **Hypothesis:** iter16 (depth 3) and iter17 (slice 64) both failed — not because capacity didn't help, but because adding params eats epoch budget and iter15's 0.9578 is a tight optimum on the `epochs × capacity` frontier. Free more compute via bf16 autocast (Blackwell RTX PRO 6000 has native bf16), target ~1.5x speedup → 60s/ep → 28-30 epoch budget. Same iter15 model.
 - **Change:** `train.py` — wrap train/val forward in `torch.amp.autocast('cuda', dtype=torch.bfloat16)`, cast val `pred` back to fp32 for metrics; bump `epochs: 22→28`.
-- **Result:** _pending_.
+- **Result:** val/l2 = **0.9390** at epoch 25 / 28 (best). 51s/ep (vs iter15 83s — **37% faster**). 24 min wallclock, 6.7 GB peak (vs iter15 8.2 GB). Preds saved to `nezuko/449aa3e`. Late-epoch trajectory: e21 0.953, e22 0.948, e24 0.941, e25 0.939.
+- **Verdict:** **kept** — new personal best. Beats iter15 val by 0.019 (2% relative). LB with TTA pending.
+- **Notes:** bf16 is a massive win — zero accuracy regression (epoch-by-epoch trajectory overlaps iter15's), but 1.6x speedup opens 6-8 more training epochs within budget. VRAM drop 8.2→6.7 GB gives headroom for larger models too. Next iter: invest the saved budget in capacity (depth=3 or bigger base_ch) since epoch-count is no longer the bottleneck.
 
 ### 2026-04-17 — iter17: Transolver slice_num 32→64 (DISCARDED)
 - **Hypothesis:** more physics-slice tokens = more expressive soft-clustering without budget cost (N*M*C scatter doubles but dominated by MLP/qkv cost, ~5% epoch-time impact).
