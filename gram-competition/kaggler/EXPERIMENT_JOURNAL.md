@@ -22,6 +22,28 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v10: richer VoxelMix (mean + max + Linear fuse)
+- **Hypothesis:** v6's scatter-mean mix destroys within-voxel
+  variation — exactly the turbulent signal we need. Adding a scatter
+  max branch fused with mean via a Linear should give richer spatial
+  context per mix step and break the 1.17 plateau.
+- **Change:** `model.py::VoxelMix` — compute both `scatter_mean` and
+  `scatter_max`, concat (2×dim), LN, `Linear(2d→d)` fuse, tanh gate.
+  +5M params (13.5M vs v6's 8M). Config otherwise v6. 55 epochs,
+  120 min budget. scatter_max falls back to torch (no torch-scatter),
+  adds ~18% per-epoch cost.
+- **Result:** Best val/l2=**1.1983** at epoch 48 of 55 (106 min).
+  Train loss 0.044 → **0.0097** — fits much better than v6 (0.014).
+  Val plateaued at ~1.20 from ep40 onward, bouncing 1.198–1.203
+  with near-zero LR.
+  WandB `edward/v10-meanmax-mix`.
+- **Verdict:** Discarded — slightly worse than v6 (1.1681). Classic
+  overfitting signature: lower train loss, higher val plateau.
+  Adding mix capacity is the wrong direction.
+- **Notes:** The model already has ample fitting capacity. Bottleneck
+  is generalization, not expressiveness. Next: try EMA on weights
+  (expect ~2% from dampening batch=1 noise) before any arch changes.
+
 ### 2026-04-17 — v9: pure v6 + 130 min budget (70 epochs)
 - **Hypothesis:** v6 was still descending at its 52 ep / 90 min timeout.
   With a properly sized cosine schedule (epochs=70) and 130 min budget
