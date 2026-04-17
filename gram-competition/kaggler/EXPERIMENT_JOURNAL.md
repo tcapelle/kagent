@@ -23,11 +23,11 @@ Keep entries short. Link W&B run URLs when useful.
 ## Entries
 
 ### 2026-04-17 — exp23: chain warm-start from exp22 (FiLM refine) + lr=2e-5
-- **Hypothesis:** Exp22 FiLM destabilized by high LR but trending down. Chain at lr=2e-5 should let FiLM params settle without further destroying main weights. If FiLM has signal, this extracts it; if not, we'll plateau around exp22's 0.9281. Target: beat exp21 (0.9194).
+- **Hypothesis:** Exp22 FiLM destabilized by high LR but trending down. Chain at lr=2e-5 should let FiLM params settle without further destroying main weights. If FiLM has signal, this extracts it; if not, we'll plateau around exp22's 0.9281.
 - **Change:** --warm_start=<exp22 ckpt model-79ynl9v3> --lr=2e-5. No code changes.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** If still worse than exp21, FiLM via absolute t doesn't help. Revert to exp21 arch for future.
+- **Result:** val/l2=**0.9096** @ epoch 19 (30.3 min). train=0.0037. Val stable 0.9096-0.9115 E14-22.
+- **Verdict:** KEPT — +0.0098 over exp21 (0.9194). FiLM validated: absolute t signal helps. Second confirmation of the pattern "new arch regresses then chain recovers + beats".
+- **Notes:** Pattern: exp18/19 (multi-scale: -0.017 → +0.016), exp22/23 (FiLM: -0.009 → +0.010). Both pairs net positive, both arch additions provide real signal. Next: chain further (exp24 @ lr=5e-6) then another arch.
 
 ### 2026-04-17 — exp22: FiLM time conditioning (warm-start from exp21)
 - **Hypothesis:** t is still unused. Sample-specific absolute time (0.3-0.4 range) correlates with flow development stage. Add TimeEncoder (MLP 1→64→64→2*hidden*17) producing per-block (γ, β) FiLM params, applied as h*(1+γ)+β after each block's norm. Zero-init final MLP layer → FiLM=identity at init → warm-start preserves exp21 exactly.
