@@ -270,7 +270,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 60
+    epochs: int = 90
     hidden: int = 256
     voxel_res: int = 64
     voxel_mid: int = 64

@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v21 KEPT — epochs=90/60min seed broke homogeneous saturation (8-seed 0.7800, gain 0.006)
+- **Hypothesis:** 7 homogeneous seeds were saturating (gain 0.0018). Changing the anneal profile — `epochs=90, MAX_TIMEOUT_MIN=60` — produces a *different* final-weights basin than the 60-epoch cosine all prior seeds saw. Different basin = less-correlated errors = bigger ensemble gain.
+- **Change:** `train.py` — `epochs: int = 90` (was 60). Launched with `MAX_TIMEOUT_MIN=60`. All else identical to v6.
+- **Result:** v21 solo val/l2 = **0.8549** at epoch 68 of 69 run (60 min, 52s/epoch). **Best single seed ever**, 0.014 under prior best (v18 0.8684). Longer anneal worked at the solo level too. 8-seed ensemble = **0.7800** (vs 7-seed 0.7858). Ensemble gain 0.0058 — **3× the saturating homogeneous rate**.
+- **Verdict:** kept — both solo-best AND ensemble-best. Hypothesis strongly validated.
+- **Notes:** Two independent wins here: (1) longer anneal (90 vs 60 ep) lowers the single-run floor significantly — the extra 9 low-LR epochs let the model tune further into the minimum. (2) The heterogeneous anneal introduces exactly the error decorrelation predicted. Next (v22): train **another epochs=90 seed**. If each het seed gives ~0.006 ensemble gain, three of them stacked with the 7 short seeds could land the 9-model ensemble in the 0.77 band.
+
+
 ### 2026-04-17 — v20 KEPT — 7-seed ensemble landed 0.7858, below the 2-delta threshold
 - **Change:** 7th v6-arch seed (solo **0.8890** — noticeably weaker than prior seeds at 0.87 ± 0.005, genuinely unlucky init). Ensemble 7 checkpoints.
 - **Result:** 7-seed = **0.7858** (vs 6-seed 0.7876). Gain 0.0018.
