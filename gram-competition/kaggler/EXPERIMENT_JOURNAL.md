@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Anneal cycle 6 (dropout=0 from iter33.final) + 23-model ensemble (iter 34, ensemble-only KEPT)
+- **Hypothesis:** Complete cycle: anneal from iter33's p=0.3-trained final. Last two steps (iter32 anneal, iter33 drop) gave 0.11% / 0.09% — test whether this anneal is still in the 0.09%+ band or cycle is truly dying.
+- **Change:** no code. `--resume .../model-htvqifo0/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0548** at E6/18 (31.1 min, init 1.0602). Trajectory: E1 1.0677 → E3 1.0550 → E6 1.0548 (dip) → oscillation 1.055-1.062 through E18. Final.pt (E18, val=1.0602) staged as iter34.pt. **23-model ensemble:**
+  - **1.0207** ← submitted (0.09% drop from 1.0216)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — 9th consecutive cycle gain, held at 0.09%. **Cumulative session: 1.0625 → 1.0207 = 3.94%.**
+- **Notes:** Two consecutive 0.09% gains confirms cycle is past its 0.10-0.12% peak — diminishing returns are now visible. Single-model floor 1.0530 remains unbroken in 11 iters (iter 23 + iter 29). Total iter 21-34 has been cycle-only; the planned architectural lifts (second FiLM, pre-LN variant, deeper trunk) have been deferred in favour of the cheap +0.10%/iter recipe. Iter 35 pivot: **add second FiLM layer post-blocks** (zero-init modulation applied on the trunk output before proj_out). Warm-start from iter34.final, allow the extra FiLM to drift from zero-init. If it yields ≥0.3% single-model, keep & start a new ensemble branch. If it ties iter34.final, treat as ensemble member. If worse than 1.060, revert to cycle (iter36 = another anneal).
+
 ### 2026-04-17 — Dropout cycle 6 (p=0.3 from iter32.final) + 22-model ensemble (iter 33, ensemble-only KEPT)
 - **Hypothesis:** Extrapolate p sweep from {0.10, 0.15, 0.20, 0.25} → 0.30. Prior pattern: higher p produced slightly bigger basin drift (iter 29 at p=0.2 tied floor). Test whether p=0.3 continues the 0.10-0.12%/step cycle or saturates.
 - **Change:** no code. `--resume .../model-qhn6enhi/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.3 --best_val_floor 1.0530 --epochs 25`.
