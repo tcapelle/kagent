@@ -67,6 +67,43 @@ class TransformerBlock(nn.Module):
         return x
 
 
+def knn_graph(pos, k, chunk=4096):
+    """KNN indices from positions. pos: [B, N, 3]. Returns [B, N, k] (excludes self)."""
+    B, N, _ = pos.shape
+    out = torch.empty(B, N, k, dtype=torch.long, device=pos.device)
+    for b in range(B):
+        pb = pos[b]
+        for s in range(0, N, chunk):
+            e = min(s + chunk, N)
+            d = torch.cdist(pb[s:e].unsqueeze(0), pb.unsqueeze(0)).squeeze(0)  # [chunk, N]
+            _, idx = d.topk(k + 1, dim=-1, largest=False)  # +1 because self is included
+            out[b, s:e] = idx[:, 1:k+1]  # drop self
+    return out
+
+
+class EdgeConvBlock(nn.Module):
+    """DGCNN-style EdgeConv: for each edge (i,j), MLP([x_i, x_j - x_i]) then max-pool over j."""
+    def __init__(self, dim, mlp_ratio=1.0):
+        super().__init__()
+        h = int(dim * mlp_ratio * 2)
+        self.mlp = nn.Sequential(
+            nn.Linear(2 * dim, h), nn.GELU(), nn.Linear(h, dim),
+        )
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, x, knn_idx):
+        # x: [B, N, D], knn_idx: [B, N, k]
+        B, N, D = x.shape
+        k = knn_idx.shape[-1]
+        flat_idx = knn_idx.reshape(B, N * k, 1).expand(-1, -1, D)
+        neighbors = x.gather(dim=1, index=flat_idx).reshape(B, N, k, D)  # [B, N, k, D]
+        xi = x.unsqueeze(2).expand(-1, -1, k, -1)                        # [B, N, k, D]
+        edge_feat = torch.cat([xi, neighbors - xi], dim=-1)              # [B, N, k, 2D]
+        msg = self.mlp(edge_feat)                                        # [B, N, k, D]
+        agg = msg.max(dim=2).values                                      # [B, N, D]
+        return self.norm(x + agg)
+
+
 def knn_interpolate(pos_full, pos_anchor, feat_anchor, k=3, chunk=8192):
     """For each point in pos_full, gather k nearest anchors' features (inverse-dist weighted).
 
@@ -94,16 +131,18 @@ def knn_interpolate(pos_full, pos_anchor, feat_anchor, k=3, chunk=8192):
 
 
 class BaselineMLP(nn.Module):
-    """Baseline MLP + spatial-refinement branch (zero-init).
+    """Baseline MLP + EdgeConv GNN refinement branch (zero-init).
 
-    At init, spatial branch contributes 0, so model = baseline-MLP.
-    Training drives the spatial branch to add global-context corrections.
+    Point branch: per-point MLP (baseline behavior).
+    Spatial branch: subsample K anchors, run EdgeConv GNN with KNN graph, zero-init
+    output head and KNN-interpolate back to full 100k. At init, total = point_pred.
     """
 
-    def __init__(self, hidden=256, n_blocks=6, spatial_blocks=3, num_heads=4,
-                 n_anchors=4096, vel_mean=None, vel_std=None):
+    def __init__(self, hidden=256, n_blocks=6, edge_blocks=4, edge_k=16,
+                 n_anchors=8192, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_anchors = n_anchors
+        self.edge_k = edge_k
         in_dim = 3 + T_IN * 3
         out_dim = T_OUT * 3
 
@@ -112,11 +151,9 @@ class BaselineMLP(nn.Module):
         self.point_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.point_head = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # --- Spatial refinement branch ---
+        # --- EdgeConv GNN refinement branch ---
         self.anchor_proj = nn.Linear(hidden, hidden)
-        self.anchor_blocks = nn.ModuleList([
-            TransformerBlock(hidden, num_heads) for _ in range(spatial_blocks)
-        ])
+        self.edge_blocks = nn.ModuleList([EdgeConvBlock(hidden) for _ in range(edge_blocks)])
         self.anchor_norm = nn.LayerNorm(hidden)
         self.spatial_head = nn.Linear(hidden, out_dim)
         nn.init.zeros_(self.spatial_head.weight)
@@ -142,14 +179,18 @@ class BaselineMLP(nn.Module):
         x = self.point_blocks(x)                   # [B, N, D]
         point_pred = self.point_head(x)            # [B, N, out_dim]
 
-        # Spatial branch: subsample, attend, interpolate
+        # EdgeConv branch: subsample anchors, build KNN graph, EdgeConv, interpolate back
         K = min(self.n_anchors, N)
-        stride = max(N // K, 1)
-        idx = torch.arange(0, stride * K, stride, device=x.device)[:K]
+        if self.training:
+            idx = torch.randperm(N, device=x.device)[:K]
+        else:
+            stride = max(N // K, 1)
+            idx = torch.arange(0, stride * K, stride, device=x.device)[:K]
         anchor_x = self.anchor_proj(x[:, idx])     # [B, K, D]
-        anchor_pos = pos_n[:, idx]
-        for block in self.anchor_blocks:
-            anchor_x = block(anchor_x)
+        anchor_pos = pos_n[:, idx]                 # [B, K, 3]
+        knn_idx = knn_graph(anchor_pos, self.edge_k)  # [B, K, k]
+        for block in self.edge_blocks:
+            anchor_x = block(anchor_x, knn_idx)
         anchor_x = self.anchor_norm(anchor_x)
         interp = knn_interpolate(pos_n, anchor_pos, anchor_x, k=3)  # [B, N, D]
         spatial_pred = self.spatial_head(interp)   # zero at init
@@ -255,7 +296,7 @@ def main():
     }
 
     model = BaselineMLP(
-        hidden=256, n_blocks=6, spatial_blocks=3, num_heads=4, n_anchors=4096,
+        hidden=256, n_blocks=6, edge_blocks=4, edge_k=16, n_anchors=8192,
         vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     ).to(device)
 
