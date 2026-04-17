@@ -63,9 +63,9 @@ class VoxelMixer(nn.Module):
     def __init__(self, dim, grid_size=32):
         super().__init__()
         self.G = grid_size
+        self.G_coarse = grid_size // 2
         self.norm = nn.LayerNorm(dim)
-        # Aggregate mean + max voxel features, project back to dim.
-        # Identity init on mean half, zero on max half → first-pass behavior = mean only (warm-start safe).
+        # Fine branch (G³): mean+max aggregation, identity-init on mean half.
         self.proj_agg = nn.Conv3d(2 * dim, dim, 1)
         nn.init.zeros_(self.proj_agg.weight)
         nn.init.zeros_(self.proj_agg.bias)
@@ -77,42 +77,61 @@ class VoxelMixer(nn.Module):
             nn.GELU(),
             nn.Conv3d(dim, dim, 3, padding=1),
         )
+        # Coarse branch ((G/2)³): zero-init end-to-end → starts at 0 contribution (warm-start safe).
+        self.proj_agg_coarse = nn.Conv3d(2 * dim, dim, 1)
+        nn.init.zeros_(self.proj_agg_coarse.weight)
+        nn.init.zeros_(self.proj_agg_coarse.bias)
+        self.conv_coarse = nn.Sequential(
+            nn.Conv3d(dim, dim, 3, padding=1),
+            nn.GELU(),
+            nn.Conv3d(dim, dim, 3, padding=1),
+        )
+        nn.init.zeros_(self.conv_coarse[-1].weight)
+        nn.init.zeros_(self.conv_coarse[-1].bias)
+
+    def _voxel_mm(self, h, p_norm, G):
+        B, N, D = h.shape
+        v_idx = (p_norm * G).long().clamp(0, G - 1)
+        flat_idx = v_idx[..., 0] * G * G + v_idx[..., 1] * G + v_idx[..., 2]
+        idx_D = flat_idx.unsqueeze(-1).expand(-1, -1, D)
+        voxel_mean = torch.zeros(B, G ** 3, D, device=h.device, dtype=h.dtype)
+        count = torch.zeros(B, G ** 3, device=h.device, dtype=h.dtype)
+        voxel_mean.scatter_add_(1, idx_D, h)
+        count.scatter_add_(1, flat_idx, torch.ones_like(flat_idx, dtype=h.dtype))
+        voxel_mean = voxel_mean / count.unsqueeze(-1).clamp(min=1.0)
+        voxel_max = torch.zeros(B, G ** 3, D, device=h.device, dtype=h.dtype)
+        voxel_max.scatter_reduce_(1, idx_D, h, reduce="amax", include_self=False)
+        vm = voxel_mean.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
+        vx = voxel_max.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
+        return vm, vx
+
+    def _gather(self, vf, p_norm, B, N):
+        # grid_sample: 5D input [B, C, D, H, W], grid last dim = (x, y, z) → (W, H, D).
+        # Our voxel axes are (pos_x=D, pos_y=H, pos_z=W), so grid = (p_z, p_y, p_x).
+        grid = (p_norm * 2 - 1)[:, :, [2, 1, 0]].view(B, 1, 1, N, 3)
+        sampled = F.grid_sample(vf, grid, mode="bilinear",
+                                align_corners=True, padding_mode="border")
+        return sampled.squeeze(2).squeeze(2).permute(0, 2, 1)
 
     def forward(self, x, pos):
         B, N, D = x.shape
-        G = self.G
         h = self.norm(x)
 
         p_min = pos.amin(dim=1, keepdim=True)
         p_max = pos.amax(dim=1, keepdim=True)
         p_norm = (pos - p_min) / (p_max - p_min).clamp(min=1e-6)  # [B, N, 3] in [0,1]
 
-        v_idx = (p_norm * G).long().clamp(0, G - 1)
-        flat_idx = v_idx[..., 0] * G * G + v_idx[..., 1] * G + v_idx[..., 2]
-        idx_D = flat_idx.unsqueeze(-1).expand(-1, -1, D)
-
-        voxel_mean = torch.zeros(B, G ** 3, D, device=x.device, dtype=h.dtype)
-        count = torch.zeros(B, G ** 3, device=x.device, dtype=h.dtype)
-        voxel_mean.scatter_add_(1, idx_D, h)
-        count.scatter_add_(1, flat_idx, torch.ones_like(flat_idx, dtype=h.dtype))
-        voxel_mean = voxel_mean / count.unsqueeze(-1).clamp(min=1.0)
-
-        voxel_max = torch.zeros(B, G ** 3, D, device=x.device, dtype=h.dtype)
-        voxel_max.scatter_reduce_(1, idx_D, h, reduce="amax", include_self=False)
-
-        vm = voxel_mean.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
-        vx = voxel_max.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
+        vm, vx = self._voxel_mm(h, p_norm, self.G)
         vf = self.proj_agg(torch.cat([vm, vx], dim=1))
         vf = vf + self.conv(vf)
+        sampled = self._gather(vf, p_norm, B, N)
 
-        # Trilinear gather. grid_sample with 5D input [B, C, D, H, W]:
-        # grid last dim is (x, y, z) mapping to (W, H, D).
-        # Our voxel axes are (pos_x=D, pos_y=H, pos_z=W), so grid = (p_z, p_y, p_x).
-        grid = (p_norm * 2 - 1)[:, :, [2, 1, 0]].view(B, 1, 1, N, 3)
-        sampled = F.grid_sample(vf, grid, mode="bilinear",
-                                align_corners=True, padding_mode="border")
-        sampled = sampled.squeeze(2).squeeze(2).permute(0, 2, 1)  # [B, N, D]
-        return x + sampled
+        vm_c, vx_c = self._voxel_mm(h, p_norm, self.G_coarse)
+        vf_c = self.proj_agg_coarse(torch.cat([vm_c, vx_c], dim=1))
+        vf_c = vf_c + self.conv_coarse(vf_c)
+        sampled_c = self._gather(vf_c, p_norm, B, N)
+
+        return x + sampled + sampled_c
 
 
 class BaselineMLP(nn.Module):

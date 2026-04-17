@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp18: multi-scale voxel (16³ coarse parallel, warm-start from exp17)
+- **Hypothesis:** Chain saturating again. Arch change gave biggest recent win (exp15 Δ=0.0126). Add parallel 16³ coarse voxel branch to each VoxelMixer — captures larger-scale flow structures (wake, separation zones) that 32³ 3×3 conv can't reach. Zero-init (proj_agg_coarse=0, last conv_coarse=0) → sampled_c=0 at init → warm-start equivalent to exp17. Fresh training allows coarse branch to learn contributions.
+- **Change:** VoxelMixer now has a parallel G_coarse=G/2 branch (proj_agg_coarse + conv_coarse) summed with fine output. Zero-init end-to-end. Refactored fine-branch logic into _voxel_mm/_gather helpers.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** 48 missing keys on warm-start (8 blocks × 6 coarse params). Params: 59.7M → 61.1M (+2.3%). lr=2e-4 to train fresh coarse layers.
+
 ### 2026-04-17 — exp17: chain warm-start from exp16 + lr=2e-5
 - **Hypothesis:** Exp16 val was still dropping at E33 (0.9422, best E24 0.9420). One more chain at lr=2e-5 should extract the last fine-tuning gains — similar pattern to the exp12→exp13 chain (+0.0025). With a richer arch (mean+max) there may be more to extract.
 - **Change:** --warm_start=<exp16 ckpt model-4fk50oi3> --lr=2e-5. No code changes.
