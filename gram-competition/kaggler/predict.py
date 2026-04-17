@@ -37,6 +37,10 @@ class Config:
     checkpoint6: str | None = None
     checkpoint7: str | None = None
     checkpoint8: str | None = None
+    checkpoint9: str | None = None
+    checkpoint10: str | None = None
+    checkpoint11: str | None = None
+    checkpoint12: str | None = None
     # Comma-separated weights matching the number of checkpoints (default: equal).
     weights: str | None = None
     splits_dir: str = str(SPLITS_DIR)
@@ -89,7 +93,8 @@ def _make_model(ckpt_path):
 
 _ckpts = [cfg.checkpoint]
 for c in [cfg.checkpoint2, cfg.checkpoint3, cfg.checkpoint4, cfg.checkpoint5,
-          cfg.checkpoint6, cfg.checkpoint7, cfg.checkpoint8]:
+          cfg.checkpoint6, cfg.checkpoint7, cfg.checkpoint8, cfg.checkpoint9,
+          cfg.checkpoint10, cfg.checkpoint11, cfg.checkpoint12]:
     if c:
         _ckpts.append(c)
 
