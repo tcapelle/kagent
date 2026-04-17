@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Post-block FiLM layer (architectural) + 24-model ensemble (iter 35, ensemble-only KEPT)
+- **Hypothesis:** Cycle saturated at +0.09%/iter after 9 consecutive steps. Add a final geometry-conditioned (scale, shift) applied to the trunk output before `ln_dec` — give the decoder one more chance to re-weight features by SDF/rel-vec after the attention blocks. Warm-start zero-init keeps iter34.final identity at step 0.
+- **Change:** `train.py` — new `post_film_scale` + `post_film_shift` MLPs (Linear(geom_feat_dim, hidden) → GELU → Linear(hidden, hidden), zero-init on final layer). Applied as `x = x * (1 + post_scale) + post_shift` between the block loop and `ln_dec`. `--resume .../model-jkioj2fi/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0558** at E11/18 (31.6 min, init 1.0602) — *worse* than iter 34's 1.0548 anneal. Trajectory slower to dip than pure anneal: E1 1.0636 → E5 1.0592 → E9 1.0559 → E11 1.0558 → drift to 1.0613. Final.pt (E18, val=1.0613) staged as iter35.pt. **24-model ensemble:**
+  - **1.0198** ← submitted (0.09% drop from 1.0207)
+- **Verdict:** Architectural lift **discarded as single-model** (hit ceiling at a different, slightly worse basin than pure anneal) but **kept as ensemble member** — same 0.09% marginal as pure cycle steps, *no ceiling break*. **Cumulative session: 1.0625 → 1.0198 = 4.02%.**
+- **Notes:** Two independent hits at 0.09%/iter (cycle vs architecture) strongly suggests the val floor is a *data-generalisation* ceiling, not a trunk-capacity ceiling. Post-block FiLM's fresh zero-init branches (152k new params) got only 18 epochs to learn, so may be undertrained — a second anneal over this architecture could extract more. Iter 36 options: (a) **anneal from iter35.final (dropout=0)** — give the new FiLM more training, cheapest; (b) **dropout cycle over new architecture** (p=0.2 from iter35.final) — tests whether cycle re-activates in new architecture; (c) **LayerNorm before post-FiLM** — small tweak to stabilize. (a) most likely to tell us whether the new params are the bottleneck.
+
 ### 2026-04-17 — Anneal cycle 6 (dropout=0 from iter33.final) + 23-model ensemble (iter 34, ensemble-only KEPT)
 - **Hypothesis:** Complete cycle: anneal from iter33's p=0.3-trained final. Last two steps (iter32 anneal, iter33 drop) gave 0.11% / 0.09% — test whether this anneal is still in the 0.09%+ band or cycle is truly dying.
 - **Change:** no code. `--resume .../model-htvqifo0/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
