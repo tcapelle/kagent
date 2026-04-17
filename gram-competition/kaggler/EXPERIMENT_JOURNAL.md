@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter27: second fresh-init training + 4-model ensemble
+- **Hypothesis:** iter26's fresh-init gave −0.016 ensemble gain. If the gain scales with *diversity of inits*, a second fresh-init model (iter27) should give another −0.005 to −0.010.
+- **Change:** re-ran `python train.py --epochs 28 --agent nezuko` fresh (another seed by default).
+- **Result:** iter27 standalone val/l2 = **0.9348** at e26/28 (similar to iter26's 0.9377 — fresh inits converge to similar quality). Ensemble tests:
+  - iter19 + iter24 + iter26 + **iter27** (4-model): val l2 = **0.8553** (direct, with TTA) — **new best**
+  - iter26 + iter27 only (pure fresh-init): 0.8743 — worse than 4-model, pure fresh-inits miss the chain-honed quality of iter19/iter24
+- **Verdict:** **kept** — −0.007 vs iter26 ensemble (0.8622 → 0.8553). Trend: each new fresh-init model adds ~0.007-0.016 to the ensemble. Submission at `nezuko/94002e8`.
+- **Notes:** The ensemble sweet spot is (chain-trained strong models) + (fresh-init diverse models). Pure fresh-inits aren't enough on their own; chain-trained alone saturates. Next iter: train iter28 with a deliberately different architecture (depth=4? grid=64? bigger slice_num?) so error correlation drops further.
+
 ### 2026-04-17 — iter26: fresh-init training for ensemble diversity + best 3-model ensemble
 - **Hypothesis:** iter25 ensemble gain came almost entirely from iter19+iter24 (the chain endpoints). A *fresh-initialized* model will have genuinely decorrelated errors (different local minimum basin), so swapping iter23 for a fresh model should give a bigger ensemble gain. Train iter26 from scratch with same config as iter19 — diversity is in the init, not the architecture.
 - **Change:** re-ran `python train.py --epochs 28 --agent nezuko` (no `--resume_from`). Different random seed by default.
