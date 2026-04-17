@@ -312,6 +312,24 @@ class BaselineMLP(nn.Module):
         for m in self.block_film_scale:
             nn.init.zeros_(m[-1].weight)
             nn.init.zeros_(m[-1].bias)
+        # Post-block FiLM: one final geometry-conditioned (scale, shift) applied to
+        # the trunk output before ln_dec. Per-block FiLM (above) conditions every
+        # block's input; this gives the decoder one last chance to re-weight
+        # features by geometry. Zero-init on both branches keeps warm-start exactly
+        # identical at init (missing keys load to zero -> scale=0, shift=0).
+        self.post_film_scale = nn.Sequential(
+            nn.Linear(geom_feat_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, hidden),
+        )
+        self.post_film_shift = nn.Sequential(
+            nn.Linear(geom_feat_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, hidden),
+        )
+        for m in (self.post_film_scale, self.post_film_shift):
+            nn.init.zeros_(m[-1].weight)
+            nn.init.zeros_(m[-1].bias)
         # Time-conditioned decoder: shared across output steps, but each step gets
         # its own time embedding as additional input.
         self.time_embed = nn.Embedding(T_OUT, time_embed_dim)
@@ -361,6 +379,9 @@ class BaselineMLP(nn.Module):
             shift = self.block_geom[i](geom_feat)                        # [B, N, H]
             x = x * (1 + scale) + shift
             x = block(x)
+        post_scale = self.post_film_scale(geom_feat)                     # [B, N, H]
+        post_shift = self.post_film_shift(geom_feat)                     # [B, N, H]
+        x = x * (1 + post_scale) + post_shift
         x = self.ln_dec(x)  # [B, N, hidden]
 
         # Decode per output time step with a shared MLP + step embedding.
