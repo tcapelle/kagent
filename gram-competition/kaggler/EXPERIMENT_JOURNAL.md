@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Anneal cycle 4 (dropout=0 from iter29.final new basin) + 19-model ensemble (iter 30, ensemble-only KEPT)
+- **Hypothesis:** iter 29 found a *different* 1.0530 basin. Anneal it with dropout=0 and see if the new starting point yields a sub-floor single or similar decorrelation to the prior cycle.
+- **Change:** no code. `--resume .../model-h9027r2d/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0557** at E9/18 (31.1 min, init 1.0575). Trajectory: E1 1.0678 → E8 1.0558 → oscillation 1.056-1.060 through E18. Final.pt (E18, val=1.0583) staged as iter30.pt. **19-model ensemble:**
+  - **1.0246** ← submitted (0.11% drop from 1.0257)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — 5th consecutive 0.10-0.12% cycle gain. **Cumulative session: 1.0625 → 1.0246 = 3.6%.**
+- **Notes:** Anneal from the *new* iter 29 basin gave a slightly different best-within-run (1.0557) than the original cycle's anneal step (iter 26/28 at 1.0547-1.0549). The new basin's anneal doesn't reach floor either, suggesting both basins sit at an intrinsic generalisation floor given current architecture. Ensemble decorrelation remains strong — no saturation yet. Iter 31 priorities: (a) **dropout p=0.25 from iter 30** (push drop parameter further, first cycle step from the new basin); (b) **second FiLM layer post-blocks** — 6 iters since last architectural lift; (c) **sobolev lambda=0.3 with dropout** (mix regularisers). (a) is cheapest; current plan — continue cycle and expect another 0.10-0.12%.
+
 ### 2026-04-17 — Dropout cycle 3 (p=0.2 from iter28.final): tied floor + 18-model ensemble (iter 29, ensemble-only KEPT)
 - **Hypothesis:** Continue dropout-anneal cycle (drop steps at p ∈ {0.10, 0.15, 0.20}). Higher p should produce bigger weight drift → more decorrelation. Resume from iter 28's annealed final.
 - **Change:** no code. `--resume .../model-ghtx3g73/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 1.0530 --epochs 25`.
