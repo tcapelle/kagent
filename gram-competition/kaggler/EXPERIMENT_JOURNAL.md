@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp41: kNN neighbor aggregation (k=16, zero-init)
+- **Hypothesis:** Voxels (G=32, 16, 8) give coarse spatial context, but miss fine local neighborhood. Add a single KNNMixer block after main stack that gathers mean+max features from 16 nearest spatial neighbors per point. Zero-init output projection → identity at warm-start.
+- **Change:** train.py: new KNNMixer class (LayerNorm + gather-kNN + mean/max pool + zero-init Linear). BaselineMLP: self.knn_mixer = KNNMixer(hidden, k=16). Forward: after main block stack, compute _knn(pos) via chunked cdist+topk, apply knn_mixer, then out_refine. Warm-start from exp40 @ lr=2e-5.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Smoke test: 4 missing keys (knn_mixer.*), pred matches (identity at init, 0.838 ≈ 0.837 baseline), full-res forward 341ms (+110ms over baseline). Expected ~7 epochs in 30 min.
+
 ### 2026-04-17 — exp40: chain exp38 @ lr=2e-6 (slower refine of y-flip aug)
 - **Hypothesis:** exp38 val was still decreasing at E10 (0.8839). At lr=5e-6 over 50-epoch cosine, LR barely decayed. Try lr=2e-6 for finer refine.
 - **Change:** No code changes. --warm_start <exp38 ckpt model-mgo03egs> --lr 2e-6 --subsample_train 0 --yflip_prob 0.5.
