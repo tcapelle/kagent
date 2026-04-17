@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — edgeconv-scaled-violet-e11
+- **Hypothesis:** E10 EdgeConv tied e9 at 1.24 — likely under-powered at 3 blocks/k=12/4k anchors and under-trained (30-epoch budget). Scale the GNN (5 edge blocks, k=16, 10k anchors) + add y-flip data aug (F1 wake symmetry) + bf16 autocast for 2x speedup, extend timeout to 60 min. Expect break below 1.24 ceiling.
+- **Change:** `train.py` — `BaselineMLP(edge_blocks=5, edge_k=16, n_anchors=10000)`; training loop: 50% chance to flip `v_in`/`v_out`/`pos` Y-axis; wrap forward+loss in `torch.autocast(bfloat16)`. `predict.py` kwargs synced.
+- **Result:** val/l2 = **1.1204** (epoch 58). 60 epochs × 60 s (6.0 GB bf16). train 0.028 → 0.017 (normalized). Leaderboard l2=1.1204 — **rank 9** (up from 10; e9 was 1.2414). Commit `89b6a80`.
+- **Verdict:** kept — first experiment to break 1.24 ceiling (~10% improvement). Still substantially behind leaders (thorfinn 0.73, alphonse 0.76).
+- **Notes:** val/l2 was still descending at the 60-min cutoff (train loss 0.028 → 0.017, no sign of overfit) — **model is under-trained**. Smart moves to try next: (a) even more epochs / longer timeout to fully converge; (b) larger anchor budget (15k–20k) to reduce KNN interpolation loss on the 90k non-anchor points; (c) multi-scale — two EdgeConv stacks at coarse/fine resolutions; (d) drop the per-point MLP branch entirely (it contributes mean-flow only; GNN already does that better) and let the EdgeConv own the whole prediction with more blocks. The scaled-EdgeConv class clearly descends past the per-point ceiling so the architecture direction is correct.
+
+### 2026-04-17 — edgeconv-gnn-violet-e10
+- **Hypothesis:** E9 spatial branch was Transformer on 4k subsampled anchors — too coarse for local flow structure. Replace with DGCNN-style EdgeConv (KNN-graph message passing with MLP on edge features, max-pool neighbors), which is how leader thorfinn reaches 0.73. Keep dual-branch architecture with zero-init spatial head.
+- **Change:** `train.py` — new `EdgeConvBlock` module (gather K neighbors, MLP on [x_i, x_j - x_i] edge features, max-pool, residual); replaced the Transformer stack with 3 EdgeConv blocks, `edge_k=12`, `n_anchors=4096`. Zero-init `spatial_head`. `predict.py` kwargs synced.
+- **Result:** val/l2 = **1.2422** (epoch ~28). 30 epochs × 41 s, 5.4 GB. train 0.032 → 0.025 (normalized). Leaderboard l2=1.2422 — tied e9 (0.0008 worse). Commit `7104b10`.
+- **Verdict:** kept as stepping stone (architecture promising, under-scaled). Became basis for e11.
+- **Notes:** EdgeConv per epoch cost ≈ Transformer. Gradient flow was clean (no zero-grad collapse like Transolver). 30-min budget + only 3 edge blocks / k=12 / 4k anchors was too small to show the gain. Key insight: need (a) more blocks for multi-hop neighborhood reach, (b) larger k for edge diversity, (c) more anchors for denser KNN interpolation to the 100k points. All folded into e11.
+
 ### 2026-04-17 — dual-branch-refinement-violet-e9
 - **Hypothesis:** Pure per-point MLP plateaus at ~1.25. Dual branches — per-point MLP (baseline) + zero-init transformer on 4096 anchor points + KNN-interpolate — lets the spatial branch *add* global corrections without ever making the base prediction worse than baseline.
 - **Change:** `train.py` `BaselineMLP` — point branch (hidden=256, 6 ResBlocks) + spatial branch (3 TransformerBlocks, `nn.init.zeros_(spatial_head)`), interpolate via chunked `torch.cdist` KNN. Fixed critical output reshape bug: `[B,N,15].reshape(B,N,T,3).permute(0,2,1,3)`.
