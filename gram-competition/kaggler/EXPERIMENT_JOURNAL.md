@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v20 KEPT — 7-seed ensemble landed 0.7858, below the 2-delta threshold
+- **Change:** 7th v6-arch seed (solo **0.8890** — noticeably weaker than prior seeds at 0.87 ± 0.005, genuinely unlucky init). Ensemble 7 checkpoints.
+- **Result:** 7-seed = **0.7858** (vs 6-seed 0.7876). Gain 0.0018.
+- **Verdict:** kept — any improvement is banked. But gain < 0.002 threshold I set earlier; homogeneous seeds are saturating.
+- **Notes:** Interestingly a *weaker* solo seed (0.889 vs 0.87) still added ensemble value, because its errors decorrelate from the tighter-clustered seeds. Confirms the ensemble benefit comes from error *independence* not just having more near-best models. Next (v21): try **longer-training heterogeneity** — same arch, but `epochs=90` with `MAX_TIMEOUT=60`. Different anneal profile = different final-weights basin = less-correlated errors vs. the 60-epoch homogeneous pack. If this works, could be a free ensemble diversity boost without modifying ensemble.py for multi-arch loading.
+
+
 ### 2026-04-17 — v19 KEPT — 6-seed ensemble landed 0.7876, still descending
 - **Change:** 6th v6-arch seed (45 min, 52 epochs, solo best **0.8699** @ ep51).
 - **Result:** 6-seed val/l2 = **0.7876** (vs 5-seed 0.7927). Solo best-of-6 sequence: 0.8707, 0.8784, 0.8694, 0.8706, 0.8684, 0.8699 — mean 0.8712, std 0.0034. Noise floor rock-solid.
