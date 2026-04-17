@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-17 — exp32: full-resolution training (warm-start from exp31)
-- **Hypothesis:** Training uses subsample=50k but val runs at full 100k — the voxel density statistics differ. Also, at 50k each voxel has ~50% occupancy vs 100% at val, which likely degrades VoxelMixer behavior. Chain from exp31 with --subsample_train 0 and lr=2e-5 to test if closing the density gap helps. Cost: ~2x epoch time → ~9 epochs in 30min vs 18.
-- **Change:** --subsample_train 0 --warm_start <exp31 ckpt> --lr 2e-5. No code changes.
+### 2026-04-17 — exp33: full-res chain from exp32 + lr=5e-6
+- **Hypothesis:** Exp32 overfit at lr=2e-5 (val climbed E1→E11). At lr=5e-6 cosine decay, expect stable slow refine. Target: beat 0.8879 by +0.001-0.003.
+- **Change:** --warm_start <exp32 ckpt> --subsample_train 0 --lr 5e-6.
 - **Result:** TBD
 - **Verdict:** TBD
 - **Notes:** Launching.
+
+### 2026-04-17 — exp32: full-resolution training (warm-start from exp31)
+- **Hypothesis:** Training uses subsample=50k but val runs at full 100k — the voxel density statistics differ. Also, at 50k each voxel has ~50% occupancy vs 100% at val, which likely degrades VoxelMixer behavior. Chain from exp31 with --subsample_train 0 and lr=2e-5 to test if closing the density gap helps. Cost: ~2x epoch time → ~9 epochs in 30min vs 18.
+- **Change:** --subsample_train 0 --warm_start <exp31 ckpt> --lr 2e-5. No code changes.
+- **Result:** val/l2=**0.8879** @ epoch 1 (30.6 min total, 167s/epoch × 11). train=0.0028. mae_Ux=0.5970, mae_Uy=0.2693, mae_Uz=0.4115. Val CLIMBED over epochs (0.8879→0.8912) — overfitting at full-res + this LR.
+- **Verdict:** KEPT — +0.0021 over exp31 (0.8900). Big insight: density mismatch was real (immediate +0.002 at E1), but training past E1 overfits. Next: lower LR (5e-6) to slow overfit, or mix subsample-50k + full-100k per batch for augmentation.
+- **Notes:** Ckpt: model-18f6e3td. Distance to leader (thorfinn=0.7511): 0.137. Peak VRAM: 11.1GB (up from 7.4GB at 50k). Fits easily.
 
 ### 2026-04-17 — exp31: chain exp30 (aux features) + lr=2e-5
 - **Hypothesis:** Exp30 regressed 0.9132 (same arch-add pattern). Chain at lr=2e-5 to recover. Expected +0.003-0.006 over exp29 (0.8965).
