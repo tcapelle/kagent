@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — scatter mean + max voxelization
+- **Hypothesis:** Scatter-mean loses within-cell variation. Concatenating a scatter-max projection lets the 3D CNN see both the typical and the most extreme velocity in each voxel — useful for turbulent / separation regions where peak values carry information about mixing.
+- **Change:** `model.py/_voxelize` — alongside the mean, run `scatter_reduce_(reduce="amax", include_self=False)` on the 15 v_in channels. Concat mean+occupancy (16 ch) with max (15 ch) → 31 grid input channels (was 16). `grid_in = Conv3d(31, grid_ch, 1)`.
+- **Result:** val/l2_error = **0.9533** (epoch 24 of 24 @ 25.2 min, 8.0 GB peak). 0.1 % improvement over exp 7 (0.9547). Per-epoch time unchanged (63 s).
+- **Verdict:** Kept. Tiny but consistent-direction improvement; the extra capacity is effectively free (only grid_in has more params, and voxelization isn't the bottleneck). Leaves room to push.
+- **Notes:** Val still improving at epoch 24 (22: 0.9575 → 23: 0.9564 → 24: 0.9533). Finished ~5 min under budget, same as exp 7. This is a consistent signal that more epochs is on the table without any other change. Next: exp 9 = just bump `cfg.epochs=28` to spend the slack. After that, consider qualitative changes (k-NN features, U-Net grid CNN, ensembles).
+
 ### 2026-04-17 — higher voxel resolution G=80 ch=32
 - **Hypothesis:** Exp 5 showed higher grid resolution helps. Go further: G=80 (~2.9 cm/cell), compensate by dropping channels 48→32. Compute budget: 80³·32² = 524 B ops < exp 5's 64³·48² = 604 B, so per-epoch time should be similar or lower.
 - **Change:** `train.py`+`predict.py` — `grid_res=80, grid_ch=32`. Nothing else changed vs exp 5 (epochs=24, Fourier L=8, 4 dilated grid blocks, point_hidden=384, n_point_blocks=6).
