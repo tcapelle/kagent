@@ -22,6 +22,40 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v18: v6-arch + near-airfoil weighted loss (DISCARDED)
+- **Hypothesis:** errors concentrate in boundary layer (mean err 2.4
+  within 0.05m vs 0.3 beyond 0.1m of airfoil). Up-weighting the loss
+  there with `w = exp(-d/0.05)` (mean-normalized) should force the
+  model to optimize the hard region. Even if single is worse,
+  qualitatively different objective could add ensemble diversity.
+- **Change:** `train.py` — per-point weighted loss via new config
+  fields `loss_weight_near_airfoil` (α exponent) and
+  `loss_weight_scale`. CLI: `--loss_weight_near_airfoil 1.0
+  --loss_weight_scale 0.05`. Same v6 arch as v14. Epochs=40 (slower
+  per-epoch: 181s due to min_distance_to per batch, vs v14's 102s).
+- **Result:**
+  - Single: val/l2=**1.2532** at ep40 of 40 (120.7 min, still
+    decreasing). WandB `edward/v18-v6-airfoilweight` (bihmoi44).
+    Much worse than v14 (1.1041) — the weighting shifts optimization
+    away from the >95% of points that are far from airfoil and are
+    already "easy but not trivial".
+  - **7-member ensemble (add v18 to prior 6): val/l2=1.0764**
+    (WORSE than 6-member 1.0681). v18's predictions are too far off
+    to decorrelate productively.
+- **Verdict:** DISCARDED. `predict.py` was auto-triggered by train.py
+  and overwrote the ensemble val.pt on PVC with v18's singles (caught
+  and re-ran ensemble.py to restore 1.0681). Removed v18 from MEMBERS.
+- **Notes:** Gotcha for future — `train.py` auto-runs predict.py on
+  best checkpoint, which overwrites ensemble predictions for current
+  commit. To avoid: run new training, then always re-run ensemble.py
+  afterward to keep the ensemble as the scored artifact.
+  Failure mode analysis: α=1.0 with scale=0.05 gave near-field points
+  ~20x weight vs far-field. Too aggressive — the model didn't have
+  enough capacity/data to get BOTH right, and the far-field blew up
+  from its usual ~0.3 mean err to dominate the uniform-averaged L2
+  metric. Gentler weighting (α=0.3, scale=0.1) might work, but not
+  prioritizing this direction.
+
 ### 2026-04-17 — v17: v16 arch (Fourier + voxel-token attn) + y-flip aug, added to ensemble
 - **Hypothesis:** v14 (1.1041) saturated the v6-arch diversity dimension.
   To break the ensemble decorrelation ceiling, need a *qualitatively*
