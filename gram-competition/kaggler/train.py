@@ -234,12 +234,14 @@ class BaselineMLP(nn.Module):
         n_slices: int = 32,
         n_heads: int = 8,
         time_embed_dim: int = 32,
+        feat_dropout: float = 0.0,
         vel_mean: torch.Tensor | None = None,
         vel_std: torch.Tensor | None = None,
     ):
         super().__init__()
         self.n_pos_freqs = n_pos_freqs
         self.time_embed_dim = time_embed_dim
+        self.feat_dropout = nn.Dropout(feat_dropout)
         pos_feat_dim = 3 + 3 * 2 * n_pos_freqs      # 39
         vel_feat_dim = T_IN * 3 + (T_IN - 1) * 3     # 15 + 12 = 27
         in_dim = pos_feat_dim + vel_feat_dim         # 66
@@ -351,6 +353,7 @@ class BaselineMLP(nn.Module):
         x = x + self.sdf_embed(sdf_feat)
         rel_feat = fourier_encode(rel, self.rel_n_freqs)                # [B, N, 27]
         x = x + self.rel_embed(rel_feat)
+        x = self.feat_dropout(x)
         # Combined geometry feature fed into each block's FiLM branch.
         geom_feat = torch.cat([sdf_feat, rel_feat], dim=-1)             # [B, N, 36]
         for i, block in enumerate(self.blocks):
@@ -559,6 +562,7 @@ class Config:
     sobolev_anchors: int = 1024
     sobolev_k: int = 8
     train_n_points: int = 0  # if >0, subsample each train sample to this many points (val unchanged)
+    feat_dropout: float = 0.0  # dropout p on trunk features (after proj_in + sdf + rel); stateless so warm-start is identity at eval
     best_val_floor: float = float("inf")  # don't save a checkpoint unless val/l2 beats this (guards against worse runs overwriting best.pt)
 
 
@@ -582,6 +586,7 @@ def main():
     model = BaselineMLP(
         hidden=384,
         n_blocks=8,
+        feat_dropout=cfg.feat_dropout,
         vel_mean=stats["vel_mean"],
         vel_std=stats["vel_std"],
     ).to(device)
