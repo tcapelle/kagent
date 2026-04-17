@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp22: FiLM time conditioning (warm-start from exp21)
+- **Hypothesis:** t is still unused. Sample-specific absolute time (0.3-0.4 range) correlates with flow development stage. Add TimeEncoder (MLP 1→64→64→2*hidden*17) producing per-block (γ, β) FiLM params, applied as h*(1+γ)+β after each block's norm. Zero-init final MLP layer → FiLM=identity at init → warm-start preserves exp21 exactly.
+- **Change:** train.py: added TimeEncoder class, _apply_film helper. ResBlock.forward and VoxelMixer.forward now take optional `film` kwarg. BaselineMLP.forward calls time_enc(t) once, iterates blocks with per-block FiLM slice.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** 6 missing keys on warm-start (time_enc.mlp). Verified FiLM max abs = 0 at init. Params: 61.1M → 61.7M (+1%).
+
 ### 2026-04-17 — exp21: chain warm-start from exp20 + lr=1e-5
 - **Hypothesis:** Cheap-harvest: one more chain step at lr=1e-5 should extract last refinement. Expected Δ~0.001-0.002 based on geometric decay (0.0036→half).
 - **Change:** --warm_start=<exp20 ckpt> --lr=1e-5. No code changes.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** After this, chain likely fully saturated. Pivot to FiLM time conditioning (exp22) — t is still unused and contains useful absolute-time signal (confirmed sample-specific, continuous 0.3-0.4 range).
+- **Result:** val/l2=**0.9194** @ epoch 22 (30.0 min). train=0.0039.
+- **Verdict:** KEPT — +0.0008 over exp20. Chain fully saturated now (was expected). Val oscillated 0.9194-0.9219 E14-22.
+- **Notes:** Multi-scale chain progression: 0.9238→0.9202→0.9194 (Δ=0.0158→0.0036→0.0008). Time to pivot to arch change.
 
 ### 2026-04-17 — exp20: chain warm-start from exp19 + lr=2e-5
 - **Hypothesis:** Exp19 val stable at 0.9238-0.9283 (E12-23). Best at E12 suggests quick overfit. Chain at lr=2e-5 should refine without moving too far. Expect Δ~0.003-0.007.

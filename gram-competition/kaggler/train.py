@@ -38,9 +38,19 @@ from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
 # ---------------------------------------------------------------------------
 
 
+def _apply_film(h, film):
+    """FiLM modulation: h * (1 + γ) + β. film: [B, 2, D]. h: [B, N, D]."""
+    if film is None:
+        return h
+    gamma = film[:, 0].unsqueeze(1)  # [B, 1, D]
+    beta = film[:, 1].unsqueeze(1)
+    return h * (1 + gamma) + beta
+
+
 class ResBlock(nn.Module):
     def __init__(self, dim):
         super().__init__()
+        # Keep nn.Sequential structure so warm-start keys (net.0, net.1, ...) stay stable.
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim * 2),
@@ -48,8 +58,13 @@ class ResBlock(nn.Module):
             nn.Linear(dim * 2, dim),
         )
 
-    def forward(self, x, pos=None):
-        return x + self.net(x)
+    def forward(self, x, pos=None, film=None):
+        h = self.net[0](x)  # LayerNorm
+        h = _apply_film(h, film)
+        h = self.net[1](h)
+        h = self.net[2](h)
+        h = self.net[3](h)
+        return x + h
 
 
 class VoxelMixer(nn.Module):
@@ -113,9 +128,10 @@ class VoxelMixer(nn.Module):
                                 align_corners=True, padding_mode="border")
         return sampled.squeeze(2).squeeze(2).permute(0, 2, 1)
 
-    def forward(self, x, pos):
+    def forward(self, x, pos, film=None):
         B, N, D = x.shape
         h = self.norm(x)
+        h = _apply_film(h, film)
 
         p_min = pos.amin(dim=1, keepdim=True)
         p_max = pos.amax(dim=1, keepdim=True)
@@ -132,6 +148,33 @@ class VoxelMixer(nn.Module):
         sampled_c = self._gather(vf_c, p_norm, B, N)
 
         return x + sampled + sampled_c
+
+
+class TimeEncoder(nn.Module):
+    """Encode a scalar time value into per-block FiLM params (γ, β).
+
+    Zero-init final layer so γ=β=0 at init → FiLM is identity → warm-start safe.
+    """
+
+    def __init__(self, hidden, n_blocks_total):
+        super().__init__()
+        self.hidden = hidden
+        self.n_blocks = n_blocks_total
+        self.mlp = nn.Sequential(
+            nn.Linear(1, 64),
+            nn.GELU(),
+            nn.Linear(64, 64),
+            nn.GELU(),
+            nn.Linear(64, 2 * hidden * n_blocks_total),
+        )
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+
+    def forward(self, t):
+        # t: [B, 10] — use starting time t[:, 0:1] as absolute-time feature.
+        t_feat = t[:, 0:1]
+        film = self.mlp(t_feat)  # [B, 2*hidden*n_blocks]
+        return film.view(t.shape[0], self.n_blocks, 2, self.hidden)
 
 
 class BaselineMLP(nn.Module):
@@ -154,6 +197,7 @@ class BaselineMLP(nn.Module):
             blocks.append(VoxelMixer(hidden, grid_size=grid_size))
         blocks.append(ResBlock(hidden))
         self.blocks = nn.ModuleList(blocks)
+        self.time_enc = TimeEncoder(hidden, n_blocks_total=len(blocks))
 
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
         vel_mean = torch.zeros(3) if vel_mean is None else vel_mean
@@ -206,8 +250,9 @@ class BaselineMLP(nn.Module):
         x = torch.cat([pos, fpos, v_feat, sdf, is_af], dim=-1)
         x = self.proj_in(x)
 
-        for blk in self.blocks:
-            x = blk(x, pos)
+        film_all = self.time_enc(t)  # [B, n_blocks_total, 2, hidden]
+        for i, blk in enumerate(self.blocks):
+            x = blk(x, pos, film=film_all[:, i])
 
         delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
         delta = delta_norm * self.vel_std
