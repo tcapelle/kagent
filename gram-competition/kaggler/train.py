@@ -83,8 +83,6 @@ class BaselineMLP(nn.Module):
         ])
         self.norm_out = nn.LayerNorm(hidden)
         self.proj_out = nn.Linear(hidden, out_dim)
-        nn.init.zeros_(self.proj_out.weight)
-        nn.init.zeros_(self.proj_out.bias)
 
         if vel_mean is None:
             vel_mean = torch.zeros(3)
@@ -106,10 +104,8 @@ class BaselineMLP(nn.Module):
         for block in self.blocks:
             x = block(x)
         x = self.norm_out(x)
-        delta = self.proj_out(x).reshape(B, T_OUT, N, 3)
+        out_norm = self.proj_out(x).reshape(B, T_OUT, N, 3)
 
-        v_last_norm = v_norm[:, -1:]  # [B, 1, N, 3] anchor
-        out_norm = delta + v_last_norm
         out = out_norm * self.vel_std + self.vel_mean
 
         mask = torch.ones(B, N, device=out.device, dtype=out.dtype)
@@ -180,7 +176,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 1
     epochs: int = 50
@@ -265,10 +261,11 @@ def main():
             t = t.to(device, non_blocking=True)
 
             pred = model(v_in, pos, t, idcs)
-            loss = (pred - v_out).pow(2).mean()
+            loss = ((pred - v_out) / model.vel_std).pow(2).mean()
 
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
