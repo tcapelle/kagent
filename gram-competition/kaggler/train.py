@@ -89,7 +89,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 28
+    epochs: int = 25
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -115,7 +115,7 @@ val_loaders = {
 
 model = VoxelFlowNet(
     vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
-    grid_res=80, grid_ch=32, n_grid_blocks=4,
+    grid_res=80, grid_ch=32, grid_dilations=(1, 2, 4, 8, 16),
     point_hidden=384, n_point_blocks=6,
 ).to(device)
 vel_std_gpu = stats["vel_std"].to(device).view(1, 1, 1, 3)
