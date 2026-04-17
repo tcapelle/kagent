@@ -22,10 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-17 — iter14: Hybrid VoxelUNet + Transolver Physics-Attention
-- **Hypothesis:** #1 thorfinn (0.79) uses Transolver; my voxel-UNet gives strong geometric prior but lacks global physics-aware context. Adding 2 Transolver Physics-Attention blocks (M=32 slices, 8 heads × 32 dim) on the per-point features *after* voxel-sample lets each point attend to 32 soft-clustered physics tokens — linear in N, geometry-general global mixing. Should close the 0.06 gap to alphonse (0.87) and beyond.
-- **Change:** `train.py` — added `PhysicsAttention`, `TransolverBlock`; plumbed `transolver_depth=2, slice_num=32` into `VoxelUNet`. Applied to the `head_in=2·base_ch=256` per-point features between voxel-sample and the prediction head. Reverted iter13 input-noise. Loss = raw MSE.
+### 2026-04-17 — iter15: Transolver hybrid + epochs=22 (match schedule to budget)
+- **Hypothesis:** iter14 converged faster than iter11 (e9 val 1.10 vs 1.19; e14 val 1.03 vs 1.08) — Transolver works — but the 30-epoch cosine was too long for the 83s/ep budget, and the run hung at e17 before LR had annealed. Shortening to 22 epochs makes the schedule fully anneal within the achievable window.
+- **Change:** `train.py` — `epochs: int = 22`. Everything else identical to iter14 (Transolver depth=2, slice=32).
 - **Result:** _pending_.
+
+### 2026-04-17 — iter14: Hybrid VoxelUNet + Transolver Physics-Attention
+- **Hypothesis:** #1 thorfinn (0.79) uses Transolver; my voxel-UNet gives strong geometric prior but lacks global physics-aware context. 2 Physics-Attention blocks (M=32 slices, 8×32 heads) on per-point features after voxel-sample should give linear-in-N global mixing and close the 0.06 gap to alphonse.
+- **Change:** `train.py` — new `PhysicsAttention` + `TransolverBlock`, plumbed into `VoxelUNet` (applied to `head_in=256` features between voxel-sample and head). Loss = raw MSE. Depth=2, slice_num=32.
+- **Result:** best val/l2 = **1.0081** at epoch 16 (training hung during e17 — process stuck after training loop, never wrote epoch summary; killed manually after 47 min wallclock). Trajectory was great: e9 val 1.10 (vs iter11 1.19), e14 val 1.03 (vs iter11 1.08), ~0.06–0.10 ahead throughout. 83s/epoch (47% slower than iter8). 8.2 GB peak. Predictions saved to `nezuko/4e716e8`.
+- **Verdict:** discarded for now (not better than iter8 LB 0.9299), but architecture is right — retry with proper schedule (iter15).
+- **Notes:** (a) next run needs shorter `epochs=22` to fit 83s/ep in 30-min cap; (b) hang root-cause unclear — stale predict.py from iter11 or PVC I/O glitch. Local-only ckpt saving (ff57419) worked — we recovered e16 weights. (c) MAE at e16 val 1.01: Ux 0.67, Uy 0.33, Uz 0.47 — similar Uy/Uz ratio as iter8.
 
 ### 2026-04-17 — iter13: MSE + input velocity Gaussian noise (σ=0.05·vel_std)
 - **Hypothesis:** val plateaus at 0.97–1.00 while train loss keeps dropping = clear overfit. Input-noise is a cheap regularizer that should unlock lower val.
