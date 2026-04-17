@@ -16,6 +16,7 @@ from pathlib import Path
 import simple_parsing as sp
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import wandb
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -89,6 +90,8 @@ class Config:
     hidden: int = 512
     n_blocks: int = 8
     dropout_p: float = 0.0  # dropout in ResBlock (between GELU and 2nd Linear); 0 = off
+    loss_type: str = "mse"   # "mse" | "huber" | "l1" (all in normalized residual space)
+    huber_delta: float = 1.0
     amp: bool = False  # enable mixed-precision (bf16 autocast, no scaler needed)
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
@@ -185,7 +188,14 @@ for epoch in range(MAX_EPOCHS):
             pred = model(v_in, pos, t, idcs)
             # Loss in normalized space (scale components to unit std); gives balanced gradient
             err_norm = (pred - v_out) / model.vel_std
-            loss = err_norm.pow(2).mean()
+            if cfg.loss_type == "mse":
+                loss = err_norm.pow(2).mean()
+            elif cfg.loss_type == "huber":
+                loss = F.huber_loss(err_norm, torch.zeros_like(err_norm), delta=cfg.huber_delta)
+            elif cfg.loss_type == "l1":
+                loss = err_norm.abs().mean()
+            else:
+                raise ValueError(f"unknown loss_type: {cfg.loss_type}")
 
         optimizer.zero_grad()
         loss.backward()
