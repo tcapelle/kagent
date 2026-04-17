@@ -248,7 +248,7 @@ class BaselineMLP(nn.Module):
         self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
         self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
+    def forward(self, velocity_in, pos, t, idcs_airfoil, sdf=None):
         B, T, N, C = velocity_in.shape
         v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
         v_diff = v_norm[:, 1:] - v_norm[:, :-1]                # [B, T-1, N, 3]
@@ -263,7 +263,10 @@ class BaselineMLP(nn.Module):
 
         x = self.proj_in(x)
         # SDF feature: distance to nearest airfoil point, computed per unique pos (cached).
-        sdf = compute_sdf(pos, idcs_airfoil, self._sdf_cache)  # [B, N]
+        # Caller may pass a precomputed SDF (e.g. after point subsampling) to avoid
+        # paying the cdist cost on subsampled point clouds (which break the cache key).
+        if sdf is None:
+            sdf = compute_sdf(pos, idcs_airfoil, self._sdf_cache)  # [B, N]
         sdf_feat = fourier_encode(sdf.unsqueeze(-1), self.sdf_n_freqs)  # [B, N, 9]
         x = x + self.sdf_embed(sdf_feat)
         for block in self.blocks:
@@ -320,6 +323,48 @@ def sobolev_anchor_loss(pred, gt, pos, n_anchors: int = 1024, k: int = 8):
     pred_diff = pred_n - pred_a.unsqueeze(3)
     gt_diff = gt_n - gt_a.unsqueeze(3)
     return (pred_diff - gt_diff).norm(dim=-1).mean()
+
+
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, sdf, n_keep: int):
+    """Train-time point subsampling for geometry-level data augmentation.
+
+    For each sample, keep all airfoil-surface points + random selection of the rest.
+    The model sees a different "view" of the same 146 train geometries every epoch,
+    which directly attacks the train/val generalization gap (model had been memorising
+    the specific 100k-point mesh). Also cuts per-epoch compute roughly N_keep/N_full
+    since Transolver is O(N·M) and the per-point decoder is O(N).
+
+    Subsampled `idcs_airfoil` become contiguous indices [0, n_air-1] since airfoil
+    points are placed first in the new ordering. This is fine — the model is
+    permutation-invariant (Transolver + per-point ops), idcs are only used for the
+    output no-slip mask.
+    """
+    B, T, N, C = v_in.shape
+    device = v_in.device
+    new_v_in = torch.empty(B, T, n_keep, C, device=device, dtype=v_in.dtype)
+    new_v_out = torch.empty(B, T, n_keep, C, device=device, dtype=v_out.dtype)
+    new_pos = torch.empty(B, n_keep, 3, device=device, dtype=pos.dtype)
+    new_sdf = torch.empty(B, n_keep, device=device, dtype=sdf.dtype)
+    new_idcs = []
+    for b in range(B):
+        air = idcs_airfoil[b].to(device)
+        n_air = min(air.shape[0], n_keep)
+        air = air[:n_air]
+        n_rest = n_keep - n_air
+        if n_rest > 0:
+            mask = torch.ones(N, dtype=torch.bool, device=device)
+            mask[air] = False
+            non_air = torch.nonzero(mask, as_tuple=False).squeeze(-1)
+            perm = torch.randperm(non_air.shape[0], device=device)[:n_rest]
+            keep = torch.cat([air, non_air[perm]])
+        else:
+            keep = air
+        new_v_in[b] = v_in[b, :, keep]
+        new_v_out[b] = v_out[b, :, keep]
+        new_pos[b] = pos[b, keep]
+        new_sdf[b] = sdf[b, keep]
+        new_idcs.append(torch.arange(n_air, device=device))
+    return new_v_in, new_v_out, new_pos, new_idcs, new_sdf
 
 
 def reflect_y(v_in, v_out, pos):
@@ -425,6 +470,7 @@ class Config:
     sobolev_lambda: float = 0.0  # weight for stochastic Sobolev/gradient-matching loss
     sobolev_anchors: int = 1024
     sobolev_k: int = 8
+    train_n_points: int = 0  # if >0, subsample each train sample to this many points (val unchanged)
 
 
 def main():
@@ -526,8 +572,18 @@ def main():
             if torch.rand(1).item() < 0.5:
                 v_in, v_out, pos = reflect_y(v_in, v_out, pos)
 
+            # Compute SDF at FULL pos (cached per-geometry) before any subsampling so
+            # the cache key stays stable. Then subsample the SDF along with everything else.
+            sdf_full = compute_sdf(pos, idcs, model._sdf_cache)  # [B, N]
+            if cfg.train_n_points > 0 and cfg.train_n_points < pos.shape[1]:
+                v_in, v_out, pos, idcs, sdf_in = subsample_batch(
+                    v_in, v_out, pos, idcs, sdf_full, cfg.train_n_points
+                )
+            else:
+                sdf_in = sdf_full
+
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                pred = model(v_in, pos, t, idcs, sdf=sdf_in)  # [B, 5, N, 3]
                 # L2-per-point loss: matches the val metric; less outlier-dominated than MSE.
                 l2_loss = (pred - v_out).norm(dim=3).mean()
                 if cfg.sobolev_lambda > 0:
