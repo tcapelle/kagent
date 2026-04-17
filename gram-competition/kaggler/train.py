@@ -167,6 +167,35 @@ class VoxelMixer(nn.Module):
         return x + sampled + sampled_c + sampled_u
 
 
+class KNNMixer(nn.Module):
+    """Per-point aggregation from k nearest spatial neighbors.
+
+    Gives precise local-neighborhood context that voxels can't (voxels = coarse grid).
+    Zero-init projection for warm-start safety.
+    """
+
+    def __init__(self, dim, k=16):
+        super().__init__()
+        self.k = k
+        self.norm = nn.LayerNorm(dim)
+        self.proj = nn.Linear(2 * dim, dim)
+        nn.init.zeros_(self.proj.weight)
+        nn.init.zeros_(self.proj.bias)
+
+    def forward(self, x, knn_idx, film=None):
+        B, N, D = x.shape
+        h = self.norm(x)
+        h = _apply_film(h, film)
+        K = knn_idx.shape[-1]
+        idx_flat = knn_idx.reshape(B, N * K)
+        h_gather = torch.gather(h, 1, idx_flat.unsqueeze(-1).expand(-1, -1, D))
+        h_neigh = h_gather.reshape(B, N, K, D)
+        h_mean = h_neigh.mean(dim=2)
+        h_max = h_neigh.amax(dim=2)
+        h_agg = self.proj(torch.cat([h_mean, h_max], dim=-1))
+        return x + h_agg
+
+
 class TimeEncoder(nn.Module):
     """Encode a scalar time value into per-block FiLM params (γ, β).
 
@@ -223,6 +252,9 @@ class BaselineMLP(nn.Module):
         self.blocks = nn.ModuleList(blocks)
         self.time_enc = TimeEncoder(hidden, n_blocks_total=len(blocks))
 
+        # kNN neighbor aggregation — 1 block at end of main stack, zero-init.
+        self.knn_mixer = KNNMixer(hidden, k=16)
+
         # Extra output refinement residual (zero-init last layer → warm-start-safe identity at init).
         self.out_refine = nn.Sequential(
             nn.LayerNorm(hidden),
@@ -248,6 +280,18 @@ class BaselineMLP(nn.Module):
     def _fourier(self, pos):
         p = pos.unsqueeze(-1) * self.fourier_freqs  # [B, N, 3, K]
         return torch.cat([p.sin(), p.cos()], dim=-1).reshape(pos.shape[0], pos.shape[1], -1)
+
+    @torch.no_grad()
+    def _knn(self, pos, k=16, chunk=10000):
+        """Compute k nearest neighbors per point (excluding self). Chunked to save VRAM."""
+        B, N, _ = pos.shape
+        knn_idx = torch.zeros(B, N, k, dtype=torch.long, device=pos.device)
+        for b in range(B):
+            for i in range(0, N, chunk):
+                d = torch.cdist(pos[b, i:i + chunk], pos[b])
+                _, idx = d.topk(k + 1, largest=False, dim=-1)
+                knn_idx[b, i:i + chunk] = idx[:, 1:]  # skip self (index 0)
+        return knn_idx
 
     @torch.no_grad()
     def _geom_features(self, pos, idcs_airfoil):
@@ -295,6 +339,9 @@ class BaselineMLP(nn.Module):
         film_all = self.time_enc(t)  # [B, n_blocks_total, 2, hidden]
         for i, blk in enumerate(self.blocks):
             x = blk(x, pos, film=film_all[:, i])
+
+        knn_idx = self._knn(pos, k=self.knn_mixer.k)
+        x = self.knn_mixer(x, knn_idx)
 
         x = x + self.out_refine(x)
 
