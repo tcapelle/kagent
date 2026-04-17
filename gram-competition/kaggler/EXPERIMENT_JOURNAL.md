@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v26 KEPT — lr=7e-4 opposite-direction axis, 13-seed ensemble 0.7672 (gain 0.0017)
+- **Hypothesis:** lr=7e-4 (40% above default 5e-4, opposite of v24's 3e-4) explores the higher-lr side of the basin manifold and should match v24's axis gain with a stronger solo than v25's wd=3e-4.
+- **Change:** CLI only — `--lr 7e-4 --epochs 90`.
+- **Result:** v26 solo val/l2 = **0.8633** at ep69 (mid-pack among long seeds; lr=7e-4 trains solidly). 13-seed ensemble = **0.7672** (vs 12-seed 0.7689). Gain 0.0017.
+- **Verdict:** kept. 11.9% under v6 solo. Slightly below expectation — incremental axis value is saturating around 0.0017.
+- **Notes:** Ensemble gain has plateaued at 0.0015-0.0020/seed across the last 3 additions. Time to change strategy: cheap experiment = **weighted ensemble** (weight by inverse solo val/l2). Weaker seeds like v20 (0.889) and v25 (0.866) currently pull the uniform average down; upweighting strong seeds should recover 0.002-0.005 at zero compute cost.
+
+
 ### 2026-04-17 — v25 KEPT — wd=3e-4 new reg axis, 12-seed ensemble 0.7689 (gain 0.0016)
 - **Hypothesis:** regularization strength (WD) is an axis neither `epochs` nor `lr` touched. Triple WD from 1e-4 to 3e-4 → different weight-norm-constrained basin.
 - **Change:** CLI only — `--weight_decay 3e-4 --epochs 90` (default lr=5e-4).
