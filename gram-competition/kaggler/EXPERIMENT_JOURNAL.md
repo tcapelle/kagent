@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — longer training cfg.epochs=28 (use 5-min slack)
+- **Hypothesis:** Exp 7 and exp 8 both finished with val still dropping and ~5 min under the MAX_TIMEOUT budget. Pure-training-time test: does bumping `cfg.epochs` from 24 to 28 (which fully anneals the cosine schedule at epoch 28 rather than 24) give measurable improvement?
+- **Change:** `train.py` — `epochs: int = 28`. Nothing else.
+- **Result:** val/l2_error = **0.9304** (epoch 28 of 28 @ 29.4 min, 8.0 GB peak). Train loss 0.0087. 2.4 % improvement over exp 8 (0.9533 → 0.9304).
+- **Verdict:** Kept. Big bang for zero architectural change — the bottleneck for the last two experiments was LR not fully annealing within budget.
+- **Notes:** Budget is now nearly fully used (29.4/30 min). Val still dropping slowly at the end (27: 0.9310 → 28: 0.9304, only −0.0006); LR is fully annealed so additional epochs would require a new lr restart or larger lr. Next candidates: (a) capacity in the per-point head (point_hidden 384→512 or n_point_blocks 6→8 — cheap), (b) data augmentation (y-flip alone to re-test the exp-3b confound), (c) test-time augmentation (average predictions on original + y-flipped input at inference). Gap to leader 0.75 now 0.18.
+
 ### 2026-04-17 — scatter mean + max voxelization
 - **Hypothesis:** Scatter-mean loses within-cell variation. Concatenating a scatter-max projection lets the 3D CNN see both the typical and the most extreme velocity in each voxel — useful for turbulent / separation regions where peak values carry information about mixing.
 - **Change:** `model.py/_voxelize` — alongside the mean, run `scatter_reduce_(reduce="amax", include_self=False)` on the 15 v_in channels. Concat mean+occupancy (16 ch) with max (15 ch) → 31 grid input channels (was 16). `grid_in = Conv3d(31, grid_ch, 1)`.
