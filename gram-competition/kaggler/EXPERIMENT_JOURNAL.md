@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter31: third fully-trained grid=64 + 8-model ensemble
+- **Hypothesis:** iter30 proved fully-trained grid=64 gives a strong individual model (0.8644) and big ensemble gain. A third grid=64 fresh-init should keep stacking diversity — expected −0.005 to −0.010 on ensemble.
+- **Change:** no code changes — `MAX_TIMEOUT_MIN=65 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter31-grid64-3rd`. Ran the full 28 epochs this time (57 min actual).
+- **Result:** iter31 standalone val/l2 = **0.8669** at e28/28 (near-identical to iter30's 0.8644 — grid=64 converges reliably). 8-model ensemble:
+  - iter19+24+26+27+28 (grid=48) + iter29+iter30+iter31 (grid=64): val l2 = **0.8116** (with TTA) — **new best**
+- **Verdict:** **kept** — −0.0105 vs 7-model (0.8221 → 0.8116). Gap to alphonse (0.7761) now 0.036.
+- **Notes:** Diminishing returns continuing on grid=64 seed-diversity (−0.0172 → −0.0105 → next likely ~−0.006). Next ideas: (a) a 4th grid=64 fresh-init, (b) architectural step beyond grid=64 (grid=80, or deeper transolver), (c) swap the weak half-trained iter29 out — it may be hurting relative to a fully-trained replacement, (d) drop a weak grid=48 model (iter27 or iter28 are worse than grid=64 models now).
+
 ### 2026-04-17 — iter30: fully-trained grid=64 (second arch-diverse model) + 7-model ensemble
 - **Hypothesis:** iter29 (grid=64) was cut off at epoch 15 by the 30-min timeout while monotonically improving — standalone val=0.9425 far from converged. A second grid=64 fresh-init with enough compute to run the full cosine should land at standalone ~0.88-0.90, and a 7-model ensemble (5 grid=48 + 2 grid=64) should stack another −0.005 to −0.010.
 - **Change:** `MAX_TIMEOUT_MIN=65 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter30-grid64-full` — same MODEL_CFG (grid=64) but with a longer compute budget via the env var.
