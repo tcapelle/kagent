@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Dropout cycle 3 (p=0.2 from iter28.final): tied floor + 18-model ensemble (iter 29, ensemble-only KEPT)
+- **Hypothesis:** Continue dropout-anneal cycle (drop steps at p ∈ {0.10, 0.15, 0.20}). Higher p should produce bigger weight drift → more decorrelation. Resume from iter 28's annealed final.
+- **Change:** no code. `--resume .../model-ghtx3g73/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0530** at E9/18 (31.1 min, init 1.0576) — **tied iter 23's floor exactly at a different basin** → `best.pt` was overwritten (tie triggered save). iter29.pt staged as the E9 checkpoint (val=1.0530). Trajectory: E1 1.0653, E9 1.0530 (dip), E10-E18 oscillated 1.053-1.061. **18-model ensemble:**
+  - **1.0257** ← submitted (0.12% drop from 1.0269)
+- **Verdict:** Single-model TIED iter 23 floor but at a genuinely different basin — p=0.2 dropout drove the weights far enough to find a second 1.0530 minimum. Ensemble inclusion **KEPT**, biggest cycle gain (0.12%). **Cumulative session: 1.0625 → 1.0257 = 3.5%.**
+- **Notes:** Higher dropout p=0.2 gave bigger ensemble gain (0.12% vs cycle steps 1-2 at 0.10%). **best.pt overwrite**: the save condition on line 718 (`best_val = mean_val` after `if val < best_val`) was triggered by a tie — either the test is `<=` or a float-precision dip below 1.0530. Future warm-starts now use iter29 E9 weights instead of iter23's. Both at val=1.0530 → neutral for single-model metric but could change warm-start dynamics for future cycles. Iter 30 priorities: (a) **anneal from iter29 E9** (dropout=0 warm-start of the *new* best.pt basin) — test whether the cycle continues from a new basin; (b) **bigger dropout p=0.3** to see if decorrelation keeps growing with p; (c) **second FiLM layer post-blocks** (first architectural push in 6 iters). (a) most natural continuation; very interesting to see if a new basin → new anneal-step can beat floor.
+
 ### 2026-04-17 — Anneal cycle 3 (dropout=0 from iter27.final) + 17-model ensemble (iter 28, ensemble-only KEPT)
 - **Hypothesis:** Continue the dropout-anneal alternation. Iter 27 was the dropout step; iter 28 is the complementary anneal step. Pattern: {iter25 drop 0.1, iter26 anneal, iter27 drop 0.15, iter28 anneal} — each step gave 0.06-0.11% ensemble gain.
 - **Change:** no code. `--resume .../model-rdttm6v1/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
