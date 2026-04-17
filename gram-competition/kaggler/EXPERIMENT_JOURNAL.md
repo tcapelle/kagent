@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Anneal cycle 3 (dropout=0 from iter27.final) + 17-model ensemble (iter 28, ensemble-only KEPT)
+- **Hypothesis:** Continue the dropout-anneal alternation. Iter 27 was the dropout step; iter 28 is the complementary anneal step. Pattern: {iter25 drop 0.1, iter26 anneal, iter27 drop 0.15, iter28 anneal} — each step gave 0.06-0.11% ensemble gain.
+- **Change:** no code. `--resume .../model-rdttm6v1/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0549** at E6/18 (31.1 min, init 1.0579). Trajectory: E1 1.0677 → E6 1.0549 (fast dip), E7-E18 stable 1.055-1.061. Final.pt (E18 val=1.0576) staged as iter28.pt. **17-model ensemble:**
+  - **1.0269** ← submitted (0.11% drop from 1.0280)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — 4th consecutive 0.10-0.11% gain. **Cumulative session: 1.0625 → 1.0269 = 3.4%.**
+- **Notes:** Cycle stability: every anneal step has produced a best-within-run in the 1.054-1.055 range (iter 26 1.0547, iter 28 1.0549) — tantalisingly close to floor 1.0530 but consistently missing by ~0.002. Ensemble gain holds steady at 0.10%/step, no sign of saturation yet at 17 members. Iter 29 priorities: (a) **continue cycle: dropout=0.2 from iter 28.final** (push harder on the drop step to see if p sweep produces richer decorrelation); (b) **second FiLM layer post-blocks** — first architectural lift attempt since iter 23; (c) **try 50-epoch warm-start budget** (but hard 30-min cap means we'd need to change train.py MAX_TIMEOUT_MIN, which would cost 1 iter of instrumentation). (a) is zero-cost, (b) is the first credible single-model lift attempt in 5 iters.
+
 ### 2026-04-17 — Dropout cycle 2: dropout=0.15 from iter26.final + 16-model ensemble (iter 27, ensemble-only KEPT)
 - **Hypothesis:** Iter 25→26 (drop 0.1 → drop 0) added 0.06% + 0.10%. Continue the cycle: crank dropout back ON (p=0.15, higher than iter 25's 0.10) from iter 26's annealed final.pt. Each alternation explores a slightly different region of weight-space.
 - **Change:** no code. `--resume .../model-omm4sb3z/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 1.0530 --epochs 25`.
