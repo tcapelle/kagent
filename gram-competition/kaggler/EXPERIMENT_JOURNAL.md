@@ -25,7 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — iter15: Transolver hybrid + epochs=22 (match schedule to budget)
 - **Hypothesis:** iter14 converged faster than iter11 (e9 val 1.10 vs 1.19; e14 val 1.03 vs 1.08) — Transolver works — but the 30-epoch cosine was too long for the 83s/ep budget, and the run hung at e17 before LR had annealed. Shortening to 22 epochs makes the schedule fully anneal within the achievable window.
 - **Change:** `train.py` — `epochs: int = 22`. Everything else identical to iter14 (Transolver depth=2, slice=32).
-- **Result:** _pending_.
+- **Result:** val/l2 = **0.9578** at epoch 20 / 22 (best). 30.2 min wallclock, 83-98s/ep, 8.2 GB peak. Run `1y6185vx`. Preds at `/mnt/new-pvc/predictions/apr16/nezuko/35b7997/`. Trajectory beat iter8 from e16 onward (e16 val 0.98 vs iter8 0.99; e20 val 0.96 vs iter8 0.97).
+- **Verdict:** **kept** — new best val. Beats iter8's 0.9670 val by 0.009 and iter14's 0.9675 by 0.01. LB score pending (with TTA, iter8 went 0.967 val → 0.9299 LB, so iter15 LB should land ~0.92).
+- **Notes:** Architecture was the lever, not loss tricks. Next levers for iter16: (a) scale Transolver depth 2→3, (b) slice_num 32→48 or 64, (c) finer voxel grid (48³→64³), (d) distance-biased attention. Budget is tight: 83s/ep × 22 = 30 min — any capacity bump needs compute offset elsewhere.
 
 ### 2026-04-17 — iter14: Hybrid VoxelUNet + Transolver Physics-Attention
 - **Hypothesis:** #1 thorfinn (0.79) uses Transolver; my voxel-UNet gives strong geometric prior but lacks global physics-aware context. 2 Physics-Attention blocks (M=32 slices, 8×32 heads) on per-point features after voxel-sample should give linear-in-N global mixing and close the 0.06 gap to alphonse.
