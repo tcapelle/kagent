@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp40: chain exp38 @ lr=2e-6 (slower refine of y-flip aug)
+- **Hypothesis:** exp38 val was still decreasing at E10 (0.8839). At lr=5e-6 over 50-epoch cosine, LR barely decayed. Try lr=2e-6 for finer refine.
+- **Change:** No code changes. --warm_start <exp38 ckpt model-mgo03egs> --lr 2e-6 --subsample_train 0 --yflip_prob 0.5.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Launching.
+
+### 2026-04-17 — exp39: TTA (test-time y-flip averaging) on exp38 ckpt
+- **Hypothesis:** Averaging pred(x) with flip(pred(flip(x))) should reduce variance on turbulent predictions (free inference-time win).
+- **Change:** Quick inference-only test — no commit. Ran both pred and y-flipped pred, averaged, measured val/l2.
+- **Result:** Plain: 0.8839 → TTA: **0.8886** (delta -0.0047, WORSE).
+- **Verdict:** DISCARDED. Model has learned slightly asymmetric response (Uy mean ≈ 0.5 is non-zero in training data); averaging with flipped pred dilutes this.
+- **Notes:** Surprising — training aug gave +0.0036 but TTA on the aug-trained model hurts. Suggests training aug works via data expansion, not via teaching mirror equivariance. Don't use TTA.
+
 ### 2026-04-17 — exp38: y-flip data augmentation (bilateral symmetry)
 - **Hypothesis:** F1 wings are mirror-symmetric about y=0 (Uy mean ≈ 0.5 from stats confirms). Mirror-flip pos_y around bbox center and negate Uy to double effective training data. Pure generalization fix (no arch change). Chain from exp33 @ lr=5e-6.
 - **Change:** train.py: Config.yflip_prob=0.5. In train loop after subsampling, with p=0.5 flip pos_y around bbox-y-center, negate v_in[...,1] and v_out[...,1]. No architecture change — pure augmentation.
