@@ -22,6 +22,32 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v14: v6 + dropout p=0.2 in ResBlock (added to ensemble)
+- **Hypothesis:** v13 at p=0.1 worked well (1.1176); with 730 samples
+  and a 10.8M-param model we may still be under-regularized. p=0.2
+  should push further and either (a) improve single-model or
+  (b) add more decorrelation to the ensemble.
+- **Change:** Only CLI arg `--dropout_p 0.2` (same config as v13
+  otherwise). 70 epochs, 120 min budget.
+- **Result:**
+  - Single model: val/l2=**1.1041** at ep69 of 70 (119 min).
+    Train loss 0.043 → 0.0121. Both outcomes happened: (a) beats
+    v13's 1.1176 single by 0.013; (b) ensemble still improves.
+    WandB `edward/v14-v6-dropout02`.
+  - **5-member ensemble (v12 + v13 + v14): val/l2=1.0724**
+    (−0.014 over 4-member 1.0861; −0.10 over v6 1.1681).
+- **Verdict:** Kept. Dropout 0.2 > 0.1 for this dataset size. The
+  diminishing-returns pattern is visible (3→4 members gave −0.023,
+  4→5 gave −0.014) but still worth adding well-trained diverse
+  members. Ensemble score now 1.0724 — solidly mid-tier on the
+  mar29-era scale.
+- **Notes:** Mean of individuals = 1.1507 vs ensemble 1.0724 — the
+  ensemble is recovering ~65% of the gap between mean-of-singles
+  and the theoretical uncorrelated-errors bound (1.1507/√5≈0.515;
+  we're at 1.0724). Next: try p=0.3 or a qualitatively different
+  member (e.g., different VOXEL_SCALES, or L1/Huber loss) to break
+  the decorrelation ceiling of "same-arch dropout variants".
+
 ### 2026-04-17 — v13: v6 + dropout p=0.1 in ResBlock (added to ensemble)
 - **Hypothesis:** v11 showed the bottleneck is generalization gap,
   not optimization noise. Dropout is the textbook fix for overfitting

@@ -27,11 +27,13 @@ CKPT_DIR = Path("/mnt/new-pvc/kagent/apr16/edward/checkpoints")
 #   9vaz4wrn 1.1812 (v11 EMA)
 #   w8rxftm4 1.1828 (v9 long-train)
 #   oxopax5h 1.1176 (v13 dropout=0.1)
+#   fnyc7p7z 1.1041 (v14 dropout=0.2)
 MEMBERS = [
     CKPT_DIR / "model-jnseenin" / "checkpoint.pt",
     CKPT_DIR / "model-9vaz4wrn" / "checkpoint.pt",
     CKPT_DIR / "model-w8rxftm4" / "checkpoint.pt",
     CKPT_DIR / "model-oxopax5h" / "checkpoint.pt",
+    CKPT_DIR / "model-fnyc7p7z" / "checkpoint.pt",
 ]
 
 
