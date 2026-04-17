@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp31: chain exp30 (aux features) + lr=2e-5
+- **Hypothesis:** Exp30 regressed 0.9132 (same arch-add pattern). Chain at lr=2e-5 to recover. Expected +0.003-0.006 over exp29 (0.8965).
+- **Change:** --warm_start=<exp30 ckpt model-kvptxsnv> --lr=2e-5. No code changes.
+- **Result:** val/l2=**0.8900** @ epoch 7 (30.2 min). train=0.0031. mae_Ux=0.5984, mae_Uy=0.2699, mae_Uz=0.4126. Val stable 0.8900-0.8945.
+- **Verdict:** KEPT — +0.0065 over exp29 (0.8965). 5th arch-add+chain cycle. Pattern persistent: {multi-scale 0.016, FiLM 0.010, triple-scale 0.006, out_refine 0.006, aux-diff 0.006}. Diminishing but reliable.
+- **Notes:** Ckpt: model-670v4v75. Distance to leader (thorfinn=0.7511): 0.139 (leader still improving too). Local arch-adds saturate at ~+0.006. Need bigger moves: (a) full-res training, (b) kNN local attention, (c) more blocks.
+
 ### 2026-04-17 — exp30: temporal-derivative aux features (warm-start from exp29)
 - **Hypothesis:** v_diff = v_in[:, 1:] - v_in[:, :-1] is an acceleration signal (Δv/Δt). Turbulent/vortex dynamics show up in acceleration, not just position. Also feed per-point mean+std of input trajectory (moments). Current input uses v_in concatenated as 15 features — model has to learn to compute diffs. Handing them directly should let early blocks focus on dynamics.
 - **Change:** train.py: BaselineMLP adds self.proj_aux (Linear 18→hidden, zero-init). Forward computes v_diff_feat [12] + v_mean [3] + v_std [3] → aux [18], then x += proj_aux(aux).
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** 2 missing keys (proj_aux.{weight,bias}). Zero-init verified. Params: 91.33M (+4.9K). Launching next with --lr=2e-4.
+- **Result:** val/l2=**0.9132** @ epoch 18 (30.2 min). train=0.0038. Same arch-add undertrained pattern, worse than exp29 (0.8965) by 0.0167.
+- **Verdict:** HOLD — regressed as expected. Ckpt: model-kvptxsnv. Will chain.
+- **Notes:** 2 missing keys (proj_aux.{weight,bias}). Zero-init verified. Params: 91.33M (+4.9K).
 
 ### 2026-04-17 — exp29: chain exp28 (out_refine) + lr=2e-5
 - **Hypothesis:** Exp28 regressed to 0.9110 from 0.9027 (same arch-add pattern). Chain at lr=2e-5 to recover the fresh out_refine layer while preserving main weights. Based on recipe: multi-scale (+0.016), FiLM (+0.010), triple-scale (+0.006) → out_refine expected +0.003-0.005.
