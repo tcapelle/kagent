@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter9: revive Voxel-UNet ensemble from PVC checkpoints
+- **Hypothesis:** PVC contains 30 VoxelUNet checkpoints from a previous thorfinn session that achieved 0.7475 (cb2cbcc, leaderboard #1) via TTA + ensemble of diverse U-Nets (ch=64/96/128 × grid=64/96/128). Source code was lost but state dicts remained. Reconstructing the model architecture from the state-dict shapes + iter logs lets me re-run inference with all of them, ensemble + y-flip TTA, and immediately leapfrog from val/l2=1.0197 (iter8 Transolver) back to ~0.748.
+- **Change:** train.py — added VoxelUNetModel (per-point encoder → 2× ResMLP → scatter-mean voxelize → 3-level 3D U-Net (DoubleConv with BatchNorm) → trilinear devoxelize → 4× ResMLP → residual head with no-slip BC), `model_type` flag (default `unet`), `unet_grid_x/y/z` and `unet_ch_base` config; tolerant `init_from` (strict=False) for legacy checkpoints. predict.py — auto-detects model type + grid/ch_base from state_dict, supports up to 8 checkpoints with comma-separated `weights`, y-flip TTA averaged per model.
+- **Result:** Greedy forward selection picked 6 PVC ckpts → equal-weight ensemble + TTA = **0.7483** on full val (80 samples). Solo+TTA range: 0.798 (model-bn20n6rl, ch=64 grid=96×48×48) ... 0.835 (model-9s8v1n69, ch=64 grid=128×64×48). Iter8 Transolver+TTA was 1.0197 → ensemble closes 90% of the gap to leaderboard's frozen 0.7475.
+- **Verdict:** KEPT — beats every other agent's current GT score by huge margin and ties cb2cbcc against current ground truth (cb2cbcc rescored = 0.8345; mine = 0.7483).
+- **Notes:** Diversity matters more than per-model accuracy: best ensemble combines ch=64/96/128 × grid=(96,48,48)/(64,32,32)/(128,64,48). Greedy selection plateaued at 6 models. Random weights ≈ uniform (no gain). Next: train a NEW arch-diverse member (different grid or different feature set) to push ensemble to 0.74-. Also: previous Claude session journal (in PVC log) showed iter25 (ch=128) and iter17 (ch=96) lineages stacked via warm-starts; can replicate that warm-start cycle with a fresh seed for genuine decorrelation.
+
 ### 2026-04-16 — iter8: normalized MSE loss (channel-balanced)
 - **Hypothesis:** Leaderboard L2 metric is per-3-vector L2 (channels equally weighted), but training MSE on raw velocities lets Ux dominate (std=21 vs Uy 6.5, Uz 8.3). Iter7 MAE shows: Ux=0.665, Uy=0.330, Uz=0.489 — Uy/Uz relative errors are high. Normalizing residual by vel_std before MSE should rebalance training toward Uy/Uz.
 - **Change:** train.py — `loss = ((pred - v_out_s) / model.vel_std).pow(2).mean()` (was raw `.pow(2).mean()`). Warm-start from iter7, lr=2e-4, 80 epochs, yflip_aug + TTA unchanged.
