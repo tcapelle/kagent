@@ -64,6 +64,14 @@ class VoxelMixer(nn.Module):
         super().__init__()
         self.G = grid_size
         self.norm = nn.LayerNorm(dim)
+        # Aggregate mean + max voxel features, project back to dim.
+        # Identity init on mean half, zero on max half → first-pass behavior = mean only (warm-start safe).
+        self.proj_agg = nn.Conv3d(2 * dim, dim, 1)
+        nn.init.zeros_(self.proj_agg.weight)
+        nn.init.zeros_(self.proj_agg.bias)
+        with torch.no_grad():
+            for i in range(dim):
+                self.proj_agg.weight[i, i, 0, 0, 0] = 1.0
         self.conv = nn.Sequential(
             nn.Conv3d(dim, dim, 3, padding=1),
             nn.GELU(),
@@ -81,14 +89,20 @@ class VoxelMixer(nn.Module):
 
         v_idx = (p_norm * G).long().clamp(0, G - 1)
         flat_idx = v_idx[..., 0] * G * G + v_idx[..., 1] * G + v_idx[..., 2]
+        idx_D = flat_idx.unsqueeze(-1).expand(-1, -1, D)
 
-        voxel_feat = torch.zeros(B, G ** 3, D, device=x.device, dtype=h.dtype)
+        voxel_mean = torch.zeros(B, G ** 3, D, device=x.device, dtype=h.dtype)
         count = torch.zeros(B, G ** 3, device=x.device, dtype=h.dtype)
-        voxel_feat.scatter_add_(1, flat_idx.unsqueeze(-1).expand(-1, -1, D), h)
+        voxel_mean.scatter_add_(1, idx_D, h)
         count.scatter_add_(1, flat_idx, torch.ones_like(flat_idx, dtype=h.dtype))
-        voxel_feat = voxel_feat / count.unsqueeze(-1).clamp(min=1.0)
+        voxel_mean = voxel_mean / count.unsqueeze(-1).clamp(min=1.0)
 
-        vf = voxel_feat.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
+        voxel_max = torch.zeros(B, G ** 3, D, device=x.device, dtype=h.dtype)
+        voxel_max.scatter_reduce_(1, idx_D, h, reduce="amax", include_self=False)
+
+        vm = voxel_mean.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
+        vx = voxel_max.view(B, G, G, G, D).permute(0, 4, 1, 2, 3).contiguous()
+        vf = self.proj_agg(torch.cat([vm, vx], dim=1))
         vf = vf + self.conv(vf)
 
         # Trilinear gather. grid_sample with 5D input [B, C, D, H, W]:
@@ -290,8 +304,8 @@ def main():
     if cfg.warm_start:
         state = torch.load(cfg.warm_start, map_location=device, weights_only=True)
         state = {k: v.float() if v.is_floating_point() else v for k, v in state.items()}
-        model.load_state_dict(state)
-        print(f"Warm-started from {cfg.warm_start}")
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        print(f"Warm-started from {cfg.warm_start} (missing={len(missing)}, unexpected={len(unexpected)})")
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)

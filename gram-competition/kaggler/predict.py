@@ -57,7 +57,9 @@ def main():
         vel_mean=vel_mean,
         vel_std=vel_std,
     ).to(device)
-    model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+    state = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
+    state = {k: v.float() if v.is_floating_point() else v for k, v in state.items()}
+    model.load_state_dict(state)
     model.eval()
     print(f"Loaded model from {cfg.checkpoint}")
 

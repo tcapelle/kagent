@@ -22,12 +22,26 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp15: mean+max voxel aggregation (warm-start partial)
+- **Hypothesis:** Current voxel aggregation is scatter_add/count (mean) — loses extreme features (high-velocity gradients, shear layers). Add parallel scatter_reduce(amax) branch, concat with mean (2×dim), project back via Conv3d(2*dim, dim). This captures peaks per voxel (turbulent events). Pre-voxel layers weights can warm-start from exp13, only VoxelMixer.conv needs fresh training.
+- **Change:** VoxelMixer: add scatter amax aggregation, conv input dim doubles. Requires strict=False load.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Warm-start will skip the 8 conv layers (~5MB) but transfer ResBlocks + projections. Need training-from-partial-init — lr=2e-4 to allow new conv to learn.
+
+### 2026-04-17 — exp14: pos jitter=0.5 (DISCARDED)
+- **Hypothesis:** Warm-start + pos jitter (0.5 × voxel_size Gaussian noise) as regularization to unstick saturated chain.
+- **Change:** train.py: added cfg.pos_jitter, applied Gaussian noise to pos.
+- **Result:** val/l2=**1.1116** @ epoch 1 (broke model). Train loss exploded to 0.028+ immediately.
+- **Verdict:** DISCARDED — 0.5 × voxel_size is far too large; warm-started model's SDF features + voxel assignments are sensitive to position perturbations. val climbed rather than fell.
+- **Notes:** Lesson: fine-tuned model is brittle to input perturbation. Jitter scale <0.05 might work but arch change is higher-leverage.
+
 ### 2026-04-16 — exp13: chained warm-start from exp12 + lr=2e-5
 - **Hypothesis:** Exp12 plateau in 0.964-0.966 suggests we're at LR=5e-5 convergence. One more chain at lr=2e-5 to squeeze last ~0.002. After this plateau, pivot to arch changes.
 - **Change:** Run with --warm_start=<exp12 ckpt> --lr=2e-5.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Plateau → stop chaining and try: (a) parallel multi-scale voxel branch, (b) grid_size bump to 48, (c) position jitter augmentation.
+- **Result:** val/l2=**0.9613** @ epoch 36 (30.3 min). train=0.0053. run rfc1ntlv.
+- **Verdict:** KEPT — +0.0025 over exp12. Chain progression: Δ=0.040→0.006→0.004→0.0025, clear geometric decay.
+- **Notes:** Chain saturated; best checkpoint still at exp13.
 
 ### 2026-04-16 — exp12: chained warm-start from exp11 + lr=5e-5
 - **Hypothesis:** Exp11 val oscillated 0.968-0.977 mid-run, best at E23 (0.9681). LR=1e-4 still too high for fine-tuning. Half again to 5e-5, warm-start from exp11. Expected gain ~0.004 (diminishing chain).
