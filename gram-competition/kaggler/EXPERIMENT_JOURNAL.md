@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Dropout p=0.2 on post-FiLM architecture (iter 37) + 26-model ensemble (ensemble-only KEPT)
+- **Hypothesis:** Iter 36 showed the floor is data-limited, but the post-FiLM architecture may open a new drop-step basin the original arch couldn't reach. Apply dropout p=0.2 (matching iter 29's successful recipe) to iter 36's post-FiLM anneal endpoint.
+- **Change:** no code. `--resume .../model-jy3ytqbm/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0540** at E5/18 (31.7 min, init 1.0606) — **the closest any single-model has come to the 1.0530 floor in 15 iters** (iter 23 and iter 29 both tied at 1.0530 exactly; this is the next-best 0.0010 above). Trajectory: E1 1.0624 → E5 1.0540 (dip) → settled 1.056-1.059 through E18. Final.pt (E18, val=1.0590) staged as iter37.pt. **26-model ensemble:**
+  - **1.0184** ← submitted (0.06% drop from 1.0190)
+- **Verdict:** Single-model MISSED floor but registered the deepest near-miss yet. Ensemble inclusion **KEPT** (smallest cycle gain yet, 0.06%). **Cumulative session: 1.0625 → 1.0184 = 4.15%.**
+- **Notes:** Post-FiLM architecture + dropout 0.2 **reopens the cycle productively** — single-model best 1.0540 beats iter 34/35/36 (1.0548, 1.0558, 1.0567). The E5 dip suggests the basin exists but we barely traversed it (only 5 epochs training, cosine still warming). Also: best.pt at 1.0530 is **not** from iter 37 since 1.0540 > 1.0530. Iter 38 priority: **anneal from iter37.final with dropout=0** — give the new drop-basin longer to train, maybe break floor. Back-up plan if iter 38 stalls: (b) **dropout p=0.25 from iter37.final** — push cycle further on new arch; (c) **SWA on iter 37's E4-E10 checkpoints** (need train.py change to save intermediate epochs). (a) is cheapest and highest-upside.
+
 ### 2026-04-17 — Anneal over post-FiLM architecture (iter 36) + 25-model ensemble (ensemble-only KEPT)
 - **Hypothesis:** iter 35's new post-FiLM branches had only 18 epochs to learn; a second anneal on top of iter35.final lets them train longer. If the single-model dips below 1.0558, the new params were under-trained; if not, the floor is genuinely data-limited.
 - **Change:** no code. `--resume .../model-nm5giw9t/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
