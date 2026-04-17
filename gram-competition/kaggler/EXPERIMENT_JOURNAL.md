@@ -25,8 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — exp17: chain warm-start from exp16 + lr=2e-5
 - **Hypothesis:** Exp16 val was still dropping at E33 (0.9422, best E24 0.9420). One more chain at lr=2e-5 should extract the last fine-tuning gains — similar pattern to the exp12→exp13 chain (+0.0025). With a richer arch (mean+max) there may be more to extract.
 - **Change:** --warm_start=<exp16 ckpt model-4fk50oi3> --lr=2e-5. No code changes.
-- **Result:** TBD
-- **Verdict:** TBD
+- **Result:** val/l2=**0.9396** @ epoch 25 (30.1 min). train=0.0044. run uxpz2abi. 55s/epoch.
+- **Verdict:** KEPT — +0.0024 over exp16. Val oscillated 0.9396-0.9433 E25-33. Chain clearly saturating on this arch at this LR.
+- **Notes:** Chain on mean+max arch: exp15(0.9487)→exp16(0.9420,Δ=0.0067)→exp17(0.9396,Δ=0.0024). Geometric decay returns. Time to pivot: next is arch change (exp18 — multi-scale voxel).
 
 ### 2026-04-17 — exp16: chain warm-start from exp15 + lr=5e-5
 - **Hypothesis:** Exp15 val was still slightly dropping at E33 (0.9487). The new proj_agg layers were still learning. Another 30min of fine-tuning at lr=5e-5 should let the mean+max aggregation fully mature.
