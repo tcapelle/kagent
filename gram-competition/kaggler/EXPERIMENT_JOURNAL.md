@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v18 KEPT — 5-seed ensemble landed 0.7927, on the 1/sqrt(k) curve
+- **Hypothesis:** 1/sqrt(k) continues; 5-seed target ~0.790.
+- **Change:** 5th v6-arch seed (45 min, 52 epochs, solo best **0.8684** — best single seed yet). Ran ensemble over 5 ckpts.
+- **Result:** 5-seed val/l2 = **0.7927** (vs 4-seed 0.7993, 3-seed 0.8077). Solo sequence (v6, v15, v16, v17, v18): 0.8707, 0.8784, 0.8694, 0.8706, 0.8684 — mean 0.8715, std 0.0038.
+- **Verdict:** kept — 0.0066 further drop. 0.078 / 9.0% under v6 solo.
+- **Notes:** Solo best (v18, 0.8684) is now the best single checkpoint ever. Diminishing returns visible: 2→3 gave 0.019, 3→4 gave 0.008, 4→5 gave 0.007. Slope flattening. Still, compute is cheap. Next (v19): 6th seed — expected gain ~0.005 (to ~0.787). If 6-seed fails to gain ≥ 0.002 I'll stop adding seeds and explore a *different-architecture* seed (e.g., `hidden=384` or `voxel_mid=96`) — heterogeneous ensembles typically cancel error more than homogeneous.
+
+
 ### 2026-04-17 — v17 KEPT — 4-seed ensemble landed 0.7993, broke the 0.8 barrier
 - **Hypothesis:** 1/sqrt(k) scaling continues — 4-seed target ~0.795 from 3-seed 0.8077.
 - **Change:** trained 4th v6-arch seed (45 min, 52 epochs, solo best **0.8706** @ ep48 — the closest any seed has come to v6's original 0.8707 by coincidence). `ensemble.py` on 4 checkpoints.
