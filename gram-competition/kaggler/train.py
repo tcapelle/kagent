@@ -563,7 +563,10 @@ def main():
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
             torch.save(model.state_dict(), model_path)
-            shutil.copyfile(model_path, git_ckpt_path)
+            # Skip the in-repo copy in debug mode so a quick sanity run can't
+            # clobber a real, long-trained checkpoint.
+            if not cfg.debug:
+                shutil.copyfile(model_path, git_ckpt_path)
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
