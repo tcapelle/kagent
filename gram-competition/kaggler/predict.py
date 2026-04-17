@@ -1,10 +1,14 @@
 """Generate predictions on hidden test samples.
 
+Supports single-checkpoint prediction and optional model ensembling across
+multiple checkpoints (passed as `--checkpoints a.pt,b.pt,c.pt`). Ensembling
+averages each model's prediction (with y-reflection TTA) over all checkpoints.
+
 Run:
   python predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <your-name>
+  python predict.py --checkpoints a.pt,b.pt,c.pt --agent <your-name>
 """
 
-import json
 import os
 import subprocess
 from dataclasses import dataclass
@@ -27,8 +31,9 @@ TEST_SPLITS = ["val"]
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    """Generate test predictions from one or more trained checkpoints."""
+    checkpoint: str | None = None            # single-checkpoint mode
+    checkpoints: str | None = None           # comma-separated list for ensembling
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
@@ -39,14 +44,26 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 from train import BaselineMLP, predict_tta
-model = BaselineMLP(hidden=384, n_blocks=8).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
-# vel_mean/vel_std buffers are loaded via state_dict; no extra wiring needed.
 
-model.eval()
-print(f"Loaded model from {cfg.checkpoint}")
+ckpt_paths: list[str] = []
+if cfg.checkpoints:
+    ckpt_paths = [p.strip() for p in cfg.checkpoints.split(",") if p.strip()]
+elif cfg.checkpoint:
+    ckpt_paths = [cfg.checkpoint]
+else:
+    raise SystemExit("Pass --checkpoint or --checkpoints")
 
-# Save predictions keyed by agent + commit hash
+models: list[BaselineMLP] = []
+for p in ckpt_paths:
+    m = BaselineMLP(hidden=384, n_blocks=8).to(device)
+    state = torch.load(p, map_location=device, weights_only=True)
+    # strict=False lets us load older checkpoints (no SDF branch) into the
+    # current architecture; their sdf_embed stays zero-init -> no-op branch.
+    missing, unexpected = m.load_state_dict(state, strict=False)
+    m.eval()
+    print(f"Loaded {p} (missing={len(missing)}, unexpected={len(unexpected)})")
+    models.append(m)
+
 agent_name = cfg.agent or "unknown"
 commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
@@ -55,11 +72,10 @@ commit = subprocess.run(
 output_dir = PREDICTIONS_DIR / agent_name / commit
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Run inference on each scored split
 for split in TEST_SPLITS:
     ds = GRAMDataset(splits_dir / split)
     loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate_fn)
-    print(f"{split}: {len(ds)} samples")
+    print(f"{split}: {len(ds)} samples, {len(models)} models")
 
     predictions = []
     with torch.no_grad():
@@ -68,8 +84,11 @@ for split in TEST_SPLITS:
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
+            preds = []
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                pred = predict_tta(model, v_in, pos, t, idcs).float()  # [B, 5, N, 3]
+                for m in models:
+                    preds.append(predict_tta(m, v_in, pos, t, idcs).float())
+            pred = torch.stack(preds, dim=0).mean(dim=0)  # [B, 5, N, 3]
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
