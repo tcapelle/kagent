@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v13 DISCARDED — SWA over last 23 epochs landed 0.8753 (above v6's lucky 0.8707)
+- **Hypothesis:** v6's 0.8707 is likely a lucky single-epoch dip in batch_size=1 val noise. Stochastic Weight Averaging (SWA) over the cosine-anneal phase averages model weights across the late-training basin — a memoryless alternative to v10's EMA that is not dragged down by early random init. Classic noise-floor reduction for small-val regimes.
+- **Change:** `train.py` — `cfg.swa_start: int = 30` (1-indexed), `swa_state` dict updated by running-mean after each `scheduler.step()` starting at epoch ≥ swa_start. After training, SWA weights loaded into model, validated; replaces raw-best checkpoint if SWA val < raw best.
+- **Result:** val/l2 = **0.8753** (SWA, 23 epochs averaged, beat raw best 0.8758 at ep51/52). 45.6 min, 52s/epoch, 6.2 GB. W&B project `kagent-v13`. SWA helped marginally (raw 0.8758 → SWA 0.8753) — variance reduction worked. But both are above v6's 0.8707.
+- **Verdict:** discarded — 0.0046 worse than v6. The SWA smoothed floor confirms ~0.875 is this architecture's natural late-training level; v6 won by catching a lower single-epoch oscillation.
+- **Notes:** v13's raw best (0.8758) is itself a different-seed sample of the ~0.87–0.88 band — right in the bs=1 val noise envelope around v6's 0.8707. SWA collapses the envelope to ~0.875 reliably, which is strong evidence that re-rolling any v6-like config gives 0.87–0.88 ± 0.005. To actually move the floor, I need an architectural change that lowers the entire band, not just a variance reducer. Next (v14): **multi-scale voxel** — add a 32³ parallel UNet branch alongside the 64³ one, concat features, project back. 32³ gives ~2× coarser spatial context (global wake patterns the fine 64³ misses), at ~12% of 64³'s compute. First true architectural expansion since v5 (SDF feature); tests whether the 64³-only bottleneck is the real plateau.
+
+
 ### 2026-04-17 — v12 DISCARDED — bs=2 lr=7e-4 regressed 0.033 (fewer updates > lower grad noise)
 - **Hypothesis:** v6 trains at bs=1 which has very noisy per-step gradients. Doubling batch to 2 with `lr` scaled sqrt(2)× (5e-4 → 7e-4) should give smoother updates and a cleaner descent path. Simplest unexplored lever.
 - **Change:** `train.py` — `cfg.lr=7e-4`, `cfg.batch_size=2`. No other code changes. VRAM 6 → 12 GB as expected.
