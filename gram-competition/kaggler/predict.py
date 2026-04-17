@@ -41,7 +41,7 @@ splits_dir = Path(cfg.splits_dir)
 from model import VoxelFlowNet
 model = VoxelFlowNet(
     vel_mean=torch.zeros(3), vel_std=torch.ones(3),
-    grid_res=64, grid_ch=48, n_grid_blocks=4,
+    grid_res=80, grid_ch=32, n_grid_blocks=4,
     point_hidden=384, n_point_blocks=6,
 ).to(device)
 # Stats live in the state_dict as registered buffers, so just load everything.
