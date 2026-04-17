@@ -150,6 +150,33 @@ class PhysicsAttentionBlock(nn.Module):
         return h
 
 
+def compute_sdf(pos: torch.Tensor, idcs_airfoil, cache: dict, chunk: int = 4096) -> torch.Tensor:
+    """Distance from each point to the nearest airfoil-surface point.
+
+    Computed on GPU in chunks. Results cached by a simple pos-hash so each unique
+    geometry (146 in train) is computed at most once across all epochs.
+
+    pos: [B, N, 3], idcs_airfoil: list of length-B tensors.
+    returns: [B, N]
+    """
+    B, N, _ = pos.shape
+    out = torch.empty(B, N, device=pos.device, dtype=pos.dtype)
+    for b in range(B):
+        key = (float(pos[b].sum()), float(pos[b].view(-1)[0]), float(pos[b].view(-1)[-1]))
+        if key in cache:
+            out[b] = cache[key].to(pos.device, non_blocking=True)
+            continue
+        pos_a = pos[b, idcs_airfoil[b]]  # [n_a, 3]
+        sdf_b = torch.empty(N, device=pos.device, dtype=pos.dtype)
+        for s in range(0, N, chunk):
+            e = min(s + chunk, N)
+            d = torch.cdist(pos[b:b + 1, s:e], pos_a.unsqueeze(0))  # [1, chunk, n_a]
+            sdf_b[s:e] = d[0].min(dim=-1).values
+        cache[key] = sdf_b.detach().cpu()
+        out[b] = sdf_b
+    return out
+
+
 class BaselineMLP(nn.Module):
     """Residual per-point ResMLP with Fourier pos, temporal diffs, and Perceiver context.
 
@@ -184,6 +211,21 @@ class BaselineMLP(nn.Module):
         in_dim = pos_feat_dim + vel_feat_dim         # 66
 
         self.proj_in = nn.Linear(in_dim, hidden)
+        # SDF-to-airfoil branch: small MLP that lifts the per-point distance feature
+        # into the trunk dim and adds it residually. Zero-init on the final layer
+        # means the branch is exactly a no-op at warm-start time and the model
+        # learns how much to use it as training progresses.
+        sdf_feat_dim = 1 + 2 * 4  # raw + Fourier (L=4)
+        self.sdf_n_freqs = 4
+        self.sdf_embed = nn.Sequential(
+            nn.Linear(sdf_feat_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, hidden),
+        )
+        nn.init.zeros_(self.sdf_embed[-1].weight)
+        nn.init.zeros_(self.sdf_embed[-1].bias)
+        self._sdf_cache: dict = {}
+
         # Trunk: stack of Physics-Attention blocks (each has its own FFN + residual).
         self.blocks = nn.ModuleList([
             PhysicsAttentionBlock(hidden, n_slices=n_slices, n_heads=n_heads)
@@ -220,6 +262,10 @@ class BaselineMLP(nn.Module):
         x = torch.cat([pos_feat, vel_feat], dim=-1)             # [B, N, 66]
 
         x = self.proj_in(x)
+        # SDF feature: distance to nearest airfoil point, computed per unique pos (cached).
+        sdf = compute_sdf(pos, idcs_airfoil, self._sdf_cache)  # [B, N]
+        sdf_feat = fourier_encode(sdf.unsqueeze(-1), self.sdf_n_freqs)  # [B, N, 9]
+        x = x + self.sdf_embed(sdf_feat)
         for block in self.blocks:
             x = block(x)
         x = self.ln_dec(x)  # [B, N, hidden]
@@ -407,8 +453,11 @@ def main():
 
     if cfg.resume:
         state = torch.load(cfg.resume, map_location=device, weights_only=True)
-        model.load_state_dict(state)
-        print(f"Warm-started from {cfg.resume}")
+        # strict=False lets us warm-start even when the architecture has new
+        # zero-initialized branches (e.g. the SDF embedding) that don't exist in
+        # the older checkpoint.
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        print(f"Warm-started from {cfg.resume} (missing={len(missing)}, unexpected={len(unexpected)})")
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
