@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp32: full-resolution training (warm-start from exp31)
+- **Hypothesis:** Training uses subsample=50k but val runs at full 100k — the voxel density statistics differ. Also, at 50k each voxel has ~50% occupancy vs 100% at val, which likely degrades VoxelMixer behavior. Chain from exp31 with --subsample_train 0 and lr=2e-5 to test if closing the density gap helps. Cost: ~2x epoch time → ~9 epochs in 30min vs 18.
+- **Change:** --subsample_train 0 --warm_start <exp31 ckpt> --lr 2e-5. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Launching.
+
 ### 2026-04-17 — exp31: chain exp30 (aux features) + lr=2e-5
 - **Hypothesis:** Exp30 regressed 0.9132 (same arch-add pattern). Chain at lr=2e-5 to recover. Expected +0.003-0.006 over exp29 (0.8965).
 - **Change:** --warm_start=<exp30 ckpt model-kvptxsnv> --lr=2e-5. No code changes.
