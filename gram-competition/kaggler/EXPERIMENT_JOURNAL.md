@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v27 KEPT — wd=5e-5 (half baseline), 14-seed weighted 0.7629 (gain 0.0017)
+- **Hypothesis:** v25 (wd=3e-4, 3× baseline) had a weaker solo (0.866). The opposite direction — wd=5e-5 (half baseline) — should give stronger solo (less regularization) while still being an untested basin.
+- **Change:** CLI — `--weight_decay 5e-5 --epochs 90`.
+- **Result:** v27 solo val/l2 = **0.8596** at ep68 (mid-pack among long seeds, as hoped — stronger than v25's 0.866). 14-seed weighted (softmax T=0.02) = **0.7629** (vs 13-seed weighted 0.7646). Gain 0.0017. 14-seed uniform = 0.7655 (still ~0.0026 worse than weighted, confirming the weighted scheme is robustly better).
+- **Verdict:** kept. 12.4% under v6 solo.
+- **Notes:** Each new axis still contributes ~0.002/seed weighted gain. Pattern suggests remaining gains need bigger architectural moves. Untried high-leverage axes: (a) `MAX_TIMEOUT_MIN=90` with `epochs=90` to complete the full cosine schedule (all prior long seeds cut at ~ep69 with LR still ~0.06*init — never reached LR→0 settled minimum); (b) architectural diversity (e.g., `hidden=192` or `voxel_res=48`) which would break ensemble.py assumption of homogeneous arch. Going with (a) for v28 — cheaper, no code change needed.
+
+
 ### 2026-04-17 — weighted-ensemble KEPT — softmax(-l2/T=0.02) over 13 seeds: 0.7646 (gain 0.003, zero compute)
 - **Hypothesis:** uniform averaging down-weights strong seeds and up-weights weak ones (v20=0.889, v25=0.866 drag the mean). Weight by softmax(-solo_l2/T) so better seeds contribute more. Per-seed solo l2 is a proxy for test l2 — weights should generalize.
 - **Change:** new file `ensemble_weighted.py`. Tries 6 schemes: uniform, inv_loss, inv_loss_sq, softmax T∈{0.02, 0.005, 0.001}. Reports each and saves the best.
