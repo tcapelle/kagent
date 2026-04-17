@@ -84,7 +84,11 @@ def score_submission(pred_dir: Path, gt: dict[str, list[dict]]) -> dict[str, flo
 
     results = {}
     for split in TEST_SPLITS:
-        preds = torch.load(pred_dir / f"{split}.pt", map_location="cpu", weights_only=True)
+        try:
+            preds = torch.load(pred_dir / f"{split}.pt", map_location="cpu", weights_only=True)
+        except Exception as e:
+            print(f"    UNREADABLE {split}.pt ({type(e).__name__}): {e}")
+            return None
         split_results = score_split(preds, gt[split])
         for k, v in split_results.items():
             results[f"{split}/{k}"] = v
