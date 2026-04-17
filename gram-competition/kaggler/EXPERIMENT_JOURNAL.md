@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Dropout cycle 5 (p=0.25 from iter30.final) + 20-model ensemble (iter 31, ensemble-only KEPT)
+- **Hypothesis:** Continue drop-step of cycle with p=0.25 (sweeping p ∈ {0.10, 0.15, 0.20, 0.25}).
+- **Change:** no code. `--resume .../model-ngv9y4uc/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.25 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0547** at E9/18 (31.1 min, init 1.0583). Trajectory: E1 1.0643, E9 1.0547 (closest dip), E12 1.0551. Final.pt (E18, val=1.0580) staged as iter31.pt. **20-model ensemble:**
+  - **1.0236** ← submitted (0.10% drop from 1.0246)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — 6th consecutive 0.10-0.12% cycle gain. **Cumulative session: 1.0625 → 1.0236 = 3.7%.**
+- **Notes:** Dropout p=0.25 performed comparably to p=0.2 (both hit 1.0547 best-within-run). **Ensemble gain curve holding flat at 0.10%/iter — no saturation at 20 members.** Leaderboard head-room to #5 (askeladd 0.9830) is now 4.1%. Iter 32 priorities: (a) **continue anneal: iter 32 = anneal from iter 31.final** — cheapest continuation; (b) **second FiLM layer post-blocks** — finally attempt the architectural lift; (c) **try lambda=0.3 with dropout** to see if milder Sobolev + dropout opens a new sub-floor dip. Decision: continue (a) one more iter, then pivot to (b) if cycle doesn't break floor.
+
 ### 2026-04-17 — Anneal cycle 4 (dropout=0 from iter29.final new basin) + 19-model ensemble (iter 30, ensemble-only KEPT)
 - **Hypothesis:** iter 29 found a *different* 1.0530 basin. Anneal it with dropout=0 and see if the new starting point yields a sub-floor single or similar decorrelation to the prior cycle.
 - **Change:** no code. `--resume .../model-h9027r2d/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
