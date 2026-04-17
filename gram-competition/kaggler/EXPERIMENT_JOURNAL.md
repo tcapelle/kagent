@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v12 DISCARDED — bs=2 lr=7e-4 regressed 0.033 (fewer updates > lower grad noise)
+- **Hypothesis:** v6 trains at bs=1 which has very noisy per-step gradients. Doubling batch to 2 with `lr` scaled sqrt(2)× (5e-4 → 7e-4) should give smoother updates and a cleaner descent path. Simplest unexplored lever.
+- **Change:** `train.py` — `cfg.lr=7e-4`, `cfg.batch_size=2`. No other code changes. VRAM 6 → 12 GB as expected.
+- **Result:** val/l2 = **0.9040** at epoch 54 (45.3 min, 50s/epoch). W&B project `kagent-v12`. Val tracked 0.05–0.10 above v6 at matched epochs throughout (ep20 v12 1.13 vs v6 ~1.0; ep40 v12 0.94 vs v6 ~0.90), and kept that gap even through the cosine anneal.
+- **Verdict:** discarded — 0.033 worse than v6. Fewer gradient steps beat smoother gradients.
+- **Notes:** With bs=2, epoch is 365 steps instead of 730 → half the gradient updates in same wall-clock. Linear-LR scaling would be 1e-3 (not 7e-4); possibly undertuned, but the SGD-noise argument probably flips on this dataset regime — small-data noise is actually *useful* regularization, not pure loss. Lesson: stick with bs=1. Next (v13): target the other known weakness — "v6's 0.8707 looks partly lucky in batch_size=1 val noise" — via **Stochastic Weight Averaging (SWA)** over final 12 epochs (constant averages of model weights — averaged in parameter space, not gradient space). Unlike EMA (v10), SWA is memoryless of early random init and couples to the *cosine anneal* phase where the model oscillates around a broad minimum. Classic fix for noisy-val plateaus.
+
+
 ### 2026-04-17 — v11 DISCARDED — Fourier pos encoding smoother but 0.017 above v6
 - **Hypothesis:** v6's 64³ voxel grid discretizes position coarsely (~1 cell per ~2% of bbox). Adding sinusoidal Fourier features of per-sample-bbox-normalized pos at 4 frequency bands (scales 1π, 2π, 4π, 8π) gives the pointwise MLP fine positional detail the voxel aggregation loses, in the spirit of NeRF coord encoding.
 - **Change:** `train.py` — `fourier_encode(pos_norm, n_bands=4)` helper; `VoxelResidualModel.__init__` gains `fourier_bands=4` arg, `in_dim` += 24 (2·3·4); in `forward()` per-sample bbox-normalize pos to [-1,1], compute `pos_fourier`, concat before `proj_in`. 7.69M → 7.70M params. `predict.py` unchanged (uses default `fourier_bands=4`).
