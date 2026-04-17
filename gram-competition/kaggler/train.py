@@ -559,7 +559,9 @@ def main():
 
     if cfg.init_from:
         sd = torch.load(cfg.init_from, map_location=device, weights_only=True)
-        # Allow legacy checkpoints without grid_buf / domain_min / domain_max.
+        # Drop architecture-defining buffers so warm-start never overrides the configured grid.
+        for k in ("unet._grid_buf",):
+            sd.pop(k, None)
         missing, unexpected = model.load_state_dict(sd, strict=False)
         if unexpected:
             print(f"Unexpected keys in init_from: {unexpected[:5]}")
