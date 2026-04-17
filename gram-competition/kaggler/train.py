@@ -51,23 +51,41 @@ class ResBlock(nn.Module):
 
 
 class BaselineMLP(nn.Module):
-    """Concat pos + velocity_in per point, predict velocity_out through ResMLP."""
+    """Point-wise ResMLP: residual prediction (delta from last input frame) +
+    input/output normalization + no-slip BC enforcement at airfoil surface.
+    """
 
-    def __init__(self, hidden=256, n_blocks=6):
+    def __init__(self, hidden=512, n_blocks=8, vel_mean=None, vel_std=None):
         super().__init__()
-        in_dim = 3 + T_IN * 3   # pos(3) + velocity_in(5*3=15) = 18
-        out_dim = T_OUT * 3      # velocity_out(5*3=15)
+        in_dim = 3 + T_IN * 3       # pos(3) + v_in_norm (5*3=15) = 18
+        out_dim = T_OUT * 3          # delta in normalized space (5*3=15)
         self.proj_in = nn.Linear(in_dim, hidden)
         self.blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
+        if vel_mean is None:
+            vel_mean = torch.zeros(3)
+        if vel_std is None:
+            vel_std = torch.ones(3)
+        # [1,1,1,3] shape so it broadcasts over [B,T,N,3]
+        self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
+        self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
+
     def forward(self, velocity_in, pos, t, idcs_airfoil):
         B, T, N, C = velocity_in.shape
-        x = torch.cat([pos, velocity_in.reshape(B, N, T * C)], dim=-1)  # [B, N, 18]
+        v_in_norm = (velocity_in - self.vel_mean) / self.vel_std          # [B,T,N,3]
+        # Time dim first so concat preserves per-timestep ordering: [B,N,T*3]
+        v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
+        x = torch.cat([pos, v_feat], dim=-1)                               # [B,N,18]
         x = self.proj_in(x)
         x = self.blocks(x)
-        out = self.proj_out(x)  # [B, N, 15]
-        return out.reshape(B, T_OUT, N, 3)
+        delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)  # [B,5,N,3]
+        last = velocity_in[:, -1:, :, :]                                   # [B,1,N,3]
+        pred = last + delta_norm * self.vel_std                            # denorm delta; residual
+        # No-slip BC: zero velocity at airfoil surface
+        for b, idc in enumerate(idcs_airfoil):
+            pred[b, :, idc, :] = 0.0
+        return pred
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +176,8 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = BaselineMLP(hidden=256, n_blocks=6).to(device)
+model = BaselineMLP(hidden=512, n_blocks=8, vel_mean=stats["vel_mean"], vel_std=stats["vel_std"]).to(device)
+vel_std_gpu = stats["vel_std"].to(device).view(1, 1, 1, 3)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -222,7 +241,8 @@ for epoch in range(MAX_EPOCHS):
         t = t.to(device, non_blocking=True)
 
         pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-        loss = (pred - v_out).pow(2).mean()
+        # Normalized MSE so all velocity components are weighted equally
+        loss = ((pred - v_out) / vel_std_gpu).pow(2).mean()
 
         optimizer.zero_grad()
         loss.backward()
