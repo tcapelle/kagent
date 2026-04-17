@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp42: chain exp41 kNN-mixer @ lr=5e-6 (arch-add refine)
+- **Hypothesis:** exp41 showed kNN-mixer helps (+0.0007). At lr=2e-5 explore, the new block got rough initialization; chain at lr=5e-6 should refine. Expected +0.001-0.003.
+- **Change:** No code changes. --warm_start <exp41 ckpt model-er5pk3oc> --lr 5e-6.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Launching.
+
 ### 2026-04-17 — exp41: kNN neighbor aggregation (k=16, zero-init)
 - **Hypothesis:** Voxels (G=32, 16, 8) give coarse spatial context, but miss fine local neighborhood. Add a single KNNMixer block after main stack that gathers mean+max features from 16 nearest spatial neighbors per point. Zero-init output projection → identity at warm-start.
 - **Change:** train.py: new KNNMixer class (LayerNorm + gather-kNN + mean/max pool + zero-init Linear). BaselineMLP: self.knn_mixer = KNNMixer(hidden, k=16). Forward: after main block stack, compute _knn(pos) via chunked cdist+topk, apply knn_mixer, then out_refine. Warm-start from exp40 @ lr=2e-5.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Smoke test: 4 missing keys (knn_mixer.*), pred matches (identity at init, 0.838 ≈ 0.837 baseline), full-res forward 341ms (+110ms over baseline). Expected ~7 epochs in 30 min.
+- **Result:** val/l2=**0.8827** @ epoch 3 (34.4 min, 5 epochs). Ckpt: model-er5pk3oc. Trajectory: E1 0.8848 → E2 0.8862 → E3 0.8827 → E4 0.8856 → E5 0.8831. Train loss 0.0098 → 0.0083.
+- **Verdict:** KEPT — +0.0007 over exp40 (0.8834). Arch-add+chain recipe worked again (first time since exp33). Forward 413s/epoch (+147s over baseline), 18.6 GB VRAM.
+- **Notes:** kNN-mixer adds 130k params. Gives fine local neighborhood info voxels miss. Distance to leader (thorfinn=0.7475): 0.135. Next: chain at lr=5e-6 for refine.
 
 ### 2026-04-17 — exp40: chain exp38 @ lr=2e-6 (slower refine of y-flip aug)
 - **Hypothesis:** exp38 val was still decreasing at E10 (0.8839). At lr=5e-6 over 50-epoch cosine, LR barely decayed. Try lr=2e-6 for finer refine.
