@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Anneal over post-FiLM architecture (iter 36) + 25-model ensemble (ensemble-only KEPT)
+- **Hypothesis:** iter 35's new post-FiLM branches had only 18 epochs to learn; a second anneal on top of iter35.final lets them train longer. If the single-model dips below 1.0558, the new params were under-trained; if not, the floor is genuinely data-limited.
+- **Change:** no code. `--resume .../model-nm5giw9t/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0567** at E12/18 (31.6 min, init 1.0613). Even with the fuller training of the new branches, iter36 missed iter35's 1.0558 by a hair. Final.pt (E18, val=1.0606) staged as iter36.pt. **25-model ensemble:**
+  - **1.0190** ← submitted (0.08% drop from 1.0198)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — marginal shrinking from 0.09% → 0.08%. **Cumulative session: 1.0625 → 1.0190 = 4.1%.**
+- **Notes:** Post-FiLM undertraining is **not** the bottleneck — floor is data-generalisation-limited. Three independent probes (cycle / architecture / architecture+anneal) all hit the same 1.0530-1.0570 ceiling. Marginal ensemble gain now 0.08%, down from peak 0.12% at iter 29. Iter 37 options: (a) **dropout cycle step on post-FiLM architecture** (p=0.2 from iter36.final) — test whether new architecture opens new drop basin; (b) **weighted ensemble** (val-l2-inverse weights) — post-processing, no training; (c) **SWA** — average the last K epochs of a training run as one ensemble member. (a) is cheapest continuation; (b) could recover marginal above 0.08% without training; (c) needs code change. Try (a) next.
+
 ### 2026-04-17 — Post-block FiLM layer (architectural) + 24-model ensemble (iter 35, ensemble-only KEPT)
 - **Hypothesis:** Cycle saturated at +0.09%/iter after 9 consecutive steps. Add a final geometry-conditioned (scale, shift) applied to the trunk output before `ln_dec` — give the decoder one more chance to re-weight features by SDF/rel-vec after the attention blocks. Warm-start zero-init keeps iter34.final identity at step 0.
 - **Change:** `train.py` — new `post_film_scale` + `post_film_shift` MLPs (Linear(geom_feat_dim, hidden) → GELU → Linear(hidden, hidden), zero-init on final layer). Applied as `x = x * (1 + post_scale) + post_shift` between the block loop and `ln_dec`. `--resume .../model-jkioj2fi/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
