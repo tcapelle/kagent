@@ -171,7 +171,8 @@ class KNNMixer(nn.Module):
     """Per-point aggregation from k nearest spatial neighbors.
 
     Gives precise local-neighborhood context that voxels can't (voxels = coarse grid).
-    Zero-init projection for warm-start safety.
+    Zero-init projections for warm-start safety. Position-offset branch is additive
+    zero-init (PointNet++-style).
     """
 
     def __init__(self, dim, k=16):
@@ -181,8 +182,12 @@ class KNNMixer(nn.Module):
         self.proj = nn.Linear(2 * dim, dim)
         nn.init.zeros_(self.proj.weight)
         nn.init.zeros_(self.proj.bias)
+        # Zero-init position-offset branch: encode (pos_neigh - pos_self) into per-point features.
+        self.pos_proj = nn.Linear(3, dim)
+        nn.init.zeros_(self.pos_proj.weight)
+        nn.init.zeros_(self.pos_proj.bias)
 
-    def forward(self, x, knn_idx, film=None):
+    def forward(self, x, knn_idx, pos=None, film=None):
         B, N, D = x.shape
         h = self.norm(x)
         h = _apply_film(h, film)
@@ -193,6 +198,12 @@ class KNNMixer(nn.Module):
         h_mean = h_neigh.mean(dim=2)
         h_max = h_neigh.amax(dim=2)
         h_agg = self.proj(torch.cat([h_mean, h_max], dim=-1))
+        if pos is not None:
+            pos_gather = torch.gather(pos, 1, idx_flat.unsqueeze(-1).expand(-1, -1, 3))
+            pos_neigh = pos_gather.reshape(B, N, K, 3)
+            pos_diff = pos_neigh - pos.unsqueeze(2)
+            pos_feat = self.pos_proj(pos_diff).mean(dim=2)  # zero at init
+            h_agg = h_agg + pos_feat
         return x + h_agg
 
 
@@ -341,7 +352,7 @@ class BaselineMLP(nn.Module):
             x = blk(x, pos, film=film_all[:, i])
 
         knn_idx = self._knn(pos, k=self.knn_mixer.k)
-        x = self.knn_mixer(x, knn_idx)
+        x = self.knn_mixer(x, knn_idx, pos=pos)
 
         x = x + self.out_refine(x)
 

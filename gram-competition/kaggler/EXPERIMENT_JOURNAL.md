@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp44: kNN + position-offset branch (PointNet++ style)
+- **Hypothesis:** Current KNNMixer pools feature mean/max of 16 neighbors. Missing explicit relative position info. Add zero-init pos_proj (Linear 3→dim) that encodes (pos_neigh - pos_self) averaged over neighbors; add to h_agg. Zero-init → identity at warm-start; gives model explicit local geometry.
+- **Change:** train.py: KNNMixer gains self.pos_proj (zero-init Linear 3→dim). forward() takes pos, computes pos_diff to neighbors, adds mean(pos_proj(pos_diff)) to h_agg. BaselineMLP.forward passes pos to knn_mixer.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Smoke test: 2 missing keys (pos_proj.*), pos_proj exactly zero at init. Warm-start from exp42 (model-jay6zniz) @ lr=2e-5 (arch-add explore).
+
 ### 2026-04-17 — exp43: chain exp42 kNN @ lr=2e-6 (fine refine)
 - **Hypothesis:** exp42 val was monotonically decreasing through E5 (0.8810 → 0.8807 → 0.8805). Not saturated. Chain at lr=2e-6 for slow refine.
 - **Change:** --warm_start <exp42 ckpt model-jay6zniz> --lr 2e-6.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Launching.
+- **Result:** val/l2=**0.8805** @ epoch 2 (34.4 min, 5 epochs). Trajectory: E1 0.8812 → E2 0.8805 → E3 0.8806 → E4 0.8822 → E5 0.8813.
+- **Verdict:** DISCARDED — tied exactly with exp42 (0.8805). lr=2e-6 too low to progress. Model saturated at this scale.
+- **Notes:** Stick with exp42 ckpt model-jay6zniz. Next: add more kNN capacity via position-offset features (PointNet++ style).
 
 ### 2026-04-17 — exp42: chain exp41 kNN-mixer @ lr=5e-6 (arch-add refine)
 - **Hypothesis:** exp41 showed kNN-mixer helps (+0.0007). At lr=2e-5 explore, the new block got rough initialization; chain at lr=5e-6 should refine. Expected +0.001-0.003.
