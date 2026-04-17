@@ -22,6 +22,11 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter19: Transolver depth=3 + bf16 (retry iter16 with budget headroom)
+- **Hypothesis:** iter16 (depth=3) failed purely because of budget — 96s/ep × 20 epochs ate the cosine tail. With iter18's bf16 speedup, depth=3 should run at ~60s/ep, fitting 28 epochs in ~28 min. The +1 Transolver block adds a round of global mixing; iter16's curve was 1 epoch ahead of iter15's early, so the architecture is right — it just needs the full cosine.
+- **Change:** `train.py` — `transolver_depth=3` (on top of iter18 bf16 + epochs=28).
+- **Result:** _pending_.
+
 ### 2026-04-17 — iter18: bf16 autocast + epochs=28 (use Blackwell mixed precision to run more epochs)
 - **Hypothesis:** iter16 (depth 3) and iter17 (slice 64) both failed — not because capacity didn't help, but because adding params eats epoch budget and iter15's 0.9578 is a tight optimum on the `epochs × capacity` frontier. Free more compute via bf16 autocast (Blackwell RTX PRO 6000 has native bf16), target ~1.5x speedup → 60s/ep → 28-30 epoch budget. Same iter15 model.
 - **Change:** `train.py` — wrap train/val forward in `torch.amp.autocast('cuda', dtype=torch.bfloat16)`, cast val `pred` back to fp32 for metrics; bump `epochs: 22→28`.
