@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v29 KEPT — 2nd full-cosine smashed solo to 0.8420, 16-seed weighted 0.7579 (gain 0.0028)
+- **Hypothesis:** full-cosine is the strongest single regime (v28 proved it). Another full-cosine seed expected to give ~0.002 gain.
+- **Change:** same config as v28 — `MAX_TIMEOUT_MIN=90, --epochs 90`. Different random init (implicit).
+- **Result:** v29 solo val/l2 = **0.8420** at ep87 — *massive* jump under v28's 0.8541 (delta 0.0121). Absolute new floor. 16-seed weighted (softmax T=0.02) = **0.7579** (vs 15-seed 0.7607). Gain 0.0028 — above expectation. v29 gets max softmax weight (0.167) in the ensemble.
+- **Verdict:** kept. 13.0% under v6 solo.
+- **Notes:** Full-cosine is clearly the best regime — 2 of 2 seeds landed below any non-full-cosine seed's best. Next (v30): 3rd full-cosine seed — continue the streak. Also eventually worth testing `epochs=120 MAX_TIMEOUT_MIN=90` to see if slower anneal digs deeper, but not before getting 3-4 more full-cosine seeds.
+
+
 ### 2026-04-17 — v28 KEPT — full-cosine (epochs=90 MAX_TIMEOUT=90) solo-best ever, 15-seed weighted 0.7607 (gain 0.0022)
 - **Hypothesis:** every prior long seed cut at ~ep69 with LR still ~0.06× init — model never reached the LR→0 settled minimum. Completing the full 90-epoch cosine schedule should give both (a) a stronger solo (more fine-tuning at low LR) and (b) a genuinely new basin (ending at LR=0 vs cut at LR=0.06).
 - **Change:** CLI + env — `MAX_TIMEOUT_MIN=90 python train.py --epochs 90`. train.py untouched.
