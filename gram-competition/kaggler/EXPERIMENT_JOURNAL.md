@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Higher Sobolev lambda + warm-start (iter 17, KEPT)
+- **Hypothesis:** Train 0.77 vs val 1.06 (iter 16) shows deepening overfit. Sobolev lambda was 0.1 through iters 14-16; raising it to 0.3 should penalise local gradient mismatch harder and pull val-L2 down at modest train-loss cost. Zero new params, so warm-start from iter 16 is trivial.
+- **Change:** Launch `train.py` with `--resume checkpoints/best.pt --sobolev_lambda 0.3 --lr 1e-4 --warmup_steps 30 --epochs 25`. No code change — just a hyperparameter bump.
+- **Result:** single-model iter17 best = **1.0595** at end of run (31 min, warm-start init floor 1.0628). Gap to train loss widened less than iter 16 (weights are being held closer to smooth-gradient manifold). **Ensemble (all 6 iters on PVC):**
+  - iter 17 alone: 1.0595
+  - iter 16 + 17: 1.0526
+  - iter 15 + 16 + 17: 1.0506
+  - iter 14 + 15 + 16 + 17: 1.0493
+  - iter 13 + 14 + 15 + 16 + 17: 1.0483
+  - **iter 12 + 13 + 14 + 15 + 16 + 17: 1.0477** ← submitted (4073d6c)
+- **Verdict:** KEPT. **1.0628 → 1.0595 = 0.3% (single), 1.0537 → 1.0477 = 0.6% (ensemble).** Cumulative since iter 10: **1.2218 → 1.0477 = 14.2% drop**.
+- **Notes:** Sobolev lambda=0.3 is still a tempered regulariser — lambda=0.5 would be worth trying but may overshoot. Ensemble-gain-per-new-member is decaying (iter 16 added 0.9%, iter 17 added 0.6%) — warm-start chain members are too correlated. Iter 18 priorities: (a) **train a wider/deeper model from scratch** (hidden=512, n_blocks=10, 25 epochs) — this is the only way to add a *genuinely decorrelated* ensemble partner and attack the 4.6% gap to #5 (askeladd 0.9995). Risk: single-model score may regress initially. (b) FiLM conditioning on blocks using SDF+rel (richer geometry conditioning). (c) Higher Sobolev lambda=0.5 with more warmup. (a) has the biggest ceiling.
+
 ### 2026-04-17 — Rel-vector-to-airfoil feature + 5-model ensemble (iter 16, KEPT)
 - **Hypothesis:** (A) SDF alone is scalar; pos-rel-vector = pos − nearest_airfoil_pos adds direction (upstream vs downstream, above vs below suction side) on top of the same distance signal. Zero-init additive branch preserves warm-start. (B) iter 13–16 are a warm-start chain with correlated errors, but weighted averages of several warm-started checkpoints should still decorrelate a bit and ensemble for ~free.
 - **Change:** `train.py` — added `compute_sdf_and_rel()` returning (sdf, pos−nearest); new `rel_embed: MLP(27→H→H)` on Fourier(L=4)-encoded rel vector, final layer zero-initialised and added as a residual exactly like sdf branch. Also moved SDF computation to be optional-precomputed so the point-subsampling path still works. Added `validate(...)` call BEFORE training begins when `--resume` is set so we never overwrite `best.pt` with a worse warm-start E1 (iter 16 v1 subsample-40k attempt silently clobbered iter 15's 1.066 with 1.10 — fixed). Also added `eval.py` for quick one-off ensemble scoring on val. Finally, `train.py` auto-triggers ensemble predict if a `/mnt/new-pvc/.../ensemble_ckpts/iter*.pt` directory exists; writes all prior-iter checkpoints + current one through `predict.py --checkpoints`.
