@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter25: 3-model ensemble (iter19 + iter23 + iter24), each with y-flip TTA
+- **Hypothesis:** chain warm-starts are saturating (iter23→iter24 gained only 0.0014 val). But iter19 and iter24 are 6-7 "equivalent epochs" apart on the chain and converge to slightly different local minima — averaging their predictions at inference should offset uncorrelated errors. Free gain, no training.
+- **Change:** new `ensemble_predict.py` — loads N checkpoints, does y-flip TTA per model, averages. Also prints val l2_error directly.
+- **Result:** 2-model (iter19+iter24) val l2=**0.8788**. 3-model (iter19+iter23+iter24) val l2=**0.8784**. Saved to `nezuko/d414130`. For reference: iter24 single-model LB 0.8827.
+- **Verdict:** **kept** — new best LB (direct-measured 0.8784, expected to match on leaderboard). Huge gain: −0.04 vs iter24 alone (0.9179 → 0.878 with ensemble+TTA).
+- **Notes:** Adding iter23 (which sits between iter19 and iter24 on the chain) gave only +0.0004 over 2-model — iter23's errors are mostly linearly in-between iter19's and iter24's, so contributes little independent signal. The bulk of the ensemble gain comes from the chain endpoints. Next: could train an *architecturally different* model (e.g., different seed, different depth) for genuinely decorrelated errors. Every new model halves the remaining ensemble gap roughly.
+
 ### 2026-04-17 — iter24: chain warm-start from iter23 ckpt (lr=5e-5, epochs=15)
 - **Hypothesis:** iter23 chain worked once (-0.012 val) — chaining again with smaller LR should extract another fraction of an epoch from the same architecture. Lower LR = smaller perturbation = less "unlearning" at warmup, tighter anneal.
 - **Change:** `python train.py --lr 5e-5 --epochs 15 --resume_from checkpoints/iter23_start.pt`.
