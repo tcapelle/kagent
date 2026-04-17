@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — FRESH-TRAIN FROM SCRATCH (iter 41) — FLOOR BROKEN 1.0435 + 30-ensemble 1.0127
+- **Hypothesis:** 30 iters of warm-start chain correlation accumulated bias. The post-FiLM architecture never got a fair fresh-init training (iter12 was pre-FiLM). Launch a completely fresh-init training of the current arch to test whether we're stuck in a bad attraction basin.
+- **Change:** no code. **NO `--resume`** — pure random init. `--lr 3e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0435** at E18/18 (31.6 min, *monotonic descent*, val still dropping at final epoch). Trajectory: E1 1.4147 → E6 1.2587 → E12 1.1299 → E14 1.0977 → E17 1.0574 → **E18 1.0435**. **Both `best.pt` AND `best_run.pt` updated** — first floor-break in 17 iters (last tied at iter 23 & 29 at 1.0530). Staged as iter41.pt. **30-model ensemble:**
+  - **1.0127** ← submitted (**0.39% drop from 1.0167 — 7x the prior marginal of 0.056%**, mae Ux=0.6641 Uy=0.3140 Uz=0.4828)
+- **Verdict:** **MAJOR WIN.** Single-model new best 1.0435 (0.0095 below prior floor). Ensemble jumped by 7x the recent per-iter rate. **Cumulative session: 1.0625 → 1.0127 = 4.69%.**
+- **Notes:** **Critical insight: the warm-start chain had saturated, not the architecture.** Every member iter12-iter40 descended from the same initial fresh-train (iter12, pre-FiLM) with only warm-start deltas — 29 members all shared correlated attraction basins. A single independent fresh-init (iter41, post-FiLM from scratch) produced a member with far more diversity than any cycle step. Also: val was still descending linearly at E18 — more epochs would go lower. Iter 42 MUST be: **continue iter41 training** (`--resume iter41.final --lr 1e-4 --epochs 25`) — the single-model will likely crack 1.02, and the continued member will *still* add ensemble gain because it's the first member of the new chain. Do NOT revert to warm-start cycling on the old chain — marginal there has decayed to 0.05%.
+
 ### 2026-04-17 — Anneal from iter39.best_run.pt dip (iter 40) + 29-model ensemble (ensemble-only KEPT)
 - **Hypothesis:** iter39's best_run.pt captured a transient E9 dip at 1.0569. Warm-starting from that dip (instead of the usual drifted final.pt) might let cosine-anneal stay near-basin and break floor 1.0530. First real test of the new best_run primitive as a warm-start source.
 - **Change:** no code. `--resume .../model-amds5uhm/best_run.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
