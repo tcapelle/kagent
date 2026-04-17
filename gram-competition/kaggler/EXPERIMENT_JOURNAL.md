@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — trilinear splatting voxelization [discarded]
+- **Hypothesis:** At G=80 most cells are empty (512k cells vs 100k points ⇒ ~80 % empty) and hard-scatter creates sharp cross-cell discontinuities. Trilinear splatting distributes each point's contribution to its 8 surrounding cell centers with trilinear weights summing to 1 → fewer empty cells and smoother grid features. Mean-pool uses splat; max-pool stays hard-assigned (max is not linear).
+- **Change:** `model.py/_voxelize` — replace single `scatter_add_` for mean with 8-fold splat loop over (dx,dy,dz) ∈ {0,1}³, accumulating weighted feature and weight sums; normalize by weight sum.
+- **Result:** val/l2_error = **0.9404** (epoch 26 of 28 @ 29.7 min, 8.0 GB peak). Train loss 0.0096. **Worse than exp 12 (0.9277) by 1.4 %**. Per-epoch time essentially unchanged (63 s → 63–64 s).
+- **Verdict:** Discarded. Consistent ~0.02 lag vs exp 12 from epoch 3 onward, on both train and val. Reverted; kept exp 12 checkpoint.
+- **Notes:** Two plausible explanations: (a) the CNN's 3×3 conv + `F.grid_sample` trilinear readout already smooth across cells, so pre-smoothing the grid costs information without adding any the network couldn't already get; (b) splatting dilutes the per-cell signal-to-noise (one point's energy is spread across 8 cells, so any single cell sees mostly "near-neighbor noise" with smaller coefficients from actually-close points) — hard scatter preserves the cleanest single-cell reading. Lesson: when a downstream module is already smoothing, pre-smoothing the input usually loses information. Next: try something that changes *what the model sees*, not *how smoothly it sees it*. Candidates: dropout in the point MLP (regularize the train/val gap), weighted MSE (upweight hard points near the airfoil), point-MLP capacity bump (hidden 384→512, cost <10 % per epoch).
+
 ### 2026-04-17 — EMA weight averaging (decay=0.999)
 - **Hypothesis:** Cosine-annealed weights near the end of training still oscillate around a local optimum because of the stochastic gradient; averaging the last ~1/(1-decay) ≈ 1000 optimizer steps should land in a flatter region and reduce val noise. Near-zero compute cost (one extra float tensor per parameter and a fused mul-add per step), so cfg.epochs stays at 28.
 - **Change:** `train.py` — `EMA` class (decay=0.999) updated every optimizer step. At validation time, swap EMA weights into the model, run validate, and if best, save **the EMA weights** to `best.pt`. Swap base weights back before next epoch's training.
