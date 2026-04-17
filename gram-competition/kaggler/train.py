@@ -124,6 +124,36 @@ n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
+
+class EMA:
+    """Exponential moving average of model weights. Validate/save the EMA copy."""
+    def __init__(self, model, decay=0.999):
+        self.decay = decay
+        self.shadow = {k: v.detach().clone() for k, v in model.state_dict().items()
+                       if v.dtype.is_floating_point}
+
+    @torch.no_grad()
+    def update(self, model):
+        for k, v in model.state_dict().items():
+            if k in self.shadow:
+                self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1 - self.decay)
+
+    @torch.no_grad()
+    def swap_in(self, model):
+        self.backup = {k: model.state_dict()[k].detach().clone() for k in self.shadow}
+        sd = model.state_dict()
+        for k in self.shadow:
+            sd[k].copy_(self.shadow[k])
+
+    @torch.no_grad()
+    def swap_out(self, model):
+        sd = model.state_dict()
+        for k in self.shadow:
+            sd[k].copy_(self.backup[k])
+
+
+ema = EMA(model, decay=0.999)
+
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
 # ---------------------------------------------------------------------------
@@ -188,6 +218,7 @@ for epoch in range(MAX_EPOCHS):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        ema.update(model)
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -197,7 +228,8 @@ for epoch in range(MAX_EPOCHS):
     scheduler.step()
     epoch_loss /= n_batches
 
-    # --- Validate ---
+    # --- Validate EMA weights (what we'd ship) ---
+    ema.swap_in(model)
     mean_val, split_metrics = validate(model, val_loaders, device, global_step)
     dt = time.time() - t0
 
@@ -210,9 +242,13 @@ for epoch in range(MAX_EPOCHS):
         best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+        # model is currently holding EMA weights — save those (they're what won val).
         torch.save(model.state_dict(), model_path)
         shutil.copyfile(model_path, git_ckpt_path)
         tag = " *"
+
+    # Restore training weights for the next epoch.
+    ema.swap_out(model)
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     print(
