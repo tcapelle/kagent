@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — higher voxel resolution G=80 ch=32
+- **Hypothesis:** Exp 5 showed higher grid resolution helps. Go further: G=80 (~2.9 cm/cell), compensate by dropping channels 48→32. Compute budget: 80³·32² = 524 B ops < exp 5's 64³·48² = 604 B, so per-epoch time should be similar or lower.
+- **Change:** `train.py`+`predict.py` — `grid_res=80, grid_ch=32`. Nothing else changed vs exp 5 (epochs=24, Fourier L=8, 4 dilated grid blocks, point_hidden=384, n_point_blocks=6).
+- **Result:** val/l2_error = **0.9547** (epoch 24 of 24 @ 25.1 min, 7.9 GB peak). Train loss 0.0101. 1 % improvement over exp 5 (0.9640 → 0.9547). Finished ~5 min under budget.
+- **Verdict:** Kept. Pushing spatial resolution keeps paying off. 63 s/epoch as expected.
+- **Notes:** Val was still dropping at final epoch (23: 0.9706 → 24: 0.9547, big drop). With 5 min slack I could bump cfg.epochs 24→28. Next experiment just uses the slack (exp 8 = epochs=28) to probe whether more training helps. After that: either go even higher resolution (G=96) or add a qualitative feature (k-NN neighborhood, temporal derivatives). Gap to leader 0.75 is still 0.20 — pure resolution scaling is showing diminishing returns (+3.2 % then +1 %).
+
 ### 2026-04-17 — SDF-to-airfoil per-point feature [discarded]
 - **Hypothesis:** Add per-point unsigned distance to the nearest airfoil point as a scalar feature concatenated with Fourier pos + voxel feat. Strong geometric prior for boundary-layer behavior (airflow close to the surface differs sharply from freestream). Implemented via chunked `torch.cdist` inside the model forward pass.
 - **Change:** `model.py/VoxelFlowNet._airfoil_sdf` — chunked cdist (chunk=5000 along N) to nearest airfoil point; concat result into the per-point feature. `point_in` +1. No other changes vs exp 5.
