@@ -23,6 +23,7 @@ SPLITS_DIR = Path("/mnt/new-pvc/datasets/gram/splits")
 @dataclass
 class Config:
     checkpoints: list[str] = field(default_factory=list)
+    grid_sizes: list[int] = field(default_factory=list)
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1
@@ -30,6 +31,8 @@ class Config:
 
 cfg = sp.parse(Config)
 assert len(cfg.checkpoints) >= 2, "need at least 2 checkpoints"
+if cfg.grid_sizes:
+    assert len(cfg.grid_sizes) == len(cfg.checkpoints), "grid_sizes must match checkpoints"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
@@ -40,12 +43,15 @@ _vel_mean = torch.tensor(_stats_raw["vel_mean"], dtype=torch.float32)
 _vel_std = torch.tensor(_stats_raw["vel_std"], dtype=torch.float32)
 
 models = []
-for ckpt_path in cfg.checkpoints:
-    m = VoxelUNet(**MODEL_CFG, vel_mean=_vel_mean, vel_std=_vel_std).to(device)
+for i, ckpt_path in enumerate(cfg.checkpoints):
+    model_cfg = dict(MODEL_CFG)
+    if cfg.grid_sizes:
+        model_cfg["grid_size"] = cfg.grid_sizes[i]
+    m = VoxelUNet(**model_cfg, vel_mean=_vel_mean, vel_std=_vel_std).to(device)
     m.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
     m.eval()
     models.append(m)
-    print(f"Loaded: {ckpt_path}")
+    print(f"Loaded: {ckpt_path} (grid={model_cfg['grid_size']})")
 
 agent_name = cfg.agent or "unknown"
 commit = subprocess.run(

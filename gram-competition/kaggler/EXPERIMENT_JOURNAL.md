@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter29: architectural diversity — grid_size 48→64 + 6-model ensemble
+- **Hypothesis:** pure seed-diversity (iter28) is hitting diminishing returns (−0.0037). A model with a different *architecture* should produce genuinely decorrelated errors at the feature level. Bump `grid_size` 48→64 — different receptive field, different aliasing, same rest of architecture. Add to the 5-model ensemble.
+- **Change:** `train.py` `MODEL_CFG['grid_size'] = 64`. Also extended `ensemble_predict.py` with a `--grid_sizes` arg so per-checkpoint grid can be passed alongside `--checkpoints`. Training at grid=64 is ~2.1× slower (120s/epoch vs 57s), so the script's 30-min timeout hit at epoch 15 instead of running 28 epochs.
+- **Result:** iter29 standalone val/l2 = **0.9425** at e15/15 (stopped early by timeout; monotonically improving — would have kept dropping). Notable: grid=64 val=0.9425 at e15 vs grid=48 val=1.0029 at e15 — grid=64 converges meaningfully faster at same compute budget. Ensemble:
+  - iter19+24+26+27+28 (grid=48) + **iter29 (grid=64)** (6-model mixed-grid): val l2 = **0.8393** (direct, with TTA) — **new best**
+- **Verdict:** **kept** — −0.0123 vs 5-model iter28 (0.8516 → 0.8393). Architectural diversity gives ~3× the ensemble gain of one more seed-diverse model. Submission at this commit.
+- **Notes:** This is the cleanest signal yet that *how* the model sees the data matters more than just a different random init. Gap to alphonse (0.7761) is now 0.063. Next ideas: (a) second grid=64 fresh-init (iter30) to see if architectural diversity also stacks, (b) depth=4 (one more transolver block) as a third architectural axis, (c) bump `train.py` timeout so grid=64 actually gets its full 28 epochs — likely the single biggest improvement still on the table since iter29 was training-limited.
+
 ### 2026-04-17 — iter28: third fresh-init training + 5-model ensemble
 - **Hypothesis:** iter26→iter27 gave −0.007 ensemble gain. If the diminishing-returns curve is shallow, a third fresh-init model (iter28, new seed, same arch/config) should give another −0.003 to −0.005. Adding it to the existing 4-model ensemble tests whether additional decorrelated inits keep paying off.
 - **Change:** no code changes. `python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter28-fresh3` — vanilla fresh-init run with a different PyTorch init RNG (default seed behavior).
