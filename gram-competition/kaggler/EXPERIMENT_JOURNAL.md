@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter24: chain warm-start from iter23 ckpt (lr=5e-5, epochs=15)
+- **Hypothesis:** iter23 chain worked once (-0.012 val) — chaining again with smaller LR should extract another fraction of an epoch from the same architecture. Lower LR = smaller perturbation = less "unlearning" at warmup, tighter anneal.
+- **Change:** `python train.py --lr 5e-5 --epochs 15 --resume_from checkpoints/iter23_start.pt`.
+- **Result:** val/l2 = **0.9179** at epoch 10 / 15 (best). 57 s/ep, 14.3 min wallclock. Run `7cw3e86t`. Preds saved to `nezuko/dd5cfed`. Trajectory: e1=0.922 → e7=0.918 → e10=0.918 → plateau 0.921 for e11-15.
+- **Verdict:** **kept** — marginal −0.0014 vs iter23, but strictly better. Diminishing returns.
+- **Notes:** 2nd chain gain (0.0014) ≪ 1st chain gain (0.012). Suggests we've nearly exhausted what fine-tuning-from-fixed-checkpoint can do for this architecture. For larger gains, need architectural change, not schedule change. Next iter ideas: (a) fine-tune with a different loss (pure Ux-weighted, since Ux MAE dominates), (b) ensemble iter19+iter23+iter24 (may offset overfitting of each), (c) architectural: add KNN local attention on top of voxel-sample features for sub-voxel detail.
+
 ### 2026-04-17 — iter23: warm-start fine-tune from iter19 ckpt (extend effective budget)
 - **Hypothesis:** iter19 (val 0.9316) + every capacity-bump iter21/22 loses because a single 30-min run can't fit both capacity *and* the full cosine tail. Warm-starting from iter19's checkpoint with a short cosine (lr=1e-4, 20 ep, warmup=50) effectively extends total training to ~48 epochs, squeezing more annealing out of the existing architecture at no capacity cost.
 - **Change:** `train.py` — add `--resume_from` CLI flag; load state_dict and use a shorter warmup (50 steps) when resuming.
