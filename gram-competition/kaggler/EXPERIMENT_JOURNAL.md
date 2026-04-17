@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — grid dilations extended to (1,2,4,8,16), n_grid_blocks=5 [discarded]
+- **Hypothesis:** Adding a 5th grid block with dilation=16 increases effective receptive field of the 3D CNN from ~30 cells to ~60 cells (at G=80 voxels), useful for capturing large-scale wake structure that forms downstream of the wing. Drop cfg.epochs=28→25 to keep cosine fully annealed within budget.
+- **Change:** `model.py` — replace hardcoded `dilations=[1,2,4,8]` with configurable tuple, bump default to `(1,2,4,8,16)` and `n_grid_blocks=5`. `train.py` — `epochs: int = 25`.
+- **Result:** val/l2_error = **0.9459** (epoch 25 of 25 @ ~30 min). Worse than exp 9's 0.9304.
+- **Verdict:** Discarded. Extra grid capacity cost ~3 epochs (28→25), and the gain wasn't enough to compensate. Reverted commit, restored exp 9 checkpoint.
+- **Notes:** Two-factor change (extra block + fewer epochs) — can't isolate. Most likely the receptive field of exp 9 (dilations 1,2,4,8 → ~30 cells × 2.9 cm = ~90 cm) was already sufficient for the relevant spatial scale; the wake structure at larger scales may not be predictable from 5 ms of history anyway. Lesson reinforced: at the 30-min budget, capacity increases that cost epochs are usually net-negative.
+
+### 2026-04-17 — test-time augmentation via y-flip ensemble [discarded]
+- **Hypothesis:** The geometry is near-symmetric about the x–z plane. Even if the model isn't trained to be exactly y-symmetric (exp 3b showed training-time y-flip hurt), averaging predictions from `(v_in, pos)` and the y-flipped version at inference time might reduce variance.
+- **Change:** Standalone `eval_tta.py` (not committed) running exp 9 checkpoint with and without y-flip TTA on val split.
+- **Result:** TTA val/l2 jumped from 0.9304 to ~1.03. Non-trivial regression.
+- **Verdict:** Discarded. Flipping creates out-of-distribution inputs (model is not y-symmetric), so averaging pulls predictions toward a worse operating point. Consistent with exp 3b's training-time y-flip failure.
+- **Notes:** Data itself may be more asymmetric than visual inspection suggests (asymmetric wake, suspension fairings, mirror effects). Don't revisit y-symmetry unless there's an explicit symmetrization during training.
+
 ### 2026-04-17 — longer training cfg.epochs=28 (use 5-min slack)
 - **Hypothesis:** Exp 7 and exp 8 both finished with val still dropping and ~5 min under the MAX_TIMEOUT budget. Pure-training-time test: does bumping `cfg.epochs` from 24 to 28 (which fully anneals the cosine schedule at epoch 28 rather than 24) give measurable improvement?
 - **Change:** `train.py` — `epochs: int = 28`. Nothing else.
