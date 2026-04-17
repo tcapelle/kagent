@@ -117,34 +117,53 @@ class VoxelFlowNet(nn.Module):
         self.proj_out = nn.Sequential(nn.LayerNorm(point_hidden), nn.Linear(point_hidden, point_out))
 
     def _voxelize(self, v_in_norm, pos):
-        """Scatter per-point features onto a [B, C, G, G, G] grid using BOTH
-        mean- and max-pooling, concatenated along channels.
+        """Trilinear-splat per-point features onto [B, C, G, G, G].
 
-        Mean captures typical flow direction in each cell; max captures the
-        most extreme component (useful for turbulent/separation regions).
+        Each point contributes to its 8 surrounding cell centers with
+        trilinear weights (summing to 1), producing smoother grid features
+        and reducing the empty-cell rate at high G. Max-pool stays
+        hard-assigned (max is not linear).
         """
         B, T, N, C = v_in_norm.shape
         G = self.grid_res
-        pos_norm = ((pos - self.pos_min) / (self.pos_max - self.pos_min)).clamp(0, 1 - 1e-6)
-        idx = (pos_norm * G).long()  # [B, N, 3]
-        flat_idx = idx[..., 0] * G * G + idx[..., 1] * G + idx[..., 2]  # [B, N]
+        pos_norm = ((pos - self.pos_min) / (self.pos_max - self.pos_min)).clamp(0, 1)
+        # Put cell centers at integer grid coords in [0, G-1]
+        p = pos_norm * (G - 1)
+        i0 = p.floor().long().clamp(0, G - 1)
+        i1 = (i0 + 1).clamp(max=G - 1)
+        w1 = p - i0.float()
+        w0 = 1.0 - w1
 
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
         ones = torch.ones(B, N, 1, device=v_feat.device, dtype=v_feat.dtype)
-        feat_mean_in = torch.cat([v_feat, ones], dim=-1)  # [B, N, 16] — +occupancy
+        feat_mean_in = torch.cat([v_feat, ones], dim=-1)  # 16 ch (+occupancy)
         nch_mean = feat_mean_in.shape[-1]
 
-        # Scatter mean
         grid_sum = torch.zeros(B, G * G * G, nch_mean, device=v_feat.device, dtype=v_feat.dtype)
-        counts = torch.zeros(B, G * G * G, 1, device=v_feat.device, dtype=v_feat.dtype)
-        idx_m = flat_idx.unsqueeze(-1).expand(-1, -1, nch_mean)
-        grid_sum.scatter_add_(1, idx_m, feat_mean_in)
-        counts.scatter_add_(1, flat_idx.unsqueeze(-1), ones)
-        grid_mean = grid_sum / counts.clamp(min=1.0)
+        wsum = torch.zeros(B, G * G * G, 1, device=v_feat.device, dtype=v_feat.dtype)
 
-        # Scatter max (velocities only — occupancy max == mean, skip)
+        for dx in (0, 1):
+            for dy in (0, 1):
+                for dz in (0, 1):
+                    ix = i1[..., 0] if dx else i0[..., 0]
+                    iy = i1[..., 1] if dy else i0[..., 1]
+                    iz = i1[..., 2] if dz else i0[..., 2]
+                    wx = w1[..., 0] if dx else w0[..., 0]
+                    wy = w1[..., 1] if dy else w0[..., 1]
+                    wz = w1[..., 2] if dz else w0[..., 2]
+                    w = (wx * wy * wz).unsqueeze(-1)  # [B, N, 1]
+                    flat = ix * G * G + iy * G + iz  # [B, N]
+                    idx_exp = flat.unsqueeze(-1).expand(-1, -1, nch_mean)
+                    grid_sum.scatter_add_(1, idx_exp, feat_mean_in * w)
+                    wsum.scatter_add_(1, flat.unsqueeze(-1), w)
+
+        grid_mean = grid_sum / wsum.clamp(min=1e-6)
+
+        # Hard-assigned scatter max (unchanged from exp 8).
+        idx_hard = (pos_norm.clamp(max=1 - 1e-6) * G).long()
+        flat_hard = idx_hard[..., 0] * G * G + idx_hard[..., 1] * G + idx_hard[..., 2]
         grid_max = torch.zeros(B, G * G * G, T * C, device=v_feat.device, dtype=v_feat.dtype)
-        idx_x = flat_idx.unsqueeze(-1).expand(-1, -1, T * C)
+        idx_x = flat_hard.unsqueeze(-1).expand(-1, -1, T * C)
         grid_max.scatter_reduce_(1, idx_x, v_feat, reduce="amax", include_self=False)
 
         grid = torch.cat([grid_mean, grid_max], dim=-1)  # [B, G³, 2*T*C+1]
