@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Anneal from iter37.final drop-endpoint (iter 38) + 27-model ensemble (ensemble-only KEPT)
+- **Hypothesis:** iter 37's drop step hit 1.0540 at E5 — the closest miss of floor 1.0530 in 15 iters. Continue with dropout=0 anneal; a cosine-restart from that drop endpoint may find the nearby basin and break floor.
+- **Change:** no code. `--resume .../model-fb4d9q1v/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0578** at E7/18 (31.6 min, init 1.0590). Did **not** reach iter 37's 1.0540 — the anneal from the drop endpoint landed in a different, weaker basin. Final.pt (E18, val=1.0624) staged as iter38.pt. **27-model ensemble:**
+  - **1.0178** ← submitted (0.06% drop from 1.0184)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — same 0.06% marginal as iter 37 (floor for marginal gain). **Cumulative session: 1.0625 → 1.0178 = 4.21%.**
+- **Notes:** The iter 37 E5 dip at 1.0540 was a **transient** basin the anneal could not re-capture — by E6 it was already drifting away. Strong evidence that **saving intermediate epoch checkpoints** (esp. for drop-step runs) would expose ensemble members the current save-best-only policy misses. Iter 39 options: (a) **drop p=0.25 from iter38.final** — push drop harder, varying p across cycle; (b) **drop p=0.15 from iter38.final** — reverse direction, smaller drop; (c) **code change: save every-N-epoch checkpoint during training, include E5 drop-basin in ensemble**. (c) has highest upside but needs 1 iter of engineering; (a)/(b) are cheap cycle continuations. Try (a) next — the 1.0540 dip suggests p≥0.2 is the productive regime on this architecture.
+
 ### 2026-04-17 — Dropout p=0.2 on post-FiLM architecture (iter 37) + 26-model ensemble (ensemble-only KEPT)
 - **Hypothesis:** Iter 36 showed the floor is data-limited, but the post-FiLM architecture may open a new drop-step basin the original arch couldn't reach. Apply dropout p=0.2 (matching iter 29's successful recipe) to iter 36's post-FiLM anneal endpoint.
 - **Change:** no code. `--resume .../model-jy3ytqbm/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 1.0530 --epochs 25`.
