@@ -204,7 +204,10 @@ if cfg.score_all:
                 save_scores(scores)
 
         save_scores(scores)
-        update_leaderboard(scores)
+
+    # Always rewrite the leaderboard so filter/format changes take effect
+    # even on polls that scored nothing new.
+    update_leaderboard(scores)
 
 elif cfg.predictions:
     pred_dir = Path(cfg.predictions)
