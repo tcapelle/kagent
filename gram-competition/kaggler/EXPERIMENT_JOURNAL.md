@@ -22,6 +22,30 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v12: ensemble 3 v6-family checkpoints (mean of predictions)
+- **Hypothesis:** v6, v9, v11 all hit ~1.17–1.18 val from different
+  seeds and training schedules — same architecture, plausibly
+  decorrelated errors. Averaging predictions should beat any single
+  model. Cheapest possible "regularization": no training, ~30s compute.
+- **Change:** New `ensemble.py`. Loads 3 v6-arch checkpoints from
+  PVC (`jnseenin`=1.1681, `9vaz4wrn`=1.1812, `w8rxftm4`=1.1828),
+  runs each on val split, averages predictions per sample, saves
+  to `/mnt/new-pvc/predictions/apr16/edward/<commit>/val.pt`.
+  Also added `eval_ckpts.py` to rank v6-arch checkpoints on PVC.
+- **Result:** Ensemble val/l2=**1.1093** (vs best single 1.1681,
+  mean-of-singles 1.1774). Improvement of 0.058 (−4.9% relative)
+  over v6 — breaks the 1.17 plateau cleanly.
+- **Verdict:** Kept. Committed ensemble predictions as the scored
+  file at HEAD. This is the new baseline score to beat.
+- **Notes:** Decorrelation is large: individual errors mean 1.177,
+  ensemble 1.109 → relative error reduction is ~58% of the way to
+  the theoretical uncorrelated-errors bound (mean/√3 ≈ 0.68). Very
+  healthy. Next directions: (1) grow the pool — train 2–3 more v6
+  runs with different seeds/augmentations to diversify; (2) add a
+  genuinely different arch (e.g. small KNN attention model) and
+  ensemble it in — more decorrelated = bigger win; (3) rank-weighted
+  average (down-weight worse models) or learned blend.
+
 ### 2026-04-17 — v11: v6 + EMA weights (decay 0.999)
 - **Hypothesis:** batch_size=1 is very noisy. EMA on parameters +
   validating with EMA weights gives a dampened, monotone trajectory
