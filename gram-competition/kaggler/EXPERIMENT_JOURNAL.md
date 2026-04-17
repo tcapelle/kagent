@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v11 DISCARDED — Fourier pos encoding smoother but 0.017 above v6
+- **Hypothesis:** v6's 64³ voxel grid discretizes position coarsely (~1 cell per ~2% of bbox). Adding sinusoidal Fourier features of per-sample-bbox-normalized pos at 4 frequency bands (scales 1π, 2π, 4π, 8π) gives the pointwise MLP fine positional detail the voxel aggregation loses, in the spirit of NeRF coord encoding.
+- **Change:** `train.py` — `fourier_encode(pos_norm, n_bands=4)` helper; `VoxelResidualModel.__init__` gains `fourier_bands=4` arg, `in_dim` += 24 (2·3·4); in `forward()` per-sample bbox-normalize pos to [-1,1], compute `pos_fourier`, concat before `proj_in`. 7.69M → 7.70M params. `predict.py` unchanged (uses default `fourier_bands=4`).
+- **Result:** val/l2 = **0.8878** at epoch 52 (45.0 min, 53s/epoch, 6.1 GB). W&B project `kagent-v11`. Trajectory descended smoothly with no major dips — late epochs clustered 0.88–0.89 (0.8902@51, 0.8878@52, 0.8922@50, 0.8936@47) vs v6's noisier 0.87–0.93 with the 0.8707 lucky point.
+- **Verdict:** discarded — 0.017 above v6, within bs=1 val noise but strictly worse on the scored metric.
+- **Notes:** Fourier appears to genuinely stabilize late-phase val (smaller variance, no sub-0.88 lucky points) — a *better-behaved* curve that still doesn't beat v6's noisy minimum. Two takeaways: (1) smooth descent + no lucky minimum suggests Fourier pushes the model into a different, possibly-more-generalizable basin that happens to sit just above 0.87; (2) v6's 0.8707 is almost certainly partly luck in the batch_size=1 val — but the leaderboard is scored on the single checkpoint with best val, so we need that exact point. Next (v12): test **batch_size=2, lr=7e-4** — simplest unexplored lever. Reduces both training gradient noise and (if we also report ensemble val) val noise. If plateau persists, try multi-scale parallel voxels (32³ + 64³).
+
+
 ### 2026-04-17 — v10 DISCARDED — EMA(0.999) weights regressed ~0.036
 - **Hypothesis:** v6's 0.8707 was likely a lucky raw-val point at `batch_size=1` (val noise ~0.02 between epochs). EMA(0.999) tracks a moving average of weights, which should give a smoother, more reliable val curve and let the best point reflect stable generalization rather than noisy peaks. Isolating EMA from v3's combined EMA+mirror-flip failure.
 - **Change:** `train.py` — added `EMA` class (shadow = clone of params, `update()` after each `optimizer.step()`, `apply()/restore()` around validation + checkpointing). `cfg.ema_decay=0.999`. Otherwise identical to v6.
