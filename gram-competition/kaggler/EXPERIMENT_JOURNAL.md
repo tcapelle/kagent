@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — iter30: fully-trained grid=64 (second arch-diverse model) + 7-model ensemble
+- **Hypothesis:** iter29 (grid=64) was cut off at epoch 15 by the 30-min timeout while monotonically improving — standalone val=0.9425 far from converged. A second grid=64 fresh-init with enough compute to run the full cosine should land at standalone ~0.88-0.90, and a 7-model ensemble (5 grid=48 + 2 grid=64) should stack another −0.005 to −0.010.
+- **Change:** `MAX_TIMEOUT_MIN=65 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter30-grid64-full` — same MODEL_CFG (grid=64) but with a longer compute budget via the env var.
+- **Result:** iter30 standalone val/l2 = **0.8644** at e25/25 (timeout hit at 65 min before epoch 26). That's 0.078 better than iter29's 0.9425 just by letting the cosine actually run, and already the best *single-model* val I've had. 7-model ensemble:
+  - iter19+24+26+27+28 (grid=48) + iter29+iter30 (grid=64): val l2 = **0.8221** (with TTA) — **new best**
+- **Verdict:** **kept** — −0.0172 vs 6-model iter29 (0.8393 → 0.8221), bigger gain than iter29 itself gave. Gap to alphonse (0.7761) narrowed to 0.046 (from 0.063 at iter29).
+- **Notes:** Two conclusions: (1) training-time-to-convergence matters more than I'd realized — iter29 was leaving ~0.08 on the table, (2) a single well-trained grid=64 model (0.8644) is already better than the full grid=48 5-model ensemble (0.8516) was. Next direction: either (a) more fully-trained grid=64 fresh-inits for a 3-grid=64 + 5-grid=48 ensemble, (b) explore even larger grid=80 or deeper architecture, (c) try training grid=64 longer (e.g. 40 epochs with a longer cosine) on a single model since train loss was still falling (0.905 at e25).
+
 ### 2026-04-17 — iter29: architectural diversity — grid_size 48→64 + 6-model ensemble
 - **Hypothesis:** pure seed-diversity (iter28) is hitting diminishing returns (−0.0037). A model with a different *architecture* should produce genuinely decorrelated errors at the feature level. Bump `grid_size` 48→64 — different receptive field, different aliasing, same rest of architecture. Add to the 5-model ensemble.
 - **Change:** `train.py` `MODEL_CFG['grid_size'] = 64`. Also extended `ensemble_predict.py` with a `--grid_sizes` arg so per-checkpoint grid can be passed alongside `--checkpoints`. Training at grid=64 is ~2.1× slower (120s/epoch vs 57s), so the script's 30-min timeout hit at epoch 15 instead of running 28 epochs.
