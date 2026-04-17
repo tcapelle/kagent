@@ -94,40 +94,33 @@ def knn_interpolate(pos_full, pos_anchor, feat_anchor, k=3, chunk=8192):
 
 
 class BaselineMLP(nn.Module):
-    """Subsample + Transformer + KNN-interpolate.
+    """Baseline MLP + spatial-refinement branch (zero-init).
 
-    1. Per-point stem encodes (pos_n, v_in_norm) -> [N, D].
-    2. Subsample K anchors (stride-based for reproducibility).
-    3. Full self-attention on anchors.
-    4. Interpolate anchor features back to N points via 3-NN inverse-distance.
-    5. Concat [point_feat, interp_anchor_feat] and decode to normalized v_out.
-    6. Denormalize, apply no-slip BC mask.
+    At init, spatial branch contributes 0, so model = baseline-MLP.
+    Training drives the spatial branch to add global-context corrections.
     """
 
-    def __init__(self, hidden=192, n_blocks=4, num_heads=4, n_anchors=4096,
-                 vel_mean=None, vel_std=None):
+    def __init__(self, hidden=256, n_blocks=6, spatial_blocks=3, num_heads=4,
+                 n_anchors=4096, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_anchors = n_anchors
         in_dim = 3 + T_IN * 3
         out_dim = T_OUT * 3
-        # Per-point stem
-        self.stem = nn.Sequential(
-            nn.Linear(in_dim, hidden),
-            ResBlock(hidden),
-        )
-        # Transformer on anchors
-        self.blocks = nn.ModuleList([
-            TransformerBlock(hidden, num_heads) for _ in range(n_blocks)
+
+        # --- Per-point MLP branch (baseline-equivalent) ---
+        self.proj_in = nn.Linear(in_dim, hidden)
+        self.point_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
+        self.point_head = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+
+        # --- Spatial refinement branch ---
+        self.anchor_proj = nn.Linear(hidden, hidden)
+        self.anchor_blocks = nn.ModuleList([
+            TransformerBlock(hidden, num_heads) for _ in range(spatial_blocks)
         ])
-        self.norm_anchor = nn.LayerNorm(hidden)
-        # Decoder: combine point feat + interpolated anchor feat
-        self.decoder = nn.Sequential(
-            nn.LayerNorm(hidden * 2),
-            nn.Linear(hidden * 2, hidden),
-            ResBlock(hidden),
-            nn.LayerNorm(hidden),
-            nn.Linear(hidden, out_dim),
-        )
+        self.anchor_norm = nn.LayerNorm(hidden)
+        self.spatial_head = nn.Linear(hidden, out_dim)
+        nn.init.zeros_(self.spatial_head.weight)
+        nn.init.zeros_(self.spatial_head.bias)
 
         if vel_mean is None:
             vel_mean = torch.zeros(3)
@@ -145,26 +138,23 @@ class BaselineMLP(nn.Module):
         pos_n = (pos - pos_min) / (pos_max - pos_min + 1e-6) * 2 - 1
 
         x_in = torch.cat([pos_n, v_flat], dim=-1)  # [B, N, 18]
-        x_point = self.stem(x_in)  # [B, N, D]
+        x = self.proj_in(x_in)                     # [B, N, D]
+        x = self.point_blocks(x)                   # [B, N, D]
+        point_pred = self.point_head(x)            # [B, N, out_dim]
 
-        # Stride-based anchor selection (simple, reproducible)
+        # Spatial branch: subsample, attend, interpolate
         K = min(self.n_anchors, N)
         stride = max(N // K, 1)
-        idx = torch.arange(0, stride * K, stride, device=x_point.device)[:K]
-        anchor_x = x_point[:, idx]         # [B, K, D]
-        anchor_pos = pos_n[:, idx]         # [B, K, 3]
-
-        # Self-attention on anchors
-        for block in self.blocks:
+        idx = torch.arange(0, stride * K, stride, device=x.device)[:K]
+        anchor_x = self.anchor_proj(x[:, idx])     # [B, K, D]
+        anchor_pos = pos_n[:, idx]
+        for block in self.anchor_blocks:
             anchor_x = block(anchor_x)
-        anchor_x = self.norm_anchor(anchor_x)
-
-        # Interpolate back to all N points
+        anchor_x = self.anchor_norm(anchor_x)
         interp = knn_interpolate(pos_n, anchor_pos, anchor_x, k=3)  # [B, N, D]
+        spatial_pred = self.spatial_head(interp)   # zero at init
 
-        combined = torch.cat([x_point, interp], dim=-1)  # [B, N, 2D]
-        out_norm = self.decoder(combined).reshape(B, T_OUT, N, 3)
-
+        out_norm = (point_pred + spatial_pred).reshape(B, T_OUT, N, 3)
         out = out_norm * self.vel_std + self.vel_mean
 
         mask = torch.ones(B, N, device=out.device, dtype=out.dtype)
@@ -264,7 +254,7 @@ def main():
     }
 
     model = BaselineMLP(
-        hidden=192, n_blocks=4, num_heads=4, n_anchors=4096,
+        hidden=256, n_blocks=6, spatial_blocks=3, num_heads=4, n_anchors=4096,
         vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     ).to(device)
 
