@@ -629,8 +629,8 @@ if __name__ == "__main__":
             best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(model.state_dict(), model_path)
-            shutil.copyfile(model_path, git_ckpt_path)
+            # Save locally first to avoid PVC hangs stalling training; mirror to PVC at end.
+            torch.save(model.state_dict(), git_ckpt_path)
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
@@ -645,6 +645,8 @@ if __name__ == "__main__":
     if best_metrics:
         print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
         wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
+        # Mirror final best ckpt from local to PVC for durability / predict.py.
+        shutil.copyfile(git_ckpt_path, model_path)
 
     if best_metrics and not cfg.debug:
         import subprocess
