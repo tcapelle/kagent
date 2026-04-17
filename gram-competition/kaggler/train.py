@@ -296,7 +296,7 @@ def main():
     }
 
     model = BaselineMLP(
-        hidden=256, n_blocks=6, edge_blocks=4, edge_k=16, n_anchors=8192,
+        hidden=256, n_blocks=6, edge_blocks=5, edge_k=16, n_anchors=10000,
         vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     ).to(device)
 
@@ -351,8 +351,15 @@ def main():
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)
-            loss = ((pred - v_out) / model.vel_std).pow(2).mean()
+            # Augment: random Y-flip (F1 wake symmetry). Applies per-batch.
+            if torch.rand(1, device=device).item() < 0.5:
+                v_in = v_in * torch.tensor([1., -1., 1.], device=device).view(1, 1, 1, 3)
+                v_out = v_out * torch.tensor([1., -1., 1.], device=device).view(1, 1, 1, 3)
+                pos = pos * torch.tensor([1., -1., 1.], device=device).view(1, 1, 3)
+
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                pred = model(v_in, pos, t, idcs)
+                loss = ((pred - v_out) / model.vel_std).pow(2).mean()
 
             optimizer.zero_grad()
             loss.backward()
