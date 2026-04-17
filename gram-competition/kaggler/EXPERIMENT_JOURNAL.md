@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Second fresh-train with drop=0.15 (iter 44) — single 1.0771, 33-ensemble 1.0007
+- **Hypothesis:** iter41's fresh-init added +0.39% to the ensemble despite weak single-model (1.0435). A second independent fresh-init with different dropout (0.15 vs 0.1) should give uncorrelated diversity to the ensemble even if its single-model is weak.
+- **Change:** no code. `--lr 3e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9806 --epochs 25` (no `--resume`).
+- **Result:** best within-run = **1.0771** at E15/15 (31 min — GPU-contended, E1-E3 took 208+224+168s). Monotonic descent from 1.4099 → 1.0771, same rate as iter41. With 3 more epochs would hit iter41's 1.0435 range. Staged as iter44.pt. **33-model ensemble:**
+  - **1.0007** ← submitted (**0.21% drop from 1.0028**, mae Ux=0.6552 Uy=0.3119 Uz=0.4771)
+- **Verdict:** Single-model DISCARDED (weak). Ensemble **KEPT** — 0.21% marginal, weaker than iter43's 0.47% but confirms independent fresh-init adds diversity even without strong single-model. **Cumulative session: 1.0625 → 1.0007 = 5.82%.**
+- **Notes:** Ensemble gain from iter44 (0.21%) is ~45% of iter43's continuation gain (0.47%) — independent-lineage diversity is real but less than first-continuation gain. Combined insight: **fresh-init → one-pass-continuation is the maximum ensemble-contribution recipe** (iter41→42 = 0.39+0.48=0.87% combined). Iter 45 should **continue iter44** (1.0771→0.99 range, like iter42 did) — extracts the iter44-lineage's full contribution and pushes ensemble below 1.0.
+
 ### 2026-04-17 — Continue iter42 (iter 43, pass 3) — single 0.9806, 32-ensemble 1.0028
 - **Hypothesis:** iter42 val still descending at E15; continuation at lower LR (5e-5 vs 1e-4) should keep drifting downward, with smaller oscillations as we approach a minimum.
 - **Change:** no code. `--resume .../model-wjd0xy50/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9887 --epochs 25`.
