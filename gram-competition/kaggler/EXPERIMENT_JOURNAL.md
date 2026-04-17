@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v19 KEPT — 6-seed ensemble landed 0.7876, still descending
+- **Change:** 6th v6-arch seed (45 min, 52 epochs, solo best **0.8699** @ ep51).
+- **Result:** 6-seed val/l2 = **0.7876** (vs 5-seed 0.7927). Solo best-of-6 sequence: 0.8707, 0.8784, 0.8694, 0.8706, 0.8684, 0.8699 — mean 0.8712, std 0.0034. Noise floor rock-solid.
+- **Verdict:** kept — gain 0.005 > 0.002 threshold, keep adding.
+- **Notes:** Diminishing returns curve: 2→3=0.019, 3→4=0.008, 4→5=0.007, 5→6=0.005. At this slope 7-seed ≈ 0.784, 10-seed ≈ 0.778. Next (v20): 7th seed — if gain <0.002 switch strategy to heterogeneous arch (`hidden=384` variant) which would break error correlation. Otherwise keep adding homogeneous seeds — free gains.
+
+
 ### 2026-04-17 — v18 KEPT — 5-seed ensemble landed 0.7927, on the 1/sqrt(k) curve
 - **Hypothesis:** 1/sqrt(k) continues; 5-seed target ~0.790.
 - **Change:** 5th v6-arch seed (45 min, 52 epochs, solo best **0.8684** — best single seed yet). Ran ensemble over 5 ckpts.
