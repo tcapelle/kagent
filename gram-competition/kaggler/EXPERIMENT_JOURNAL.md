@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Dropout cycle 2: dropout=0.15 from iter26.final + 16-model ensemble (iter 27, ensemble-only KEPT)
+- **Hypothesis:** Iter 25→26 (drop 0.1 → drop 0) added 0.06% + 0.10%. Continue the cycle: crank dropout back ON (p=0.15, higher than iter 25's 0.10) from iter 26's annealed final.pt. Each alternation explores a slightly different region of weight-space.
+- **Change:** no code. `--resume .../model-omm4sb3z/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 1.0530 --epochs 25`.
+- **Result:** best within-run = **1.0579** at E14/17 (31.7 min, init 1.0563), trajectory: E1 dropout-jolt 1.0695, E10 dipped to 1.0590, settled 1.058-1.060 thereafter. Final.pt (E17, val=1.0579) staged as iter27.pt. **16-model ensemble (iter 12-27):**
+  - **1.0280** ← submitted (0.10% drop from 1.0290)
+- **Verdict:** Single DISCARDED. Ensemble inclusion **KEPT** — 3rd consecutive 0.10% gain. **Cumulative session: 1.0625 → 1.0280 = 3.3%.**
+- **Notes:** Dropout-anneal cycle at p ∈ {0.10, 0.15} consistently produces decorrelated members. The higher p=0.15 pushed train loss higher (0.94 vs iter25's 0.98) but didn't noticeably change ensemble contribution. Each cycle step costs 30min and gives ~0.10%; diminishing returns not yet visible at 16 members. Iter 28 priorities: (a) **continue cycle: anneal from iter 27.final (dropout=0)** — fresh cosine restart, most likely to give another 0.10%; (b) **try dropout p=0.25** on the drop-step to push decorrelation further; (c) **second FiLM layer post-blocks** (architectural lift, zero-init). (a) is cheapest continuation; should extract one more step of cycle before considering structural moves.
+
 ### 2026-04-17 — Dropout-anneal cycle: resume iter25.final with dropout=0 + 15-model ensemble (iter 26, ensemble-only KEPT)
 - **Hypothesis:** Iter 25 trained under `feat_dropout=0.1` but was anchored to a suboptimal basin because the regulariser was too strong for the warm-start chain. Resume its final.pt with dropout OFF → the model can now refine the noisy-dropout weights without the handicap, potentially reaching a *different* local optimum than the plain warm-start chain (iter 21-24) and adding real ensemble decorrelation.
 - **Change:** no code. `--resume .../model-ij0ygc4w/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.0 --best_val_floor 1.0530 --epochs 25`. Floor guard explicit because init val (1.0646) would otherwise replace iter 23's 1.0530 best.pt.
