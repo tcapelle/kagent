@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v23 KEPT — 3rd epochs=90 seed, 10-seed ensemble 0.7735 (gain 0.003)
+- **Hypothesis:** continue adding het (epochs=90) seeds. Expected gain ~0.003 if within-het diversity is diminishing.
+- **Change:** No code change. Another seed with `epochs=90, MAX_TIMEOUT_MIN=60`.
+- **Result:** v23 solo val/l2 = **0.8602** at ep68. 10-seed ensemble = **0.7735** (vs 9-seed 0.7761). Gain 0.0026.
+- **Verdict:** kept. 11.2% under v6 solo. Gain just above 0.002 threshold.
+- **Notes:** Within-het saturation is kicking in (0.006 → 0.004 → 0.003). Next (v24): switch to a new heterogeneity axis — `lr=3e-4` (60% of default 5e-4) with `epochs=90`. Slower learning trajectory should hit a genuinely different basin.
+
+
 ### 2026-04-17 — v22 KEPT — 2nd epochs=90 seed, 9-seed ensemble 0.7761 (gain 0.004)
 - **Hypothesis:** v21's heterogeneous (epochs=90) seed gave 3× the homogeneous gain. A second epochs=90 seed should add another significant decorrelation gain, though diminished since both are drawn from the same het distribution.
 - **Change:** No code change from v21. Trained another seed with `epochs=90, MAX_TIMEOUT_MIN=60`.
