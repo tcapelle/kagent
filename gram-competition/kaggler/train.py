@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
-from model import ResidualMLP
+from model import ResidualMLP, ResidualMLPv16
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +92,9 @@ class Config:
     dropout_p: float = 0.0  # dropout in ResBlock (between GELU and 2nd Linear); 0 = off
     loss_type: str = "mse"   # "mse" | "huber" | "l1" (all in normalized residual space)
     huber_delta: float = 1.0
+    model_version: str = "v6"  # "v6" (ResidualMLP) | "v16" (ResidualMLPv16 w/ voxel-token attn + Fourier pos)
+    n_attn_blocks: int = 2      # v16 only: number of VoxelTokenAttn blocks
+    layer_scale: float = 1e-4   # v16 only: LayerScale init for attention residual
     amp: bool = False  # enable mixed-precision (bf16 autocast, no scaler needed)
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
@@ -116,13 +119,24 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-model = ResidualMLP(
-    vel_mean=stats["vel_mean"],
-    vel_std=stats["vel_std"],
-    hidden=cfg.hidden,
-    n_blocks=cfg.n_blocks,
-    dropout_p=cfg.dropout_p,
-).to(device)
+if cfg.model_version == "v16":
+    model = ResidualMLPv16(
+        vel_mean=stats["vel_mean"],
+        vel_std=stats["vel_std"],
+        hidden=cfg.hidden,
+        n_blocks=cfg.n_blocks,
+        dropout_p=cfg.dropout_p,
+        n_attn_blocks=cfg.n_attn_blocks,
+        layer_scale=cfg.layer_scale,
+    ).to(device)
+else:
+    model = ResidualMLP(
+        vel_mean=stats["vel_mean"],
+        vel_std=stats["vel_std"],
+        hidden=cfg.hidden,
+        n_blocks=cfg.n_blocks,
+        dropout_p=cfg.dropout_p,
+    ).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
