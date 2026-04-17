@@ -25,9 +25,9 @@ Keep entries short. Link W&B run URLs when useful.
 ### 2026-04-17 — exp40: chain exp38 @ lr=2e-6 (slower refine of y-flip aug)
 - **Hypothesis:** exp38 val was still decreasing at E10 (0.8839). At lr=5e-6 over 50-epoch cosine, LR barely decayed. Try lr=2e-6 for finer refine.
 - **Change:** No code changes. --warm_start <exp38 ckpt model-mgo03egs> --lr 2e-6 --subsample_train 0 --yflip_prob 0.5.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Launching.
+- **Result:** val/l2=**0.8834** @ epoch 11 (30.7 min). Ckpt: model-fdgxhd3i. Trajectory oscillated 0.883-0.885 until E9-E11 where it dipped to 0.8835, 0.8837, 0.8834.
+- **Verdict:** KEPT — marginal +0.0005 over exp38 (0.8839). Still worth keeping as it's strictly better. Distance to leader (thorfinn=0.7475): 0.136.
+- **Notes:** Chain yielded little at lr=2e-6 — model near convergence for this arch. Next paradigm shift needed: kNN neighbor aggregation for fine-grained spatial interaction (voxels are coarse).
 
 ### 2026-04-17 — exp39: TTA (test-time y-flip averaging) on exp38 ckpt
 - **Hypothesis:** Averaging pred(x) with flip(pred(flip(x))) should reduce variance on turbulent predictions (free inference-time win).
