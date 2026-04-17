@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp28: out_refine residual MLP (warm-start from exp27)
+- **Hypothesis:** Per-component MAE shows Ux gap biggest (0.61 vs leader's 0.52). Maybe output stage is the bottleneck. Add a residual MLP (LayerNorm → Linear hidden→2*hidden → GELU → Linear 2*hidden→hidden) between final block and proj_out. Zero-init last Linear → identity at init → warm-start safe. Per-block FiLM already conditioning; this gives extra compute at output.
+- **Change:** train.py: BaselineMLP.__init__ adds self.out_refine Sequential, forward adds `x = x + self.out_refine(x)` before proj_out.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** 6 missing keys (out_refine). Params: 91.1M → 91.3M (tiny). Verified zero-init at warm-start (max abs = 0).
+
 ### 2026-04-17 — exp27: chain warm-start from exp26 + lr=5e-6
 - **Hypothesis:** Exp26 val stable 0.9035-0.9061. Very low LR chain for last refinement. Expected Δ~0.001-0.003.
 - **Change:** --warm_start=<exp26 ckpt> --lr=5e-6. No code changes.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Cheap harvest. After this, pivot to arch (per-timestep FiLM or ResBlock MLP expansion).
+- **Result:** val/l2=**0.9027** @ epoch 7 (30.0 min). train=0.0035. Val stable 0.9027-0.9038.
+- **Verdict:** KEPT — +0.0008 over exp26. Chain saturated.
+- **Notes:** Current chain tail: 0.9238→0.9202→0.9194→0.9096→0.9091→0.9035→0.9027. Total arch journey: multi-scale→FiLM→triple-scale → next arch.
 
 ### 2026-04-17 — exp26: chain warm-start from exp25 (triple-scale refine) + lr=2e-5
 - **Hypothesis:** Exp25 showed same undertrained pattern as exp18/22. Following recipe: chain at lr=2e-5 for 30 more min to let ucoarse branch refine while preserving main weights. If pattern holds, should beat exp24 (0.9091) by 0.005-0.015.

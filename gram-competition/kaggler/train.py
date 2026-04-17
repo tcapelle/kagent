@@ -216,6 +216,16 @@ class BaselineMLP(nn.Module):
         self.blocks = nn.ModuleList(blocks)
         self.time_enc = TimeEncoder(hidden, n_blocks_total=len(blocks))
 
+        # Extra output refinement residual (zero-init last layer → warm-start-safe identity at init).
+        self.out_refine = nn.Sequential(
+            nn.LayerNorm(hidden),
+            nn.Linear(hidden, hidden * 2),
+            nn.GELU(),
+            nn.Linear(hidden * 2, hidden),
+        )
+        nn.init.zeros_(self.out_refine[-1].weight)
+        nn.init.zeros_(self.out_refine[-1].bias)
+
         self.proj_out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
         vel_mean = torch.zeros(3) if vel_mean is None else vel_mean
         vel_std = torch.ones(3) if vel_std is None else vel_std
@@ -270,6 +280,8 @@ class BaselineMLP(nn.Module):
         film_all = self.time_enc(t)  # [B, n_blocks_total, 2, hidden]
         for i, blk in enumerate(self.blocks):
             x = blk(x, pos, film=film_all[:, i])
+
+        x = x + self.out_refine(x)
 
         delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
         delta = delta_norm * self.vel_std
