@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp23: chain warm-start from exp22 (FiLM refine) + lr=2e-5
+- **Hypothesis:** Exp22 FiLM destabilized by high LR but trending down. Chain at lr=2e-5 should let FiLM params settle without further destroying main weights. If FiLM has signal, this extracts it; if not, we'll plateau around exp22's 0.9281. Target: beat exp21 (0.9194).
+- **Change:** --warm_start=<exp22 ckpt model-79ynl9v3> --lr=2e-5. No code changes.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** If still worse than exp21, FiLM via absolute t doesn't help. Revert to exp21 arch for future.
+
 ### 2026-04-17 — exp22: FiLM time conditioning (warm-start from exp21)
 - **Hypothesis:** t is still unused. Sample-specific absolute time (0.3-0.4 range) correlates with flow development stage. Add TimeEncoder (MLP 1→64→64→2*hidden*17) producing per-block (γ, β) FiLM params, applied as h*(1+γ)+β after each block's norm. Zero-init final MLP layer → FiLM=identity at init → warm-start preserves exp21 exactly.
 - **Change:** train.py: added TimeEncoder class, _apply_film helper. ResBlock.forward and VoxelMixer.forward now take optional `film` kwarg. BaselineMLP.forward calls time_enc(t) once, iterates blocks with per-block FiLM slice.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** 6 missing keys on warm-start (time_enc.mlp). Verified FiLM max abs = 0 at init. Params: 61.1M → 61.7M (+1%).
+- **Result:** val/l2=**0.9281** @ epoch 19 (31.2 min). train=0.0047. Val oscillated 0.9281-0.9576.
+- **Verdict:** HOLD — worse than exp21 (0.9194) by 0.0087. lr=2e-4 too aggressive for fresh FiLM layers; disrupted fine-tuned core. Trajectory trending down at end (0.9355→0.9286→0.9355). Not committed to git.
+- **Notes:** FiLM output scale grew too fast. Next: exp23 chain at lr=2e-5 to let FiLM refine while preserving main weights. If exp23 still loses, revert to exp21.
 
 ### 2026-04-17 — exp21: chain warm-start from exp20 + lr=1e-5
 - **Hypothesis:** Cheap-harvest: one more chain step at lr=1e-5 should extract last refinement. Expected Δ~0.001-0.002 based on geometric decay (0.0036→half).
