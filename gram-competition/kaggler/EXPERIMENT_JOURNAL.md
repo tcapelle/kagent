@@ -22,12 +22,44 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp38: y-flip data augmentation (bilateral symmetry)
+- **Hypothesis:** F1 wings are mirror-symmetric about y=0 (Uy mean ≈ 0.5 from stats confirms). Mirror-flip pos_y around bbox center and negate Uy to double effective training data. Pure generalization fix (no arch change). Chain from exp33 @ lr=5e-6.
+- **Change:** train.py: Config.yflip_prob=0.5. In train loop after subsampling, with p=0.5 flip pos_y around bbox-y-center, negate v_in[...,1] and v_out[...,1]. No architecture change — pure augmentation.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** 4 consecutive arch-add failures (exp34-37). Pattern shift: more capacity overfits. Need generalization boost. Launching.
+
+### 2026-04-17 — exp37: 2 extra Res+Voxel pairs (depth extension)
+- **Hypothesis:** Model hasn't saturated capacity-wise (16 blocks→20). Add 2 extra zero-init Res+Voxel pairs after main stack + dedicated time encoder. Chain from exp33 @ lr=2e-5.
+- **Change:** BaselineMLP gains self.extra_blocks (2 Res+Voxel zero-init) + self.extra_time_enc. Forward adds second loop over extra_blocks.
+- **Result:** val/l2=**0.8890** @ epoch 1 (30.2 min). Val climbed 0.8890→0.8919 over 9 epochs.
+- **Verdict:** DISCARDED — 4th consecutive failure. Pure overfitting: best at epoch 1, monotonically worse. More depth no longer helps — model is already over-parameterized for 730 samples.
+- **Notes:** Pattern confirmed: exp34-37 all failed to improve on exp33 (0.8875). Paradigm shift needed: generalization fix (augmentation) not more capacity.
+
+### 2026-04-17 — exp36: train-time no-slip BC supervision
+- **Hypothesis:** Currently BC zeroed after pred (inference-only). If model learns delta without BC constraint, the gradient signal for airfoil points is wrong. Train with BC zero too so loss sees correct pred.
+- **Change:** Moved BC-zeroing inside self.training branch (always active).
+- **Result:** val/l2=**0.8891** @ epoch 1, then climbed. Chain from exp33 lr=5e-6 didn't help.
+- **Verdict:** DISCARDED. Pre-BC-zero pred was already close (~54 m/s mean) → initial loss jump disrupted optimization.
+
+### 2026-04-17 — exp35: chain exp34's linear-extrap-prior @ lr=2e-5
+- **Hypothesis:** Exp34 regressed at lr=2e-4 (too hot for 5 scalars). Try standard chain @ lr=2e-5.
+- **Change:** Same code as exp34, --lr=2e-5.
+- **Result:** val/l2=**0.8888** (worse than exp33 0.8875).
+- **Verdict:** DISCARDED. extrap prior is redundant with learned delta — model already encodes "last + delta" structure.
+
+### 2026-04-17 — exp34: learnable linear-extrapolation prior
+- **Hypothesis:** Add 5 zero-init scalars: pred = v_in[-1] + weight[t] * (v_in[-1] - v_in[-2]) * step + delta. Gives model a persistence-of-derivative prior.
+- **Change:** BaselineMLP gains self.extrap_weight (nn.Parameter, zero). Forward adds extrap term.
+- **Result:** val/l2=**0.9068** @ lr=2e-4 — big regression.
+- **Verdict:** DISCARDED. Lesson: tiny arch additions don't need "lr=2e-4 explore then chain" recipe. Chain @ lr=2e-5 directly (see exp35).
+
 ### 2026-04-17 — exp33: full-res chain from exp32 + lr=5e-6
 - **Hypothesis:** Exp32 overfit at lr=2e-5 (val climbed E1→E11). At lr=5e-6 cosine decay, expect stable slow refine. Target: beat 0.8879 by +0.001-0.003.
 - **Change:** --warm_start <exp32 ckpt> --subsample_train 0 --lr 5e-6.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Launching.
+- **Result:** val/l2=**0.8875** (KEPT, current best). Ckpt: model-bal6xybc.
+- **Verdict:** KEPT. +0.0004 over exp32 (0.8879). Full-res chain @ lr=5e-6 yielded slow refine as hypothesized.
+- **Notes:** Marginal gain confirms saturation at current arch. Subsequent 4 arch-adds (exp34-37) all failed to beat this.
 
 ### 2026-04-17 — exp32: full-resolution training (warm-start from exp31)
 - **Hypothesis:** Training uses subsample=50k but val runs at full 100k — the voxel density statistics differ. Also, at 50k each voxel has ~50% occupancy vs 100% at val, which likely degrades VoxelMixer behavior. Chain from exp31 with --subsample_train 0 and lr=2e-5 to test if closing the density gap helps. Cost: ~2x epoch time → ~9 epochs in 30min vs 18.

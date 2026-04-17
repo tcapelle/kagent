@@ -381,6 +381,7 @@ class Config:
     bf16: bool = True
     subsample_train: int = 50000
     warm_start: str | None = None
+    yflip_prob: float = 0.5
 
 
 def main():
@@ -483,6 +484,18 @@ def main():
                     af = af.to(device, non_blocking=True)
                     new_idcs.append(inv[af][inv[af] >= 0])
                 idcs = new_idcs
+
+            # Y-flip augmentation: F1 wings are y-symmetric (Uy mean ≈ 0).
+            # Flip pos_y around bbox center and negate Uy on both in/out velocity.
+            if cfg.yflip_prob > 0 and torch.rand(1).item() < cfg.yflip_prob:
+                y_center = 0.5 * (pos[..., 1].amax(dim=1, keepdim=True)
+                                  + pos[..., 1].amin(dim=1, keepdim=True))
+                pos = pos.clone()
+                pos[..., 1] = 2 * y_center - pos[..., 1]
+                v_in = v_in.clone()
+                v_in[..., 1] = -v_in[..., 1]
+                v_out = v_out.clone()
+                v_out[..., 1] = -v_out[..., 1]
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp_enabled):
                 pred = model(v_in, pos, t, idcs)
