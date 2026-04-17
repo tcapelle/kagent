@@ -177,6 +177,40 @@ def compute_sdf(pos: torch.Tensor, idcs_airfoil, cache: dict, chunk: int = 4096)
     return out
 
 
+def compute_sdf_and_rel(pos: torch.Tensor, idcs_airfoil, cache: dict, chunk: int = 4096):
+    """Distance AND relative vector from each point to its nearest airfoil point.
+
+    Returns (sdf [B,N], rel [B,N,3]) where rel = pos - nearest_airfoil_pos. rel
+    encodes both distance AND orientation (e.g. upstream vs downstream, above vs
+    below the suction side) — strictly richer than the scalar SDF. Cached
+    per-geometry keyed by pos-hash (same key as compute_sdf but stores both).
+    """
+    B, N, _ = pos.shape
+    sdf = torch.empty(B, N, device=pos.device, dtype=pos.dtype)
+    rel = torch.empty(B, N, 3, device=pos.device, dtype=pos.dtype)
+    for b in range(B):
+        key = ("rel", float(pos[b].sum()), float(pos[b].view(-1)[0]), float(pos[b].view(-1)[-1]))
+        if key in cache:
+            cached = cache[key]
+            sdf[b] = cached[0].to(pos.device, non_blocking=True)
+            rel[b] = cached[1].to(pos.device, non_blocking=True)
+            continue
+        pos_a = pos[b, idcs_airfoil[b]]  # [n_a, 3]
+        sdf_b = torch.empty(N, device=pos.device, dtype=pos.dtype)
+        nearest_b = torch.empty(N, 3, device=pos.device, dtype=pos.dtype)
+        for s in range(0, N, chunk):
+            e = min(s + chunk, N)
+            d = torch.cdist(pos[b:b + 1, s:e], pos_a.unsqueeze(0))[0]  # [chunk, n_a]
+            min_d, min_i = d.min(dim=-1)
+            sdf_b[s:e] = min_d
+            nearest_b[s:e] = pos_a[min_i]
+        rel_b = pos[b] - nearest_b
+        cache[key] = (sdf_b.detach().cpu(), rel_b.detach().cpu())
+        sdf[b] = sdf_b
+        rel[b] = rel_b
+    return sdf, rel
+
+
 class BaselineMLP(nn.Module):
     """Residual per-point ResMLP with Fourier pos, temporal diffs, and Perceiver context.
 
@@ -224,6 +258,19 @@ class BaselineMLP(nn.Module):
         )
         nn.init.zeros_(self.sdf_embed[-1].weight)
         nn.init.zeros_(self.sdf_embed[-1].bias)
+        # Relative-vector-to-nearest-airfoil-point branch. Strictly richer than the
+        # scalar SDF branch (same distance info + direction). Kept as a SEPARATE
+        # zero-init additive branch so warm-start from an iter-15 checkpoint (which
+        # has no rel branch) produces exactly identical output at init.
+        self.rel_n_freqs = 4
+        rel_feat_dim = 3 + 3 * 2 * self.rel_n_freqs  # 3 raw + Fourier = 27
+        self.rel_embed = nn.Sequential(
+            nn.Linear(rel_feat_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, hidden),
+        )
+        nn.init.zeros_(self.rel_embed[-1].weight)
+        nn.init.zeros_(self.rel_embed[-1].bias)
         self._sdf_cache: dict = {}
 
         # Trunk: stack of Physics-Attention blocks (each has its own FFN + residual).
@@ -248,7 +295,7 @@ class BaselineMLP(nn.Module):
         self.register_buffer("vel_mean", vel_mean.reshape(1, 1, 1, 3))
         self.register_buffer("vel_std", vel_std.reshape(1, 1, 1, 3))
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil, sdf=None):
+    def forward(self, velocity_in, pos, t, idcs_airfoil, sdf=None, rel=None):
         B, T, N, C = velocity_in.shape
         v_norm = (velocity_in - self.vel_mean) / self.vel_std  # [B, T, N, 3]
         v_diff = v_norm[:, 1:] - v_norm[:, :-1]                # [B, T-1, N, 3]
@@ -262,13 +309,16 @@ class BaselineMLP(nn.Module):
         x = torch.cat([pos_feat, vel_feat], dim=-1)             # [B, N, 66]
 
         x = self.proj_in(x)
-        # SDF feature: distance to nearest airfoil point, computed per unique pos (cached).
-        # Caller may pass a precomputed SDF (e.g. after point subsampling) to avoid
-        # paying the cdist cost on subsampled point clouds (which break the cache key).
-        if sdf is None:
-            sdf = compute_sdf(pos, idcs_airfoil, self._sdf_cache)  # [B, N]
+        # SDF + relative-vector features (distance AND direction to nearest airfoil).
+        # Both branches are zero-init on their final Linear, so warm-starting from a
+        # checkpoint that has either (or neither) keeps forward exactly equivalent.
+        # Caller can pre-compute (e.g. after subsampling); otherwise we compute here.
+        if sdf is None or rel is None:
+            sdf, rel = compute_sdf_and_rel(pos, idcs_airfoil, self._sdf_cache)
         sdf_feat = fourier_encode(sdf.unsqueeze(-1), self.sdf_n_freqs)  # [B, N, 9]
         x = x + self.sdf_embed(sdf_feat)
+        rel_feat = fourier_encode(rel, self.rel_n_freqs)                # [B, N, 27]
+        x = x + self.rel_embed(rel_feat)
         for block in self.blocks:
             x = block(x)
         x = self.ln_dec(x)  # [B, N, hidden]
@@ -325,19 +375,18 @@ def sobolev_anchor_loss(pred, gt, pos, n_anchors: int = 1024, k: int = 8):
     return (pred_diff - gt_diff).norm(dim=-1).mean()
 
 
-def subsample_batch(v_in, v_out, pos, idcs_airfoil, sdf, n_keep: int):
+def subsample_batch(v_in, v_out, pos, idcs_airfoil, sdf, rel, n_keep: int):
     """Train-time point subsampling for geometry-level data augmentation.
 
-    For each sample, keep all airfoil-surface points + random selection of the rest.
-    The model sees a different "view" of the same 146 train geometries every epoch,
-    which directly attacks the train/val generalization gap (model had been memorising
-    the specific 100k-point mesh). Also cuts per-epoch compute roughly N_keep/N_full
-    since Transolver is O(N·M) and the per-point decoder is O(N).
-
-    Subsampled `idcs_airfoil` become contiguous indices [0, n_air-1] since airfoil
-    points are placed first in the new ordering. This is fine — the model is
-    permutation-invariant (Transolver + per-point ops), idcs are only used for the
+    Keep all airfoil-surface points + random selection of the rest. Subsampled
+    `idcs_airfoil` become contiguous indices [0, n_air-1]. The model is permutation-
+    invariant so ordering doesn't matter for the trunk; idcs are only used for the
     output no-slip mask.
+
+    NOTE: iter 16 v1 tried --train_n_points=40000 warm-started from iter 15 and val
+    jumped 1.066 -> 1.100 — Transolver slice statistics shift with N, and the
+    warm-started weights were tuned for 100k. Left in as a flag for future fresh-
+    train experiments; default off.
     """
     B, T, N, C = v_in.shape
     device = v_in.device
@@ -345,6 +394,7 @@ def subsample_batch(v_in, v_out, pos, idcs_airfoil, sdf, n_keep: int):
     new_v_out = torch.empty(B, T, n_keep, C, device=device, dtype=v_out.dtype)
     new_pos = torch.empty(B, n_keep, 3, device=device, dtype=pos.dtype)
     new_sdf = torch.empty(B, n_keep, device=device, dtype=sdf.dtype)
+    new_rel = torch.empty(B, n_keep, 3, device=device, dtype=rel.dtype)
     new_idcs = []
     for b in range(B):
         air = idcs_airfoil[b].to(device)
@@ -363,8 +413,9 @@ def subsample_batch(v_in, v_out, pos, idcs_airfoil, sdf, n_keep: int):
         new_v_out[b] = v_out[b, :, keep]
         new_pos[b] = pos[b, keep]
         new_sdf[b] = sdf[b, keep]
+        new_rel[b] = rel[b, keep]
         new_idcs.append(torch.arange(n_air, device=device))
-    return new_v_in, new_v_out, new_pos, new_idcs, new_sdf
+    return new_v_in, new_v_out, new_pos, new_idcs, new_sdf, new_rel
 
 
 def reflect_y(v_in, v_out, pos):
@@ -551,6 +602,14 @@ def main():
     global_step = 0
     train_start = time.time()
 
+    # When warm-starting, eval the resumed model before training so we never
+    # overwrite the in-repo best.pt with a worse checkpoint (which silently
+    # happened on iter 16 E1 at 1.10 clobbering iter 15 at 1.066).
+    if cfg.resume:
+        init_val, _ = validate(model, val_loaders, device, global_step)
+        best_val = init_val
+        print(f"Warm-start init val/l2={init_val:.4f} (floor for saving checkpoints)")
+
     for epoch in range(MAX_EPOCHS):
         if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
             print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
@@ -572,18 +631,17 @@ def main():
             if torch.rand(1).item() < 0.5:
                 v_in, v_out, pos = reflect_y(v_in, v_out, pos)
 
-            # Compute SDF at FULL pos (cached per-geometry) before any subsampling so
-            # the cache key stays stable. Then subsample the SDF along with everything else.
-            sdf_full = compute_sdf(pos, idcs, model._sdf_cache)  # [B, N]
+            # With optional point subsampling, precompute SDF+rel at FULL pos (cached
+            # per-geometry) before subsampling — the cache key depends on full pos.
+            sdf_in = rel_in = None
             if cfg.train_n_points > 0 and cfg.train_n_points < pos.shape[1]:
-                v_in, v_out, pos, idcs, sdf_in = subsample_batch(
-                    v_in, v_out, pos, idcs, sdf_full, cfg.train_n_points
+                sdf_full, rel_full = compute_sdf_and_rel(pos, idcs, model._sdf_cache)
+                v_in, v_out, pos, idcs, sdf_in, rel_in = subsample_batch(
+                    v_in, v_out, pos, idcs, sdf_full, rel_full, cfg.train_n_points
                 )
-            else:
-                sdf_in = sdf_full
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                pred = model(v_in, pos, t, idcs, sdf=sdf_in)  # [B, 5, N, 3]
+                pred = model(v_in, pos, t, idcs, sdf=sdf_in, rel=rel_in)  # [B, 5, N, 3]
                 # L2-per-point loss: matches the val metric; less outlier-dominated than MSE.
                 l2_loss = (pred - v_out).norm(dim=3).mean()
                 if cfg.sobolev_lambda > 0:
