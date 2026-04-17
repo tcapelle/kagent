@@ -22,10 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-17 — iter13: MSE + input velocity Gaussian noise (σ=0.05·vel_std)
-- **Hypothesis:** val plateaus at 0.97–1.00 while train loss keeps dropping (iter8→iter9→iter11 all show this) = clear overfit. With only 730 train samples, regularization should unlock lower val. Input-noise is the cheapest regularizer: forces model to be robust to small perturbations of `velocity_in`, which physically matches turbulence sensing noise. No capacity change.
-- **Change:** `train.py` — after y-flip aug, `v_in = v_in + torch.randn_like(v_in) * model.vel_std * 0.05`. Reverted iter12's L2 loss back to raw MSE. Else identical to iter8.
+### 2026-04-17 — iter14: Hybrid VoxelUNet + Transolver Physics-Attention
+- **Hypothesis:** #1 thorfinn (0.79) uses Transolver; my voxel-UNet gives strong geometric prior but lacks global physics-aware context. Adding 2 Transolver Physics-Attention blocks (M=32 slices, 8 heads × 32 dim) on the per-point features *after* voxel-sample lets each point attend to 32 soft-clustered physics tokens — linear in N, geometry-general global mixing. Should close the 0.06 gap to alphonse (0.87) and beyond.
+- **Change:** `train.py` — added `PhysicsAttention`, `TransolverBlock`; plumbed `transolver_depth=2, slice_num=32` into `VoxelUNet`. Applied to the `head_in=2·base_ch=256` per-point features between voxel-sample and the prediction head. Reverted iter13 input-noise. Loss = raw MSE.
 - **Result:** _pending_.
+
+### 2026-04-17 — iter13: MSE + input velocity Gaussian noise (σ=0.05·vel_std)
+- **Hypothesis:** val plateaus at 0.97–1.00 while train loss keeps dropping = clear overfit. Input-noise is a cheap regularizer that should unlock lower val.
+- **Change:** `train.py` — `v_in += randn_like(v_in) * model.vel_std * 0.05` after y-flip aug. Loss reverted to raw MSE.
+- **Result:** val/l2 = **1.0217** at epoch 26 / 30. 28.5 min. Run `n3o4c0tw`. Preds at `/mnt/new-pvc/predictions/apr16/nezuko/d4a45d5/val.pt`. MAE: Ux 0.665, Uy 0.345, Uz 0.477.
+- **Verdict:** discarded. Worse than iter8's 0.9670. Noise σ=0.05·vel_std (≈1 m/s on Ux) is too aggressive given input is physically clean — slowed convergence without yielding the generalization bump.
+- **Notes:** Val was still slowly improving at e26; more epochs might help. But the architecture is the bigger lever — research pointed to Transolver (current #1 thorfinn uses it). Iter14 = hybrid VoxelUNet + Transolver Physics-Attention blocks on per-point features.
 
 ### 2026-04-17 — iter12: L2-norm loss (matches leaderboard metric exactly)
 - **Hypothesis:** iter11 over-corrected the component balance — fully normalized MSE gave equal gradient weight to all components and hurt Ux. L2-norm loss is the exact leaderboard metric and its gradient naturally balances components (a point's Uy gradient ∝ Uy_err/||err||), dampening only when the big one is large — softer, correct balancing.

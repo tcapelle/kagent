@@ -172,6 +172,58 @@ class VoxelBottleneckAttn(nn.Module):
         return tokens.transpose(1, 2).reshape(B, C, D, H, W)
 
 
+class PhysicsAttention(nn.Module):
+    """Transolver-style Physics-Attention: soft-cluster N points into M slices,
+    attend on M tokens, scatter back. Linear in N. From Wu et al. ICML 2024."""
+
+    def __init__(self, dim, heads=8, dim_head=32, slice_num=64):
+        super().__init__()
+        self.heads = heads
+        self.dim_head = dim_head
+        self.slice_num = slice_num
+        inner = heads * dim_head
+        self.in_proj_fx = nn.Linear(dim, inner)
+        self.in_proj_x = nn.Linear(dim, inner)
+        self.in_proj_slice = nn.Linear(dim_head, slice_num)
+        self.qkv = nn.Linear(dim_head, dim_head * 3)
+        self.to_out = nn.Linear(inner, dim)
+        self.temperature = nn.Parameter(torch.ones(1, heads, 1, 1) * 0.5)
+
+    def forward(self, x):
+        B, N, _ = x.shape
+        H, D, M = self.heads, self.dim_head, self.slice_num
+        fx = self.in_proj_fx(x).view(B, N, H, D).transpose(1, 2)  # [B,H,N,D]
+        xm = self.in_proj_x(x).view(B, N, H, D).transpose(1, 2)   # [B,H,N,D]
+        tau = self.temperature.clamp(0.1, 5.0)
+        w = (self.in_proj_slice(xm) / tau).softmax(dim=-1)          # [B,H,N,M]
+
+        z = torch.einsum("bhnc,bhng->bhgc", fx, w)                  # [B,H,M,D]
+        z = z / (w.sum(dim=2, keepdim=False).unsqueeze(-1) + 1e-6)
+
+        q, k, v = self.qkv(z).chunk(3, dim=-1)                      # each [B,H,M,D]
+        z_out = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+
+        out = torch.einsum("bhgc,bhng->bhnc", z_out, w)             # [B,H,N,D]
+        out = out.transpose(1, 2).reshape(B, N, H * D)
+        return self.to_out(out)
+
+
+class TransolverBlock(nn.Module):
+    def __init__(self, dim, heads=8, dim_head=32, slice_num=64, mlp_ratio=2):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = PhysicsAttention(dim, heads, dim_head, slice_num)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, dim * mlp_ratio), nn.GELU(), nn.Linear(dim * mlp_ratio, dim)
+        )
+
+    def forward(self, x):
+        x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
 class VoxelUNet(nn.Module):
     """3D conv U-Net over voxelized point features.
 
@@ -196,6 +248,10 @@ class VoxelUNet(nn.Module):
         bottleneck_attn=False,
         attn_heads=8,
         attn_dim_head=64,
+        transolver_depth=0,
+        transolver_heads=8,
+        transolver_dim_head=32,
+        transolver_slice_num=64,
         vel_mean=None,
         vel_std=None,
     ):
@@ -235,6 +291,15 @@ class VoxelUNet(nn.Module):
         )
 
         head_in = base_ch * 2  # voxel-sampled + per-point skip
+        self.transolver = nn.ModuleList([
+            TransolverBlock(
+                head_in,
+                heads=transolver_heads,
+                dim_head=transolver_dim_head,
+                slice_num=transolver_slice_num,
+            )
+            for _ in range(transolver_depth)
+        ])
         self.head = nn.Sequential(
             nn.LayerNorm(head_in),
             nn.Linear(head_in, head_hidden), nn.GELU(),
@@ -293,6 +358,8 @@ class VoxelUNet(nn.Module):
 
         sampled = sample_voxel(u1, pos_norm)
         combined = torch.cat([sampled, feat], dim=-1)
+        for block in self.transolver:
+            combined = block(combined)
         delta_norm = self.head(combined).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
         pred_norm = v_last_norm + delta_norm
         pred = pred_norm * self.vel_std + self.vel_mean
@@ -488,6 +555,10 @@ MODEL_CFG = dict(
     bottleneck_attn=True,
     attn_heads=8,
     attn_dim_head=64,
+    transolver_depth=2,
+    transolver_heads=8,
+    transolver_dim_head=32,
+    transolver_slice_num=32,
 )
 
 GRAD_ACCUM = 4
@@ -593,10 +664,6 @@ if __name__ == "__main__":
                 v_in = v_in.clone(); v_in[..., 1].neg_()
                 v_out = v_out.clone(); v_out[..., 1].neg_()
                 pos = pos.clone(); pos[..., 1].neg_()
-
-            # Input velocity noise: regularizes against train/val plateau by
-            # adding σ=0.05 × vel_std Gaussian noise to v_in (only, not v_out).
-            v_in = v_in + torch.randn_like(v_in) * (model.vel_std * 0.05)
 
             pred = model(v_in, pos, t, idcs)
             loss = (pred - v_out).pow(2).mean()
