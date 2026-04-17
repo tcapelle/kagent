@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — Warm-start round 2 (iter 13, KEPT)
+- **Hypothesis:** Iter 12 was still descending at timeout (1.1398, lr had only decayed to 1.2e-4). A second warm-start round with even lower peak LR (1.5e-4) and shorter warmup (30 steps) should squeeze more descent out of the same checkpoint.
+- **Change:** same `--resume` arg, launched with `--lr 1.5e-4 --warmup_steps 30 --epochs 25`.
+- **Result:** best val/l2_error = **1.0867** at epoch 18/22 (31 min). Descent: 1.138 → 1.135 → 1.126 → 1.124 → 1.123 → 1.116 → 1.111 → 1.107 → 1.106 → 1.100 → 1.100 → 1.095 → 1.093 → 1.093 → 1.090 → 1.090 → 1.088 → **1.087** → 1.088 → 1.087 → 1.088 → 1.087. Plateaued after E18.
+- **Verdict:** KEPT. **1.1398 → 1.0867 = 4.7% improvement.** Cumulative from iter 10: **1.2218 → 1.0867 = 11% drop.**
+- **Notes:** Train-val gap widened (0.87 train vs 1.09 val) — clearly overfitting, but val still improved until E18. At the overfitting wall. Further warm-start rounds at even lower LR will give <1% gains. Next (iter 14): add Sobolev/gradient-matching loss (kNN diff matching, λ≈0.1) — directly attacks the generalization gap by forcing the model to match local spatial gradients, not just point values. Cache kNN once per geometry. Alternative: wider model, but that requires fresh training (can't warm-start across architecture change).
+
 ### 2026-04-16 — Warm-start fine-tune from iter 10 (iter 12, KEPT)
 - **Hypothesis:** Iter 10 was still monotonically descending at its timeout (1.22 at epoch 22/22). The phase transition at epoch 3 "wastes" 3/22 epochs. Load iter10's best.pt as init, use lower peak LR (3e-4 vs 1e-3) and short 50-step warmup so we immediately resume descent from the already-trained regime.
 - **Change:** `train.py` — added `--resume <path>` arg; if set, load `state_dict` after model init. Launch: `--resume checkpoints/best.pt --lr 3e-4 --warmup_steps 50 --epochs 25`.
