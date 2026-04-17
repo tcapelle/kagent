@@ -522,6 +522,7 @@ class Config:
     sobolev_anchors: int = 1024
     sobolev_k: int = 8
     train_n_points: int = 0  # if >0, subsample each train sample to this many points (val unchanged)
+    best_val_floor: float = float("inf")  # don't save a checkpoint unless val/l2 beats this (guards against worse runs overwriting best.pt)
 
 
 def main():
@@ -597,7 +598,7 @@ def main():
     git_ckpt_path = Path("checkpoints/best.pt")
     git_ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
-    best_val = float("inf")
+    best_val = cfg.best_val_floor  # no save unless val beats this threshold
     best_metrics: dict = {}
     global_step = 0
     train_start = time.time()
@@ -607,7 +608,7 @@ def main():
     # happened on iter 16 E1 at 1.10 clobbering iter 15 at 1.066).
     if cfg.resume:
         init_val, _ = validate(model, val_loaders, device, global_step)
-        best_val = init_val
+        best_val = min(best_val, init_val)
         print(f"Warm-start init val/l2={init_val:.4f} (floor for saving checkpoints)")
 
     for epoch in range(MAX_EPOCHS):
@@ -691,6 +692,12 @@ def main():
 
     total_time = (time.time() - train_start) / 60.0
     print(f"\nDone ({total_time:.1f} min)")
+
+    # Always save the final model so an exploratory run (e.g. fresh-train that
+    # doesn't beat best_val_floor) can still be ensemble-tested afterwards.
+    final_path = pvc_dir / "final.pt"
+    torch.save(model.state_dict(), final_path)
+    print(f"Final weights -> {final_path}")
 
     if best_metrics:
         print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
