@@ -22,12 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — exp45: chain exp44 @ lr=5e-6 (pos-offset refine)
+- **Hypothesis:** exp44 tied exp42 (0.8805) but pos_proj had only 2 epochs to learn. Chain at lr=5e-6 to give it time. If chain doesn't help, pos-offset at end-of-stack is genuinely unhelpful.
+- **Change:** No code. --warm_start <exp44 ckpt model-eu7w7w48> --lr 5e-6.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Launching.
+
 ### 2026-04-17 — exp44: kNN + position-offset branch (PointNet++ style)
 - **Hypothesis:** Current KNNMixer pools feature mean/max of 16 neighbors. Missing explicit relative position info. Add zero-init pos_proj (Linear 3→dim) that encodes (pos_neigh - pos_self) averaged over neighbors; add to h_agg. Zero-init → identity at warm-start; gives model explicit local geometry.
 - **Change:** train.py: KNNMixer gains self.pos_proj (zero-init Linear 3→dim). forward() takes pos, computes pos_diff to neighbors, adds mean(pos_proj(pos_diff)) to h_agg. BaselineMLP.forward passes pos to knn_mixer.
-- **Result:** TBD
-- **Verdict:** TBD
-- **Notes:** Smoke test: 2 missing keys (pos_proj.*), pos_proj exactly zero at init. Warm-start from exp42 (model-jay6zniz) @ lr=2e-5 (arch-add explore).
+- **Result:** val/l2=**0.8805** @ epoch 2 (34.6 min, 5 epochs). Ckpt: model-eu7w7w48. Trajectory: E1 0.8823 → E2 0.8805 → E3 0.8834 → E4 0.8851 → E5 0.8827. Train loss declined 0.0083→0.0076 (overfitting).
+- **Verdict:** HOLD — tied exp42 exactly. Not an improvement, but E2 is kept as chain starting point. Chain at lr=5e-6 will decide.
+- **Notes:** Mean-pooling pos_diff over neighbors may be too lossy (averages small 3D vectors → ~0). Max pool would preserve more. But let chain decide before redesigning.
 
 ### 2026-04-17 — exp43: chain exp42 kNN @ lr=2e-6 (fine refine)
 - **Hypothesis:** exp42 val was monotonically decreasing through E5 (0.8810 → 0.8807 → 0.8805). Not saturated. Chain at lr=2e-6 for slow refine.
