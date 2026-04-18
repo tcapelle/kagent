@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — exp67: per-timestep, per-channel mixture weights (K, T, C)
+- **Hypothesis:** the current [K] softmax mixes all ckpts with one scalar each. Different ckpts may be better at specific timesteps (early vs late) or specific channels (Ux streamwise vs Uy/Uz cross-flow). Letting each (t, c) cell pick its own mix of K ckpts should reduce residual.
+- **Change:** new `pred_perchan.py`: logits shape `[K, T=5, C=3]`, softmax over K independently per (t, c). Chunk samples to fit GPU (43 GB for preds fp32 on 95GB H100). 3000 Adam steps at lr=0.02.
+- **Result:** val/l2=**0.8453** (−0.0013 over exp66 scalar-90 0.8466 re-run, −0.0012 over exp66 reported 0.8465). Uy channel prefers model-42wdgwd8 (weight 0.186), which did not dominate in scalar mixing — suggests it's specifically strong at Uy. Uz channel splits across multiple yflip variants and fresh ckpts.
+- **Verdict:** KEPT — modest gain. Saves to `bea915c-perchan/val.pt`.
+- **Notes:** The small gain (~0.001) vs parameter bloat (1350 vs 90) suggests the per-channel diversity was already partially captured at scalar mixing. Next: (1) per-sample mixture — might overfit val since val is small but worth trying with validation-loss regularization, (2) more fresh trainings for raw pool diversity, (3) stacking via a tiny MLP on stacked predictions.
+
 ### 2026-04-18 — exp66: TTA y-flip — add y-flipped predictions to ensemble pool
 - **Hypothesis:** train.py uses `yflip_prob=0.5` during training, so the model is approximately y-equivariant. Generating a second prediction per ckpt from y-flipped input (and un-flipping the output) should act as a noisy sibling and add pool diversity, similar to exp63's "orthogonal errors" observation.
 - **Change:** new `pred_tta.py`: for the top-30 ckpts by individual val l2, run `predict_yflipped(model, loader, device)` (flip `pos[...,1]` across per-batch y-center, flip `v_in[...,1]` sign, un-flip `pred[...,1]` sign), cache to `predcache_tta/{ckpt}_yflip.pt`. Stack 60 original + 30 TTA = 90 preds, run 5000-step Adam on softmax logits.
