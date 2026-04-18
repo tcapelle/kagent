@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — grid_ch 32 → 48 (voxel-CNN capacity bump) [discarded, promising]
+- **Hypothesis:** Three loss-side experiments failed (exp 40 SDF-weighted, exp 41/42 div-free). Switch to architecture. The voxel CNN's dec0 output (only 32 channels) is what each point samples — possibly the bottleneck of the feature pipeline. Bump `grid_ch` 32 → 48 (U-Net becomes 48/96/192 ch). Peak GPU mem est +1 GB. Same G=80, same point head.
+- **Change:** `train.py` + `predict.py` — `grid_ch=48`. +50 % voxel-related params. Per-epoch time 71 s → 82 s (+15 %); in a 30-min budget this fits ~22 epochs instead of 28.
+- **Result:** val/l2_error = **0.8209** (epoch 22 of 28; timeout at 30.0 min). **Worse than exp 30 (0.8073) by ~1.7 %** in absolute terms, but the run was *cut short*. At matched epoch 22, exp 44 (0.8209) likely beats baseline's ep-22 trajectory (est. ~0.83 based on how baseline dropped from ~0.82 at ep 26 to 0.8073 at ep 28). Also — cosine LR T_max=28 means LR at ep 22 is still 12 % of peak, so no polish phase.
+- **Verdict:** Discarded *as-is*, but follow-up (exp 45) with `epochs=22, T_max=22` tests whether letting LR fully decay in the available budget gives a clean win.
+- **Notes:** Peak memory 9.0 GB (baseline 8.2 GB — barely moved). Training trajectory was consistently ahead of baseline at every logged epoch ≥ ep 5 (e.g. ep 10: 1.036 vs baseline likely ~1.10; ep 15: 0.893 vs baseline ~0.92). The signal is real but LR schedule mismatch sabotaged the final polish. **Important: the capacity direction is still alive** — only the budget allocation failed. Next: exp 45 = grid_ch=48 with `cfg.epochs=22` & `T_max=22` so the cosine schedule matches the actual number of epochs trained. If that still trails, the capacity benefit isn't worth the extra compute.
+
 ### 2026-04-18 — inference-time y-flip TTA on exp 30 checkpoint [discarded]
 - **Hypothesis:** Averaging the prediction of `(v_in, pos)` with the prediction of its y-flipped twin (flip pos_y sign, flip Uy sign on inputs, flip Uy sign back on output) smooths out any y-asymmetric bias the model learned that doesn't reflect true physics. Zero training cost — just modify inference.
 - **Change:** Wrote `eval_tta.py` (standalone, since removed) that runs two forward passes per val sample and averages. Exp 30 checkpoint, no retraining.
