@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter47: FRESH-SEED ch=96@80³ at 60min budget — ensemble **0.68610** (−0.00209)
+- **Hypothesis:** 4th fresh-seed at ch=96@80³ (matches 972sqtxv extension cell but orthogonal SGD basin). Continue stacking decorrelated fresh-seeds.
+- **Change:** `--unet_ch_base 96 --unet_grid 80³ --lr 3e-4 --epochs 120 --yflip_aug True MAX_TIMEOUT_MIN=60` (run-id `i69s5t02`). Best at epoch 65, val/l2=0.8027.
+- **Result:** Solo+TTA=**0.7655**. Weight-opt sweep size=12 weighted=**0.68610**. Members: `[iazbqcv0, zb987yzv, kkpwt6kk, 972sqtxv, i69s5t02, otybiegm, we8kdyug, mopmyfsq, s72nkbjq, h0yvcd7w, o542zbvh, aik4lytt]`. Weights: `[0.0764, 0.1507, 0.149, 0.1403, 0.1352, 0.1363, 0.0772, 0.0846, 0.0024, 0.0204, 0.0017, 0.0258]`. i69s5t02 captures **0.135** weight. **0.00209 improvement** over iter46, **0.061 below frozen leaderboard (0.7475)**.
+- **Verdict:** KEPT. 4 fresh-seeds now collectively 0.512 of ensemble weight.
+- **Notes:** (1) Ensemble trajectory: iter43=0.70207 → iter44=0.69463 → iter45=0.69301 → iter46=0.68819 → iter47=0.68610. 4 fresh-seeds cumulative gain: -0.016. (2) Gain pattern: iter44 -0.00744 (breaks ceiling), iter45 -0.00162, iter46 -0.00482, iter47 -0.00209 — stabilizing around -0.002-0.005 per fresh-seed. Not yet saturated. (3) Next: (a) iter48 ch=128@96³ fresh (matches otybiegm cell); (b) iter48 ch=64@128³ fresh (legacy anisotropic); (c) iter48 ch=96@64³ seed#2 (pure noise decorrelation from zb987yzv).
+
 ### 2026-04-18 — iter46: FRESH-SEED ch=64@96³ at 60min budget — ensemble **0.68819** (−0.00482)
 - **Hypothesis:** Third fresh-seed, different arch (ch=64 smallest, @96³ isotropic). Continue stacking decorrelated members. ch=64 is fastest (smallest model), should converge more in 60min.
 - **Change:** `--unet_ch_base 64 --unet_grid 96³ --lr 3e-4 --epochs 200 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `kkpwt6kk`). Best at epoch 65.
