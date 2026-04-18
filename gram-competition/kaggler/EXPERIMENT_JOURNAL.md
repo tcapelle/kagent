@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter38: FROM-SCRATCH ch=96@64³ (fresh-seed decorrelation) — DISCARDED, ensemble unchanged
+- **Hypothesis:** All 15 ensemble members trace lineage through warm-starts (z5xvz0bu ← o542zbvh ← 4ab6bl20 ← 690outlv; msn73002 ← s72nkbjq ← 922qsdfy; etc). A fresh random init should be maximally decorrelated from this entire chain. ch=96@64³ was chosen because iter29 (ch=128@64³ fresh) was too slow to converge; ch=96@64³ is 40% faster, allowing 65 epochs in 27min budget.
+- **Change:** `--unet_ch_base 96 --unet_grid 64³ --lr 3e-4 --epochs 65 --yflip_aug True` (no init_from) (run-id `3c531yfc`).
+- **Result:** Best val/l2=**0.8563** at epoch 47. Solo+TTA=**0.8290** — 3rd-worst of cached preds. Greedy top-15 selection did not include 3c531yfc (solo gap too large); trajectory unchanged at **0.70265**. Full-pool top-25 weight-opt also puts 3c531yfc at w=0 (replaced by lower-solo warm-start members).
+- **Verdict:** DISCARDED. Same fate as iter29 (ch=128@64³ from-scratch) and iter36 (ch=64@80³ undertrained). Confirmed: **budget-constrained fresh-seed training cannot reach the solo threshold needed to contribute to a tight ensemble**.
+- **Notes:** (1) Three fresh-seed attempts (iter29, iter36, iter38) all discarded. The warm-start correlation chain is therefore a feature, not a bug — the ensemble benefits from the semantic feature library that gets transmitted through warm-starts. (2) To make fresh-seed competitive would need either (a) substantially more training budget (60+ min), (b) a much more efficient optimizer/schedule, or (c) much smaller arch so solo converges fast. (3) Next: try **longer-budget extension (MAX_TIMEOUT_MIN=60)** of the current top members — e.g., 2nd-gen extend z5xvz0bu at ultra-low lr. This directly exploits the observation that extensions keep giving +0.0001-0.0005 each, without the fresh-seed risk.
+
 ### 2026-04-18 — iter37: NEW cell ch=64@64³ warm-start from h0yvcd7w — ensemble **0.70265**
 - **Hypothesis:** Retry iter36's ch=64 isotropic gap with smaller grid (64³ vs 80³). ch=64@64³ has ~2× throughput of ch=64@80³ so fits 100 epochs — gives convergence room after warm-start grid change.
 - **Change:** `--unet_ch_base 64 --unet_grid 64³ --init_from model-h0yvcd7w --lr 2e-5 --epochs 100 --yflip_aug True` (run-id `n6vj5yfm`). 69 epochs completed in 27min (23.7s/epoch).
