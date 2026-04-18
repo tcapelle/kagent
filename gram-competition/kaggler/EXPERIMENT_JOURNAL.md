@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage E pass 3 + 2-MEMBER SOUPS (iter 55) — 54-ensemble 0.9684 (**-1.38% vs 0.9819**)
+- **Hypothesis:** (1) iter55 = lineage E pass 3 (lr=5e-5 from iter54.final) to bring lineage E to 3 passes, enabling soup_E to grow from 2→3 members. (2) Test "drop-weak-fresh" 2-member soups per lineage — avg(pass2, pass3) without the weak fresh-init — to see if uniform averaging is suboptimal.
+- **Change:** no code. iter55: `--resume .../model-r62nndp7/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9784 --epochs 25`. Soups: soup_E 3-member + 5 new 2-member soups (A2=iter42+43, B2=45+46, C2=48+49, D2=51+52, E2=54+55).
+- **Result:** iter55 best_run = **0.9837** at E14 (31.7 min). Staged as iter55.pt.
+  - 49-ensemble (48 + iter55 + new 3-member soup_E) = **0.9743** (-0.20% vs 0.9763)
+  - **54-ensemble (49 + 5 two-member soups) = 0.9684** ← submitted (**-0.61% vs 0.9743**, **-1.38% vs original 0.9819**)
+- **Verdict:** **BIG WIN.** 2-member soups each add ~0.12% because they're a different flat-minima point than the 3-member average (less regularization toward weak fresh-init basin). **Cumulative session: 1.0625 → 0.9684 = 8.85%.**
+- **Notes:** Both 3-member AND 2-member soups help — they're uncorrelated because they sample different points on the weight-trajectory. Diminishing returns are partly recovered by testing more averaging variants. **Iter 56 launched = lineage A pass 4** (iter43.final → lr=2e-5): extends lineage A to 4 passes, enables 4-member soup_A and also a new soup_A3 (pass3+pass4 only). **Iter 57 options:** (a) lineage B pass 4 from iter46.final; (b) architectural lift (hidden=512); (c) weighted soup (0.2*fresh + 0.3*p2 + 0.5*p3); (d) single-lineage fine-grained soup (e.g. store every 2nd epoch of a run, average them). (a) continues the soup-depth strategy; (d) is the classical SWA approach and could unlock more.
+
 ### 2026-04-18 — Lineage E pass 2 + WITHIN-LINEAGE MODEL SOUP (iter 54) — 48-ensemble 0.9763 (**-0.57%**)
 - **Hypothesis (pre-training):** iter54 = lineage E pass 2 (lr=1e-4 from iter53.final) to complete the lineage. Fresh-init decay predicted ~0.1% continuation gain.
 - **Hypothesis (mid-run pivot):** while iter54 trained, tested **within-lineage weight averaging** (model soup). Iter41→42→43 share a warm-start basin chain (same init) — averaging their staged best_run weights might add a diversified ensemble member without new training.
