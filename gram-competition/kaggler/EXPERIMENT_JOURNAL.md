@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v35 KEPT (small) — EMA beta=0.9999 + full-cosine solo 0.8482, 22-seed weighted 0.7505 (gain 0.0006)
+- **Hypothesis:** EMA weight averaging stabilizes the final-LR epochs and typically gives 0.003-0.01 solo improvement.
+- **Change:** train.py — added `--ema_beta` flag + shadow EMA model updated every step + validate both raw/EMA + save whichever is lower. Tested in debug mode first.
+- **Result:** v35 solo val/l2 = **0.8482** at ep90 (EMA model selected in final 10+ epochs). Raw final = 0.8497 → EMA gave 0.0015 solo improvement over raw. But 0.8482 is only mid-pack among full-cosine runs (v29=0.8420, v33=0.8471 both beat it without EMA). 22-seed weighted = **0.7505** (gain 0.0006 vs 21-seed 0.7511).
+- **Verdict:** EMA code kept (useful future tool); v35 checkpoint kept (small ensemble gain banked). But beta=0.9999 was too long a window — EMA lagged behind raw for most of training, only catching up in the last 10 epochs. Next EMA run should try beta=0.995 (window ~200 steps = 0.3 epoch) or 0.999 (window ~1000 steps = 1.4 epochs).
+- **Notes:** Solo-boost was not dramatic — maybe the CosineAnnealingLR already smooths the trajectory enough. Next experiments: focus on **ensemble-side optimizations** (cheap, no training): (a) softmax temperature grid-search, (b) median vs mean ensembling, (c) top-k subset selection. Expected 0.002-0.005 additional gain at zero compute.
+
+
 ### 2026-04-18 — v34 KEPT (small) — 2nd lr=3e-4 + full-cosine solo 0.8578, 21-seed weighted 0.7511 (gain 0.0006)
 - **Hypothesis:** another seed of the v31 recipe (lr=3e-4 + full-cosine) — expected gain ~0.0015.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --lr 3e-4 --epochs 90` (same as v31).
