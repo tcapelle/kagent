@@ -116,10 +116,12 @@ class VoxelFlowNet(nn.Module):
         # mean-pool: T_IN*3 + 1 (occupancy); max-pool: T_IN*3 extra
         in_ch = 2 * T_IN * 3 + 1
         self.grid_in = nn.Conv3d(in_ch, grid_ch, 1)
-        # 3-level U-Net: G (ch), G/2 (2ch), G/4 (4ch); skip concat on the way back up.
+        # 4-level U-Net: G (ch), G/2 (2ch), G/4 (4ch), G/8 (8ch = bottleneck).
         self.enc0 = GridConvBlock(grid_ch, grid_ch)
         self.enc1 = GridConvBlock(grid_ch, grid_ch * 2)
-        self.enc2 = GridConvBlock(grid_ch * 2, grid_ch * 4)  # bottleneck
+        self.enc2 = GridConvBlock(grid_ch * 2, grid_ch * 4)
+        self.enc3 = GridConvBlock(grid_ch * 4, grid_ch * 8)  # bottleneck
+        self.dec2 = GridConvBlock(grid_ch * 8 + grid_ch * 4, grid_ch * 4)
         self.dec1 = GridConvBlock(grid_ch * 4 + grid_ch * 2, grid_ch * 2)
         self.dec0 = GridConvBlock(grid_ch * 2 + grid_ch, grid_ch)
 
@@ -190,13 +192,16 @@ class VoxelFlowNet(nn.Module):
 
         grid = self._voxelize(v_in_norm, pos)
         g = self.grid_in(grid)
-        e0 = self.enc0(g)                              # G, ch
-        e1 = self.enc1(F.avg_pool3d(e0, 2))            # G/2, 2ch
-        e2 = self.enc2(F.avg_pool3d(e1, 2))            # G/4, 4ch (bottleneck)
-        u1 = F.interpolate(e2, scale_factor=2, mode="trilinear", align_corners=False)
-        d1 = self.dec1(torch.cat([u1, e1], dim=1))     # G/2, 2ch
+        e0 = self.enc0(g)                               # G, ch
+        e1 = self.enc1(F.avg_pool3d(e0, 2))             # G/2, 2ch
+        e2 = self.enc2(F.avg_pool3d(e1, 2))             # G/4, 4ch
+        e3 = self.enc3(F.avg_pool3d(e2, 2))             # G/8, 8ch (bottleneck)
+        u2 = F.interpolate(e3, scale_factor=2, mode="trilinear", align_corners=False)
+        d2 = self.dec2(torch.cat([u2, e2], dim=1))      # G/4, 4ch
+        u1 = F.interpolate(d2, scale_factor=2, mode="trilinear", align_corners=False)
+        d1 = self.dec1(torch.cat([u1, e1], dim=1))      # G/2, 2ch
         u0 = F.interpolate(d1, scale_factor=2, mode="trilinear", align_corners=False)
-        d0 = self.dec0(torch.cat([u0, e0], dim=1))     # G, ch
+        d0 = self.dec0(torch.cat([u0, e0], dim=1))      # G, ch
         voxel_feat = self._interp(d0, pos)
 
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
