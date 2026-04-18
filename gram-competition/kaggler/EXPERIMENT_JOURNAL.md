@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — unnormalized MSE loss (align with val L2 weighting)
+- **Hypothesis:** Current normalized MSE `((pred-v_out)/vel_std).pow(2).mean()` equal-weights per-component squared error. But the val metric is un-normalized L2 norm `(pred-v_out).norm(dim=3).mean(...)`, which is naturally dominated by components with larger typical error (high vel_std — Ux has std=20 vs Uy=7, Uz=9.5). So the current loss over-weights Uy at the expense of Ux relative to what val rewards. Switching to `(pred-v_out).pow(2).mean()` scales per-component gradient by vel_std, matching how val weights errors.
+- **Change:** `train.py:216` — drop the `/vel_std_gpu` inside the loss: `loss = (pred - v_out).pow(2).mean()`. Single-line change; no other modifications.
+- **Result:** val/l2_error = **0.9098** (epoch 28 of 28 @ 30.4 min, 8.2 GB peak). Train loss 1.35 (~300× larger numerically than normalized, as expected). **0.5 % improvement over exp 16 (0.9147 → 0.9098)**. Val trajectory started slightly behind exp 16 (low-std components under-trained early), crossed around ep 23, and finished consistently ahead.
+- **Verdict:** Kept. Cleanest single-factor gain in 5 experiments; loss-metric alignment matters even when the two are both "sensible MSE variants." Ends 5-experiment streak (4 discards + near-neutral grad clip) with a real win.
+- **Notes:** Val per-component MAE breakdown: need to check whether Uy/Uz MAE regressed while Ux MAE improved (confirms hypothesis) or if all three improved. Leader gap now 0.9098 − 0.75 = 0.16 (17 % relative). Next candidates: (a) bump `lr` slightly (current 5e-4, loss is now 300× larger so effective weight-decay shrank) — try lr=7e-4; (b) `point_hidden` 384 → 512 — capacity bump now that loss signal matches val; (c) `weight_decay` 1e-4 → 3e-4 to compensate for the relatively weaker-WD regime under unnormalized loss; (d) combine with grad clip 1.0 (exp 20 was roughly neutral, but under new loss the gradient spikes could be bigger because raw MSE is bigger). Ship checkpoint: commit `1fe458c`, 80 val predictions saved to `/mnt/new-pvc/predictions/apr16/gilbert/1fe458c/val.pt`.
+
 ### 2026-04-18 — gradient clipping at norm=1.0 [discarded]
 - **Hypothesis:** Single-sample batch gradients are noisy. Clipping global grad norm to 1.0 caps occasional blow-ups, acting as free training hygiene. Typical gain 0.5–1 %.
 - **Change:** `train.py` — add `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)` between `backward()` and `step()`. Nothing else.
