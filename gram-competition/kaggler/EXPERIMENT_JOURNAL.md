@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v33 KEPT — wd=5e-5 + full-cosine solo 0.8471, 20-seed weighted 0.7517 (gain 0.0015)
+- **Hypothesis:** wd=5e-5 (v27 solo 0.8596) combined with full-cosine should give a strong solo + new basin, per the v31 pattern.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --weight_decay 5e-5 --epochs 90`.
+- **Result:** v33 solo val/l2 = **0.8471** at ep90 (completed full 90 epochs) — 2nd-best solo ever (after v29 0.8420). 20-seed weighted = **0.7517** (gain 0.0015 vs 19-seed 0.7532). 13.7% under v6 solo.
+- **Verdict:** kept. Heuristic validated: strong-solo axes + full-cosine = strong solo.
+- **Notes:** v33 best at exactly ep90 (end of schedule) — different from v28/v29/v30/v31 which peaked at ep87-89. The weaker reg lets training continue improving to the very end. Next (v34): 2nd seed of lr=3e-4 + full-cosine (replay v31 at 0.8487). Expected ~0.0015 gain.
+
+
 ### 2026-04-18 — v32 KEPT (small) — lr=7e-4 + full-cosine didn't stack, 19-seed weighted 0.7532 (gain 0.0005)
 - **Hypothesis:** symmetric of v31: opposite-lr (7e-4) combined with full-cosine. Should give a distinct basin like v31 did.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --lr 7e-4 --epochs 90`.
