@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — lr 1e-3 → 1.5e-3 (push LR ceiling further)
+- **Hypothesis:** Exp 23 showed lr=1e-3 beats 5e-4 by 0.4 %, but train loss was still falling at ep 28 (1.35) and the cosine tail suggested the ceiling wasn't hit. Push to 1.5e-3 to see if more progress per step still buys improvement, or if we're into divergence territory.
+- **Change:** `train.py:89` — `lr: float = 1e-3 → 1.5e-3`. Single-line change.
+- **Result:** val/l2_error = **0.8939** (epoch 28 of 28 @ 30.3 min, 8.2 GB peak). Train loss 1.31. **1.3 % improvement over exp 23 (0.9060 → 0.8939)**. First sub-0.90 result.
+- **Verdict:** Kept. Largest single-experiment win since the voxel-CNN introduction (exp 2 → 16).
+- **Notes:** Trajectory: lagged exp 23 ep 5-10 (1.36 vs 1.34, 1.10 vs 1.09), tied at ep 11, then pulled ahead and stayed ahead — classic higher-LR cosine signature where late annealing buys most of the win. Train loss also lower (1.31 vs 1.35), so it's doing more than just EMA averaging. Leader gap: 0.8939 − 0.7475 = 0.1464 (16.4 %). Strong signal LR ceiling still not reached → next try lr=2e-3. Or pair with weight_decay bump 1e-4 → 3e-4 to counter any late-stage weight growth from the bigger updates. If lr=2e-3 also helps we should then switch axis entirely (SDF feature, architectural change) since hyperparameter tuning can't close a 16 % gap. Ship: commit `032e7d9`, predictions `/mnt/new-pvc/predictions/apr16/gilbert/032e7d9/val.pt`.
+
 ### 2026-04-18 — lr 5e-4 → 1e-3 (aggressive LR under unnormalized MSE)
 - **Hypothesis:** Exp 21 finished with train loss still falling (1.35 at ep 28), suggesting undertraining not overfitting. Under unnormalized MSE the loss is ~300× larger, but AdamW's per-parameter second-moment normalizes this, so effective step size is unchanged. A 2× peak LR should make more progress per step in the same 28-epoch cosine budget. Risk: early divergence, but AdamW + EMA tolerate moderate LR perturbations.
 - **Change:** `train.py:89` — `lr: float = 5e-4 → 1e-3`. Single-line change.
