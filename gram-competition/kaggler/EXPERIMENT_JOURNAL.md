@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — U-Net 4-level (G/8 bottleneck) [discarded]
+- **Hypothesis:** Adding a fourth U-Net level (bottleneck at G/8 = 10 voxels across 2.3 m bbox) gives the model a global receptive field over the whole domain — useful for capturing freestream context + large-scale wake. Compute at G/8 is tiny (10³×256² < 2 GFLOPs), so per-epoch should barely grow.
+- **Change:** `model.py` — add `enc3` at G/8 with 8×grid_ch channels + `dec2` at G/4 (skip from enc2). Pool/interp chain grows to 3 levels deep.
+- **Result:** val/l2_error = **0.9226** (epoch 27 of 28 @ 30.0 min, 8.3 GB peak). Train loss 0.0097. **Worse than exp 16 (0.9147) by 0.9 %**. Lost the final epoch (27 of 28) — exp 16 completed all 28.
+- **Verdict:** Discarded. Reverted; restored exp 16 checkpoint.
+- **Notes:** Likely causes: (a) G/8 bottleneck = 23 cm/cell is too coarse for the airflow structures that matter — most flow variation happens at 2–6 cm scales; squeezing through this bottleneck destroys information that the skip connections can't recover; (b) extra params (the 8ch-level has 256×256×27 weights per conv = 1.8 M new params) need more epochs to fit but we're budget-limited. Lesson: deeper U-Net isn't free — the bottleneck has to match the feature-scale distribution of the data. Next candidates: (a) stride-2 conv downsampling (learned instead of avg_pool3d); (b) LR warmup (1 ep linear → 27 ep cosine) for training stability — untested hyper-hygiene; (c) grad clipping.
+
 ### 2026-04-18 — U-Net voxel CNN (3-level multi-scale)
 - **Hypothesis:** Current 4 dilated same-res blocks at G=80 have limited multi-scale reasoning — the 3D CNN sees only fixed-resolution voxel features. A U-Net (G → G/2 → G/4, with skip concatenations) gives proper multi-scale: bottleneck at G/4 (~12 cm/cell) for global context, skip paths for fine detail at G=80 (~2.9 cm/cell). Napkin math says U-Net at (32, 64, 128) ch is slightly cheaper than current 4 × 32-ch same-res blocks because each deeper level has 8× fewer voxels than the one above.
 - **Change:** `model.py` — new `GridConvBlock` (two 3×3×3 + GN + GELU, residual with 1×1 channel-projection). `VoxelFlowNet` replaces `self.grid_blocks` ModuleList with `enc0/enc1/enc2/dec1/dec0` and forward does `avg_pool3d` downsampling + `F.interpolate(..., mode="trilinear")` upsampling + skip concat. `grid_in` → `enc0` → down → `enc1` → down → `enc2` (bottleneck) → up → cat(e1) → `dec1` → up → cat(e0) → `dec0` → interp to points.
