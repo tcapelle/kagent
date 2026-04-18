@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage E pass 4 + EMA code — iter 61 single 0.9815, 76-ensemble **0.9539** (**-0.15% vs 0.9554**)
+- **Hypothesis:** Proper lineage E pass 4 from iter55.final (model-shyjq4r0). Lineage E now has iter53→54→55→61 chain (plus iter60 branched sibling). Add in-run EMA to train.py for iter62+.
+- **Change:** train.py: added `--ema_decay` flag + EMA shadow state_dict + EMA validation per epoch + `best_run_ema.pt` save. Commit 2c61913. iter61: `WANDB_MODE=offline --resume .../model-shyjq4r0/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9778 --epochs 25`. 32.5 min, E8 early stop.
+- **Result:** best within-run = **0.9815** at E6 (init=0.9837 iter55). Beat iter55's final. Staged as iter61.pt. Updated soup_E (5-mem), soup_E3 (4-mem drop-fresh), soup_E34 (iter55+61 pairwise), soup_Ew (5-mem weighted).
+  - **76-ensemble** (74 + iter61 + soup_E34) = **0.9539** (Ux=0.6199, Uy=0.3042, Uz=0.4555). Submitted.
+- **Verdict:** WIN. Pass-4 with extended soups back to delivering -0.15%. **Cumulative session: 1.0625 → 0.9539 = 10.22%.**
+- **Notes:** **Iter 62 launched with EMA** (first run to use ema_decay=0.999) — lineage A second pass-4 from iter43.final (model-c4g1jcya), same recipe as iter56 but with EMA. Early signal E1: val=0.9813, ema=0.9794 — **EMA already below init 0.9806**, demonstrating EMA value immediately. Hoping iter62.pt + iter62_ema.pt both contribute to soup.
+
 ### 2026-04-18 — Lineage E branched pass-2 — iter 60 single 1.0263, 74-ensemble **0.9554** (flat -0.02%)
 - **Hypothesis:** Build out lineage E (originally had iter53-55) with a branched pass-2 from iter53 sibling to iter54. New soup_E (4-mem), soup_E3 (drop-fresh), soup_E35 (iter55+60), updated soup_Ew.
 - **Change:** no code. `WANDB_MODE=offline --resume .../model-sdjvasmj/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9778 --epochs 25`. 30.8 min, E8 early stop.
