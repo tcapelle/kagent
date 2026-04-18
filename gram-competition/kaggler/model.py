@@ -61,12 +61,30 @@ class BaselineMLP(nn.Module):
         return pred
 
 
+class GridConvBlock(nn.Module):
+    """Two 3×3×3 convs with GroupNorm + GELU, residual. Channel change via 1×1 proj."""
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.proj = nn.Conv3d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
+        self.net = nn.Sequential(
+            nn.Conv3d(in_ch, out_ch, 3, padding=1),
+            nn.GroupNorm(8, out_ch),
+            nn.GELU(),
+            nn.Conv3d(out_ch, out_ch, 3, padding=1),
+            nn.GroupNorm(8, out_ch),
+            nn.GELU(),
+        )
+
+    def forward(self, x):
+        return self.proj(x) + self.net(x)
+
+
 class VoxelFlowNet(nn.Module):
-    """Voxel-grid 3D CNN + point-wise MLP head.
+    """Voxel-grid 3D U-Net + point-wise MLP head.
 
     Pipeline:
       1. Scatter-mean v_in features onto a regular [G,G,G] grid (+occupancy).
-      2. Dilated 3D convs expand spatial receptive field across the grid.
+      2. 3-level U-Net (G, G/2, G/4) with skip connections for multi-scale features.
       3. Trilinear-sample voxel features back to each point.
       4. Concat per-point feats (pos + v_in_norm + voxel_feat) -> ResMLP.
       5. Residual prediction in normalized space; no-slip BC.
@@ -98,18 +116,12 @@ class VoxelFlowNet(nn.Module):
         # mean-pool: T_IN*3 + 1 (occupancy); max-pool: T_IN*3 extra
         in_ch = 2 * T_IN * 3 + 1
         self.grid_in = nn.Conv3d(in_ch, grid_ch, 1)
-        dilations = [1, 2, 4, 8]
-        self.grid_blocks = nn.ModuleList([
-            nn.Sequential(
-                nn.Conv3d(grid_ch, grid_ch, 3, padding=dilations[i % 4], dilation=dilations[i % 4]),
-                nn.GroupNorm(8, grid_ch),
-                nn.GELU(),
-                nn.Conv3d(grid_ch, grid_ch, 3, padding=1),
-                nn.GroupNorm(8, grid_ch),
-                nn.GELU(),
-            )
-            for i in range(n_grid_blocks)
-        ])
+        # 3-level U-Net: G (ch), G/2 (2ch), G/4 (4ch); skip concat on the way back up.
+        self.enc0 = GridConvBlock(grid_ch, grid_ch)
+        self.enc1 = GridConvBlock(grid_ch, grid_ch * 2)
+        self.enc2 = GridConvBlock(grid_ch * 2, grid_ch * 4)  # bottleneck
+        self.dec1 = GridConvBlock(grid_ch * 4 + grid_ch * 2, grid_ch * 2)
+        self.dec0 = GridConvBlock(grid_ch * 2 + grid_ch, grid_ch)
 
         pos_feat_dim = 3 + 3 * 2 * fourier_L  # raw pos + sin/cos at L scales
         point_in = pos_feat_dim + T_IN * 3 + grid_ch
@@ -178,9 +190,14 @@ class VoxelFlowNet(nn.Module):
 
         grid = self._voxelize(v_in_norm, pos)
         g = self.grid_in(grid)
-        for blk in self.grid_blocks:
-            g = g + blk(g)
-        voxel_feat = self._interp(g, pos)
+        e0 = self.enc0(g)                              # G, ch
+        e1 = self.enc1(F.avg_pool3d(e0, 2))            # G/2, 2ch
+        e2 = self.enc2(F.avg_pool3d(e1, 2))            # G/4, 4ch (bottleneck)
+        u1 = F.interpolate(e2, scale_factor=2, mode="trilinear", align_corners=False)
+        d1 = self.dec1(torch.cat([u1, e1], dim=1))     # G/2, 2ch
+        u0 = F.interpolate(d1, scale_factor=2, mode="trilinear", align_corners=False)
+        d0 = self.dec0(torch.cat([u0, e0], dim=1))     # G, ch
+        voxel_feat = self._interp(d0, pos)
 
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
         pos_feat = self._pos_enc(pos)
