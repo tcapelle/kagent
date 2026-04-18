@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — lr 1.5e-3 → 2e-3 (push LR past ceiling) [discarded]
+- **Hypothesis:** Exp 24 showed lr=1.5e-3 still improving train loss and val at ep 28. Keep climbing — lr=2e-3 might be another small win if the LR ceiling hasn't been found. Risk: divergence/noise in early training.
+- **Change:** `train.py:89` — `lr: float = 1.5e-3 → 2e-3`. Single-line change.
+- **Result:** val/l2_error = **0.8973** (epoch 28 of 28 @ 30.3 min, 8.2 GB peak). Train loss 1.32. **Worse than exp 24 (0.8939) by 0.4 %**.
+- **Verdict:** Discarded. Reverted; kept exp 24 checkpoint.
+- **Notes:** Trajectory: lagged exp 24 the ENTIRE run by ~0.005-0.015, never crossed. LR ceiling confirmed at 1.5e-3 for this architecture + loss + schedule. Classic "higher LR = noisier early optimizer dynamics + cosine tail can't fully compensate." Train loss was very close (1.32 vs 1.31), so the model learned similarly but with marginally worse generalization. Next: stop tuning LR; switch axis. Candidates: (a) weight_decay 1e-4 → 3e-4 (under higher LR the weights grow more — more decay might regularize); (b) **add SDF-to-airfoil per-point feature** — single strongest physics-aware addition we haven't tried (boundary-layer velocity profile depends almost entirely on wall distance); (c) expand t usage in model (currently unused in forward signature — if t varies across samples, that's free information); (d) `point_dropout` 0.15 → 0.25 for more regularization under aggressive LR.
+
 ### 2026-04-18 — lr 1e-3 → 1.5e-3 (push LR ceiling further)
 - **Hypothesis:** Exp 23 showed lr=1e-3 beats 5e-4 by 0.4 %, but train loss was still falling at ep 28 (1.35) and the cosine tail suggested the ceiling wasn't hit. Push to 1.5e-3 to see if more progress per step still buys improvement, or if we're into divergence territory.
 - **Change:** `train.py:89` — `lr: float = 1e-3 → 1.5e-3`. Single-line change.
