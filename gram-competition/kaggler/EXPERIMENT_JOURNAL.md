@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v32 KEPT (small) — lr=7e-4 + full-cosine didn't stack, 19-seed weighted 0.7532 (gain 0.0005)
+- **Hypothesis:** symmetric of v31: opposite-lr (7e-4) combined with full-cosine. Should give a distinct basin like v31 did.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --lr 7e-4 --epochs 90`.
+- **Result:** v32 solo val/l2 = **0.8630** at ep84 — noticeably weaker than v26 (lr=7e-4 cut-early, 0.8633) or v31 (lr=3e-4 full-cosine, 0.8487). The higher lr + longer anneal combination is unstable — val noise stays high late in training. 19-seed weighted = **0.7532** (gain 0.0005 vs 18-seed 0.7537).
+- **Verdict:** kept (small positive gain) but lr=7e-4+full-cosine is not a productive axis — do not pursue further.
+- **Notes:** **New heuristic: combined-axis only works when BOTH individual axes produced a strong solo.** lr=3e-4 (v24 solo 0.8565, strong) combined well with full-cosine; lr=7e-4 (v26 solo 0.8633, weaker) did not. For v33: **wd=5e-5 + full-cosine** — v27 had solo 0.8596 (middling-strong), and wd=5e-5 is an untapped combo with full-cosine.
+
+
 ### 2026-04-18 — v31 KEPT — lr=3e-4 + full-cosine combined, 18-seed weighted 0.7537 (gain 0.0026)
 - **Hypothesis:** combine two proven winning axes (full-cosine anneal + lr=3e-4). Full-cosine gave the strongest solo regime; lr=3e-4 gave an untapped basin at high solo quality. Together = new-basin with strong solo.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --lr 3e-4 --epochs 90`.
