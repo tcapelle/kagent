@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter35: 2nd grid=72 fresh-init + 5-model ensemble at 0.7618
+- **Hypothesis:** iter34 (grid=72) broke past the grid=64 plateau by −0.03 standalone and put the 6-model ensemble at 0.7703 (ahead of alphonse). A second grid=72 should keep pushing because (a) one more strong model per se, (b) extra *seed-diversity within the grid=72 architecture* (which we haven't had yet — just one grid=72 in the ensemble).
+- **Change:** `MAX_TIMEOUT_MIN=85 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter35-grid72-2nd`. Full 28 epochs.
+- **Result:** iter35 standalone val = **0.8401** at e28/28 (near-identical to iter34's 0.8345). Subset search:
+  - **iter24 + iter30 + iter33 + iter34 + iter35 (5-model)**: val l2 = **0.7618** ← new best
+  - other 5-model variants (drop different grid=64s): 0.7619-0.7628
+  - 6-model including 3 grid=64: 0.7621-0.7629
+  - 7-model all: 0.7630
+  - 2-model iter34+iter35 alone: 0.7762
+  - 3-model iter24+iter34+iter35: 0.7700
+- **Verdict:** **kept** — submission at 4790880 now the 5-model at 0.7618. Beats alphonse (0.7761) by **0.014**. Also the 2-model iter34+iter35 alone almost matches alphonse — confirming grid=72 is the critical axis.
+- **Notes:** Pattern persists: exactly 1 grid=48 (iter24) + a couple grid=64 + both grid=72 is optimal. Adding more grid=64 adds correlated noise. Next: iter36 = grid=80 for one more architectural jump — expected to yield val ~0.81 standalone and bigger ensemble gain than another grid=72 would.
+
 ### 2026-04-18 — iter34: grid=72 architectural pivot — single-model val 0.8345 → 6-model 0.7703 (beats alphonse)
 - **Hypothesis:** grid=64 standalone has plateaued at 0.865-0.870 across 4 independent runs; clearly a capacity ceiling. Grid=72 (1.42× more voxels) should break through. Also gives a new architectural diversity axis for the ensemble beyond seed-only.
 - **Change:** `MODEL_CFG['grid_size'] = 72` in train.py. Launched with `MAX_TIMEOUT_MIN=85 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter34-grid72`. ~159s/epoch at 13.5GB VRAM (vs 120s/7.7GB at grid=48 and 120s/11GB at grid=64). Full 28 epochs completed (75 min).
