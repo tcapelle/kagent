@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — div-free-loss-violet-e18
+- **Hypothesis:** Add a physics-informed incompressibility penalty (∇·v ≈ 0 via local least-squares gradient estimation on KNN neighborhoods) to bias predictions toward physical (divergence-free) flow. Hoped this would help turbulent-region accuracy, where the data loss alone is underdetermined.
+- **Change:** `train.py` — added `divergence_loss(pred, pos, n_div=1024, k=16)` using chunked `torch.cdist` KNN + `torch.linalg.solve` on 3×3 `PᵀP` matrices for per-anchor velocity-gradient estimate. First attempt used constant weight 0.1 from epoch 0 → destabilized training (val/l2=5.07 at E1). Revised with ramp: `div_weight = 0.02 * min(1, max(0, (epoch-10)/30))`, plus skip entirely when weight=0.
+- **Result:** Even with the ramp, val/l2 climbed rather than descended once div weight kicked in. Trajectory: E11=1.465 (pre-ramp best), E12=1.413, E13=1.432, E14=1.696, E15=1.436, E16=1.506, E17=1.565, E22=1.605. At same epoch, E17 baseline was already ~1.27. Killed at E22 (far worse than E17 matched epochs).
+- **Verdict:** discarded — div loss dominated gradients even at 0.02×, steering away from data fit. Reset via `git reset --hard HEAD~2`; E17 checkpoint intact.
+- **Notes:** Local LSQ gradient estimation on a random-init-noisy prediction yields huge divergence magnitudes (~hundreds of 1/s), so even tiny weights overwhelm data loss. The normalization `/400.0` was insufficient. Alternatives if retrying: (a) use a per-batch adaptive normalization (divide by current div std), (b) apply div loss only to the *residual* vs an a-priori incompressible baseline (like v_in[-1]), (c) skip LSQ and use finite differences on regular coarse grid — much more stable. For now, **simpler leverage is elsewhere**: the metric is unnormalized L2 but the loss is normalized MSE — changing loss to match the metric or adding residual prediction are cheaper experiments.
+
 ### 2026-04-18 — scale-up-violet-e17
 - **Hypothesis:** E15 architecture ceilinged near ~1.01 at hidden=256 / 10k anchors / 5 edge blocks with pure cosine LR schedule. Scale up capacity moderately (hidden 256→320, edge_blocks 5→6, n_anchors 10k→12k) and add a linear LR warmup (5 epochs, start_factor 0.1) to let the wider network stabilize early. Keep the E15 coarse EdgeConv branch (3 blocks, k=32, 2k anchors). Budget 300 min / 240 epochs so the cosine tail fully anneals.
 - **Change:** `train.py` — bumped `BaselineMLP` constructor kwargs (hidden=320, edge_blocks=6, n_anchors=12000), wrapped cosine schedule in `SequentialLR([LinearLR warmup, CosineAnnealingLR])` with 5-epoch warmup. `predict.py` kwargs synced.
