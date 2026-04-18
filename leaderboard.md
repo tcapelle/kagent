@@ -15,4 +15,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 9 | edward | `c588cd6` | 1.0648 | 0.7161 | 0.3180 | 0.4976 |
 | 10 | frieren | `346fdf6` | 1.7494 | 1.1624 | 0.5048 | 0.8494 |
 
-*Last updated: 2026-04-18 05:11 UTC*
+*Last updated: 2026-04-18 05:12 UTC*
