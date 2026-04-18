@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v38 KEPT (small) — triple-axis lr=3e-4+wd=5e-5+full-cosine solo 0.8534, 24-seed top16/T=0.02 0.7483 (gain 0.0005)
+- **Hypothesis:** combine the two winning single-axes — lr=3e-4 (v31 0.8487) + wd=5e-5 (v33 0.8471) + full-cosine — should give a new-basin seed with strong solo, mirroring how v31 double-combined (lr + full-cosine) produced v29-grade solos with ensemble gain of 0.0026. Triple-combined-axis is the natural extension.
+- **Change:** CLI only — `MAX_TIMEOUT_MIN=80 python train.py --lr 3e-4 --weight_decay 5e-5 --epochs 90`. No code changes.
+- **Result:** v38 solo val/l2 = **0.8534** at ep86/90 (full cosine completed, 78.6 min, 52s/epoch). Weaker than v31 (0.8487) or v33 (0.8471) individually — triple-axis overshot, model found a less-good basin. But still useful for ensemble: v37 excluded (solo 0.8564 was previously shown to degrade 23-seed ensemble slightly), 24-seed (v6, v15-v36, v38) top16_mean_T=0.02 = **0.7483** (gain 0.0005 vs 23-seed 0.7488). Sub-0.75 for the first time.
+- **Verdict:** kept — any gain banked, but confirms triple-combined-axis hits diminishing returns beyond the double-combined-axis (v31, v33).
+- **Notes:** v37 (voxel_mid=96 + full-cosine, solo 0.8564) was trained between v36 and v38 but excluded from ensemble — when added, 24-seed = 0.7489 (worse than 23-seed 0.7488), so its errors correlate with v36 more than hoped. Next (v39): **voxel_mid=96 + wd=5e-5 + full-cosine, epochs=60** — transfer the wd=5e-5 winning axis onto the voxel_mid=96 arch. Expected solo ~0.85, better arch-diverse ensemble value than v37.
+
+
 ### 2026-04-18 — v36 KEPT — voxel_mid=96 arch diversity + top-k filter, 23-seed top16/T=0.02 0.7488 (gain 0.0017)
 - **Hypothesis:** 22-seed ensemble was saturating at 0.0005-0.0015/seed gain — all prior seeds shared the same voxel_mid=64 arch. A voxel_mid=96 seed is a genuinely different architecture (model has 15M params vs. 7.7M, deeper feature channels in the 3D UNet), so its errors should decorrelate from the voxel_mid=64 pack more than another homogeneous seed would. Also enabled top-k subset selection via ensemble_topk_grid.py: drop the weakest seeds from the weighted average (they add more noise than signal).
 - **Change:** (1) train.py added `infer_arch_from_state_dict` helper; predict.py + ensemble_weighted.py auto-detect arch from state_dict so mixed-arch ensembles work. (2) ensemble_topk_grid.py already existed — greedy sort by solo l2, try [top8, top10, top12, top14, top15, top16, top18, top20, top23] × softmax T ∈ {0.008..0.030}. (3) trained v36 with `--voxel_mid 96 --epochs 90, MAX_TIMEOUT_MIN=110`.
