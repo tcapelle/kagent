@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — point_dropout 0.15 → 0.0 [discarded]
+- **Hypothesis:** Four discards since exp 30 (all added regularization or capacity). Train/val gap is only 0.66/0.81 — not overfitting. Dropout might be *under*-training by noising the forward pass. Removing it should let the network train harder.
+- **Change:** `train.py` + `predict.py` — `point_dropout=0.0` (was 0.15).
+- **Result:** val/l2_error = **0.8476** (epoch 28 of 28, FULL 28 epochs @ 30.2 min — epoch time dropped 68→65 s without dropout). **Worse than exp 30 (0.8073) by 5.0 %**.
+- **Verdict:** Discarded. Reverted.
+- **Notes:** Trajectory matched exp 30 for epochs 1-7 (within 0.01), then started lagging ~0.02-0.03 from ep 10 onward, gap stable through the tail. Surprising finding: **train loss was ALSO worse** (0.68 vs exp 30's 0.66) despite the network having no dropout noise. Raw training loss is computed with dropout active, so removing dropout should *trivially* lower it (full network capacity) — instead it went UP. Interpretation: dropout at 0.15 isn't just regularizing against overfit, it's **helping optimization** — the stochastic noise prevents getting stuck in sharp local minima, and with each ResBlock sampling a different 15 % dropout, the network effectively sees a *larger ensemble* at every step. Removing this destroys the ensemble effect. L2 norm loss (from exp 30) has already-flat curvature near minima (unit gradient magnitude); dropout noise helps explore. Lesson: **dropout in this regime serves optimization + implicit ensembling, not overfitting prevention**. Five regularization/capacity tweaks now all discarded — exp 30's config appears near-optimal on axes tested. Remaining unexplored directions: (a) **add `t` timestamps feature** (currently unused in `model.forward()` — genuinely new information); (b) **add v_in × normals (local rotation feature)** — compute point curl in each voxel; (c) **multi-sample SDF** — not just nearest airfoil point, but avg over k=3 nearest (smoother boundary layer signal).
+
 ### 2026-04-18 — EMA decay 0.999 → 0.9995 [discarded]
 - **Hypothesis:** Exp 30 train loss was still descending at timeout ep 27 (train 0.66, val 0.8073). Double the EMA averaging window (1000 → 2000 steps, ~1.4 → ~2.8 epochs) to smooth late-training noise and better capture the cosine-tail trend.
 - **Change:** `train.py` — `ema = EMA(model, decay=0.9995)` (was 0.999).
