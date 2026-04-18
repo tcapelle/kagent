@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v34 KEPT (small) — 2nd lr=3e-4 + full-cosine solo 0.8578, 21-seed weighted 0.7511 (gain 0.0006)
+- **Hypothesis:** another seed of the v31 recipe (lr=3e-4 + full-cosine) — expected gain ~0.0015.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --lr 3e-4 --epochs 90` (same as v31).
+- **Result:** v34 solo val/l2 = **0.8578** at ep89 — noticeably weaker than v31's 0.8487. 21-seed weighted = **0.7511** (gain 0.0006 vs 20-seed 0.7517).
+- **Verdict:** kept (small gain banked) but yields are clearly diminishing even on proven axes.
+- **Notes:** Axis-hunting is saturating at ~0.0015/seed. Time to try a fundamentally different improvement: **EMA (exponential moving average) of weights** — standard technique, typically 0.003-0.01 solo improvement. Will implement in train.py and train v35 with EMA + full-cosine. If it works, every future seed gets free ~0.003 solo gain = 0.001-0.002 per-seed ensemble gain.
+
+
 ### 2026-04-18 — v33 KEPT — wd=5e-5 + full-cosine solo 0.8471, 20-seed weighted 0.7517 (gain 0.0015)
 - **Hypothesis:** wd=5e-5 (v27 solo 0.8596) combined with full-cosine should give a strong solo + new basin, per the v31 pattern.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --weight_decay 5e-5 --epochs 90`.
