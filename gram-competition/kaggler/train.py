@@ -11,6 +11,7 @@ Run:
   python train.py --agent <your-name> --wandb_name "<your-name>/<description>"
 """
 
+import copy
 import os
 import shutil
 import time
@@ -274,6 +275,7 @@ class Config:
     hidden: int = 256
     voxel_res: int = 64
     voxel_mid: int = 64
+    ema_beta: float = 0.0  # 0 = off; typical: 0.999 (short window) to 0.9999 (long)
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -319,6 +321,14 @@ def main():
     print(f"Model params: {n_params/1e6:.2f} M")
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+    # EMA shadow model (optional). Updated every step; validated alongside model.
+    ema_model = None
+    if cfg.ema_beta > 0:
+        ema_model = copy.deepcopy(model).to(device)
+        for p in ema_model.parameters():
+            p.requires_grad_(False)
+        print(f"EMA enabled, beta={cfg.ema_beta}")
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
@@ -378,6 +388,15 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             global_step += 1
+
+            if ema_model is not None:
+                with torch.no_grad():
+                    beta = cfg.ema_beta
+                    for ep, p in zip(ema_model.parameters(), model.parameters()):
+                        ep.data.mul_(beta).add_(p.data, alpha=1 - beta)
+                    for eb, b in zip(ema_model.buffers(), model.buffers()):
+                        eb.data.copy_(b.data)
+
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
             epoch_loss += loss.item()
@@ -387,25 +406,36 @@ def main():
         epoch_loss /= max(n_batches, 1)
 
         mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+
+        mean_val_ema = None
+        if ema_model is not None:
+            mean_val_ema, _ = validate(ema_model, val_loaders, device, global_step)
+            wandb.log({"val/l2_error_ema": mean_val_ema, "global_step": global_step})
+
         dt = time.time() - t0
 
         wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
                    "epoch_time_s": dt, "global_step": global_step})
 
+        candidate_val = mean_val_ema if (mean_val_ema is not None and mean_val_ema < mean_val) else mean_val
+        candidate_state = ema_model.state_dict() if (mean_val_ema is not None and mean_val_ema < mean_val) else model.state_dict()
+        candidate_source = "ema" if (mean_val_ema is not None and mean_val_ema < mean_val) else "raw"
+
         tag = ""
-        if mean_val < best_val:
-            best_val = mean_val
-            best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
+        if candidate_val < best_val:
+            best_val = candidate_val
+            best_metrics = {"epoch": epoch + 1, "val_l2_error": candidate_val, "source": candidate_source}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(model.state_dict(), model_path)
+            torch.save(candidate_state, model_path)
             shutil.copyfile(model_path, git_ckpt_path)
-            tag = " *"
+            tag = f" *({candidate_source})"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+        ema_str = f"  ema={mean_val_ema:.4f}" if mean_val_ema is not None else ""
         print(
             f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
-            f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+            f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{ema_str}{tag}"
         )
 
     total_time = (time.time() - train_start) / 60.0
