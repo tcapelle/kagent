@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter37: NEW cell ch=64@64³ warm-start from h0yvcd7w — ensemble **0.70265**
+- **Hypothesis:** Retry iter36's ch=64 isotropic gap with smaller grid (64³ vs 80³). ch=64@64³ has ~2× throughput of ch=64@80³ so fits 100 epochs — gives convergence room after warm-start grid change.
+- **Change:** `--unet_ch_base 64 --unet_grid 64³ --init_from model-h0yvcd7w --lr 2e-5 --epochs 100 --yflip_aug True` (run-id `n6vj5yfm`). 69 epochs completed in 27min (23.7s/epoch).
+- **Result:** Best val/l2=**0.8334** at epoch 65. Solo+TTA=**0.8050** — 15% worse than top members (grid 96×48×48 → 64³ loses info despite same channel count). Weight-opt sweep size=15 weighted=**0.70265**. Members: `[z5xvz0bu, msn73002, h0yvcd7w, o542zbvh, s72nkbjq, i39lwast, 6tusrvjg, 4ab6bl20, 922qsdfy, iclg3vmk, bn20n6rl, 690outlv, i504xzr0, bbd64rlo, n6vj5yfm]`. Weights: `[0.0890, 0.0907, 0.0685, 0.2055, 0.2041, 0.1681, 0.0790, 0.0002, 0.0003, 0.0002, 0.0658, 0.0001, 0.0001, 0.0123, 0.0161]`. n6vj5yfm contributes **0.0161** weight. **0.00003 improvement** over iter35 (0.70267) — essentially noise floor.
+- **Verdict:** KEPT (marginal). Small +0.00003 gain but adds architectural diversity (ch=64@64³ isotropic is a true gap-fill).
+- **Notes:** (1) iter37 gain (+0.00003) is 13× smaller than iter35's (+0.00039) and 5× smaller than iter34's (+0.00016). Gap-filling yields diminishing returns as the (ch, grid) space fills in. (2) Both ch=64 iterations (iter36 failed, iter37 marginal) suggest ch=64 cells add less decorrelation than ch=96/128 — perhaps because ch=64 has lower capacity to find distinct feature modes. (3) Ensemble trajectory: iter35=0.70267 → iter37=0.70265. (4) Next: we've filled the main (ch, grid) gaps. New directions: (a) **from-scratch fresh seeds at top-3 archs** — iter29 failed at ch=128@64³ with only 43 epochs but ch=96@64³ (faster) or ch=64@64³ (fastest) might converge enough in a 27min budget; (b) **different training recipe** — cosine LR, longer warmup, dropout, etc. for the same arch; (c) **k-NN or attention heads** in the UNet; (d) **physics/divergence regularizer** on the velocity field.
+
 ### 2026-04-18 — iter36: NEW cell ch=64@80³ warm-start from 6tusrvjg — DISCARDED, ensemble unchanged
 - **Hypothesis:** Extend new-cell strategy to ch=64 axis. ch=64 currently uses anisotropic grids {96×48×48, 128³, 64×32×32}; no isotropic 80³. Warm-start from 6tusrvjg (ch=64@128³, current weight 0.082) with lr=2e-5.
 - **Change:** `--unet_ch_base 64 --unet_grid 80³ --init_from model-6tusrvjg --lr 2e-5 --epochs 50 --yflip_aug True` (run-id `i0ood194`).
