@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter36: NEW cell ch=64@80³ warm-start from 6tusrvjg — DISCARDED, ensemble unchanged
+- **Hypothesis:** Extend new-cell strategy to ch=64 axis. ch=64 currently uses anisotropic grids {96×48×48, 128³, 64×32×32}; no isotropic 80³. Warm-start from 6tusrvjg (ch=64@128³, current weight 0.082) with lr=2e-5.
+- **Change:** `--unet_ch_base 64 --unet_grid 80³ --init_from model-6tusrvjg --lr 2e-5 --epochs 50 --yflip_aug True` (run-id `i0ood194`).
+- **Result:** Only **9 epochs** completed in 27min budget (180s/epoch — 3.5× slower than expected vs iter34's ch=128@80³ @ 74s/ep; cause unclear, possibly GPU contention or grid-mismatch overhead at ch=64 warmstart). Best val/l2=**0.8569**, Solo+TTA=**0.8303** — worse than all top-15 members. Greedy selection did not include i0ood194; best ensemble unchanged at size=14 weighted=**0.70267**.
+- **Verdict:** DISCARDED. Undertrained — grid change from 128³ to 80³ requires substantial adaptation and 9 epochs wasn't enough.
+- **Notes:** (1) iter36 is the 2nd DISCARD after iter29 (from-scratch); both hit "needs more convergence" wall. Takeaway: new-cell warm-start needs enough epochs for adaptation; budget-bound arch changes should stay within ~20% voxel-count delta from parent (iter35's 80³→64³ was 49% voxels; iter36's 128³→80³ was 24% voxels — should've been easier, but apparently slower throughput ate the budget). (2) Retry as iter37 with smaller grid ch=64@64³ (12.5% ch=128@64³ throughput; should fit 100+ epochs).
+
 ### 2026-04-18 — iter35: NEW cell ch=96@64³ warm-start from s72nkbjq — ensemble **0.70267**
 - **Hypothesis:** Extend iter34's new-cell strategy to the ch=96 axis. ch=96 only had {80³, 128³} tested; 64³ is a gap. Warm-start from s72nkbjq (current top-weight ch=96 member, weight 0.268) with lr=2e-5. Expected: even if solo worsens due to grid reduction, new cell contributes orthogonal decorrelation (iter34 pattern at different channel count).
 - **Change:** `--unet_ch_base 96 --unet_grid 64³ --init_from model-s72nkbjq --lr 2e-5 --epochs 50 --yflip_aug True` (run-id `msn73002`). 48 epochs completed in 27min budget.
