@@ -22,6 +22,50 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v22: Transolver PhysicsAttention + 40k point subsampling (DISCARDED)
+- **Hypothesis:** Research survey identified Transolver-style
+  PhysicsAttention (learned soft slicing over N points → M=64 tokens,
+  self-attention over M, scatter back via same weights) as the highest-
+  evidence replacement for VoxelTokenAttn (my hard-voxel analog of the
+  same idea). Combined with AB-UPT/Transolver-style point subsampling
+  (keep 40k of 100k per epoch), expected 0.05-0.12 single improvement.
+- **Change:** `model.py` adds `PhysicsAttention` (soft slicing + Ada-Temp
+  per-head per-point temperature + LayerScale residual) and
+  `ResidualMLPv22`. `train.py` adds `subsample_points` config (keeps all
+  airfoil pts + random volume pts, re-indexes idcs). CLI:
+  `--model_version v22 --n_blocks 10 --n_attn_blocks 4 --n_slices 64
+  --subsample_points 40000 --yflip_aug True --epochs 70 --dropout_p 0.15`.
+  70ep × 95s = 110.7 min; halved per-epoch time due to subsampling.
+- **Result:**
+  - Single: val/l2=**1.2205** at ep70 of 70. WandB `edward/v22-transolver`
+    (v8zk7fjd). 8.1GB peak (lower than v16 due to subsampled N).
+    Trajectory was steady but slow (ep18: 1.36, ep38: 1.29, ep70: 1.22).
+    Much worse than v20 (1.1304) / v21 (1.1354) at comparable epochs.
+  - Train loss was extraordinarily low (0.013 vs v20's 0.018 at same
+    epoch), i.e. the subsampled objective is much easier to fit, but
+    the model doesn't generalize to full 100k eval — clear train/eval
+    distribution mismatch. Voxel-stats features computed over 40k
+    points have different statistics than when computed over 100k,
+    so the model learns stats that don't match at eval time.
+  - **9-member ensemble: val/l2=1.0687** (WORSE than 8-member 1.0648,
+    delta +0.0039). Same failure mode as v18/v19 — single at 1.22 is
+    too far from quality floor to decorrelate productively, even with
+    genuinely different architecture.
+- **Verdict:** DISCARDED. Removed from MEMBERS. Re-ran ensemble.py to
+  restore 8-ensemble 1.0648 val.pt at current commit.
+- **Notes:** Two distinct failures at once:
+  (1) **Subsampling hurts**: the feature pipeline (voxel scatter, min-
+      distance-to-airfoil, std) is N-dependent, so training on 40k but
+      eval on 100k creates a statistical shift the model can't bridge.
+      AB-UPT avoids this by using anchor tokens + subsampled surround,
+      not just "drop 60% of points". Naive subsampling on this feature
+      pipeline is broken.
+  (2) **PhysicsAttention alone wasn't enough** to overcome (1). Can't
+      isolate the arch contribution from the subsampling penalty.
+  Next: v23 = Transolver PhysicsAttention WITHOUT subsampling. Should
+  recover the voxel-stats consistency and isolate whether soft-slicing
+  is better than hard-voxel attention on this problem.
+
 ### 2026-04-18 — v21: v16-arch attn=3 + yflip + dropout=0.15 (KEPT)
 - **Hypothesis:** v20 (1.1304 single, 1.0654 7-ensemble) succeeded because
   v16-family + yflip + higher dropout form a quality-parity diverse
