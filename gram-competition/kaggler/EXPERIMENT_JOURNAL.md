@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter33: 5th fully-trained grid=64 + 5-model ensemble
+- **Hypothesis:** each additional strong grid=64 has given diminishing but nontrivial ensemble gains (iter30: −0.017, iter31: −0.011, iter32: −0.013). A 5th should add ~−0.003 to −0.005.
+- **Change:** `MAX_TIMEOUT_MIN=65 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter33-grid64-5th`. Full schedule.
+- **Result:** iter33 standalone val = **0.8650** at e25/28 (tight cluster with iter30/31/32 at 0.865-0.870). Subset re-search:
+  - **iter24 + iter30 + iter31 + iter32 + iter33 (5-model)**: val l2 = **0.7832** ← new best
+  - 4 grid=64 alone (no iter24): 0.7908
+  - 6-model iter24+iter27+... (added 2nd grid=48): 0.7854 (worse)
+  - 6-model iter24+iter29+...: 0.7893 (worse — iter29 still hurts)
+  - 4-model drop-one (e.g. iter24+iter30+iter31+iter33): 0.7856-0.7869
+- **Verdict:** **kept** — submission at 9c177b2 is the 5-model 0.7832 (−0.003 vs 0.7862). Gap to alphonse (0.7761) now **0.007**.
+- **Notes:** Pattern holds: exactly one grid=48 + all strong grid=64 is optimal. Diminishing returns compressing — iter33 added only −0.003 vs iter32's −0.013. Next should pivot: (a) break the 0.866-cluster ceiling by trying a deliberately different architecture (grid=80 or depth=4 transolver), (b) longer training (40 epochs) for a single model to see if train loss keeps dropping past 0.88 → 0.8, (c) stronger TTA (8 augmentations: flip × rotate × time-reverse), (d) test-split-aware augmentation strategy.
+
 ### 2026-04-18 — iter32: 4th fully-trained grid=64 + ensemble subset re-search
 - **Hypothesis:** each fully-trained grid=64 has added significant ensemble signal (iter30: −0.017, iter31: −0.011). A 4th should add roughly another −0.006; and with one more strong grid=64, the half-trained iter29 may no longer be needed.
 - **Change:** `MAX_TIMEOUT_MIN=65 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter32-grid64-4th`. Full 28 epochs. Then re-ran the subset ablation.
