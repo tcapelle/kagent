@@ -158,7 +158,12 @@ class BaselineMLP(nn.Module):
         self.n_anchors = n_anchors
         self.edge_k = edge_k
         self.fourier = FourierEmbed(n_freqs=fourier_freqs)
-        in_dim = 3 + self.fourier.out_dim + T_IN * 3
+        # Inputs per point:
+        #   raw pos (3), Fourier pos (6*n_freqs), raw velocities (T_IN*3),
+        #   temporal diffs (T_IN-1)*3, velocity magnitudes (T_IN)
+        vel_diff_dim = (T_IN - 1) * 3
+        vel_mag_dim = T_IN
+        in_dim = 3 + self.fourier.out_dim + T_IN * 3 + vel_diff_dim + vel_mag_dim
         out_dim = T_OUT * 3
 
         # --- Per-point MLP branch (baseline-equivalent) ---
@@ -185,12 +190,18 @@ class BaselineMLP(nn.Module):
         B, T, N, C = velocity_in.shape
         v_norm = (velocity_in - self.vel_mean) / self.vel_std
         v_flat = v_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
+
+        # Temporal velocity diffs and per-frame magnitudes (normalized space)
+        v_pt = v_norm.permute(0, 2, 1, 3)                     # [B, N, T, 3]
+        v_diff = (v_pt[:, :, 1:] - v_pt[:, :, :-1]).reshape(B, N, (T - 1) * 3)
+        v_mag = v_pt.norm(dim=-1)                             # [B, N, T]
+
         pos_min = pos.amin(dim=1, keepdim=True)
         pos_max = pos.amax(dim=1, keepdim=True)
         pos_n = (pos - pos_min) / (pos_max - pos_min + 1e-6) * 2 - 1
 
         pos_feat = self.fourier(pos_n)             # [B, N, 6*n_freqs]
-        x_in = torch.cat([pos_n, pos_feat, v_flat], dim=-1)
+        x_in = torch.cat([pos_n, pos_feat, v_flat, v_diff, v_mag], dim=-1)
         x = self.proj_in(x_in)                     # [B, N, D]
         x = self.point_blocks(x)                   # [B, N, D]
         point_pred = self.point_head(x)            # [B, N, out_dim]
