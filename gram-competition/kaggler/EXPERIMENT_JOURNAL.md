@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — lr 5e-4 → 1e-3 (aggressive LR under unnormalized MSE)
+- **Hypothesis:** Exp 21 finished with train loss still falling (1.35 at ep 28), suggesting undertraining not overfitting. Under unnormalized MSE the loss is ~300× larger, but AdamW's per-parameter second-moment normalizes this, so effective step size is unchanged. A 2× peak LR should make more progress per step in the same 28-epoch cosine budget. Risk: early divergence, but AdamW + EMA tolerate moderate LR perturbations.
+- **Change:** `train.py:89` — `lr: float = 5e-4 → 1e-3`. Single-line change.
+- **Result:** val/l2_error = **0.9060** (epoch 28 of 28 @ 30.4 min, 8.2 GB peak). Train loss 1.35 (matched exp 21). **0.42 % improvement over exp 21 (0.9098 → 0.9060)**.
+- **Verdict:** Kept. Third consecutive hyperparameter-tuning win on the same architecture (exp 16 → 21 → 23 sequence: 0.9147 → 0.9098 → 0.9060).
+- **Notes:** Val trajectory started BEHIND exp 21 (ep 1: 4.61 vs 3.11; ep 10: 1.09 vs ~1.05) because aggressive LR is noisier early. Crossed around ep 21 (0.923 vs ~0.92) and the cosine tail finished lower (0.906 vs 0.910). Classic "higher peak LR + cosine anneal" signature: worse start, better finish, because the scheduler's late-stage low LR lets the model settle at a slightly better minimum after more exploration early. Validates the theoretical argument that under unnormalized loss, the optimization landscape is essentially the same up to AdamW's adaptive normalization, but headroom existed for more aggressive step sizes. Leader gap: 0.9060 − 0.7475 = 0.1585 (17.5 %). Next candidates: (a) lr 1e-3 → 1.5e-3 to see if we're still undershooting; (b) weight_decay 1e-4 → 3e-4 since higher LR magnifies weight growth; (c) **add SDF-to-airfoil** per-point feature — strong physical prior for boundary-layer behavior, currently only the final no-slip BC carries that info; (d) bigger architectural bet — replace voxel CNN with k-NN graph-conv since 80³ = ~3 cm/cell can't resolve boundary layer (~1 mm). Ship: commit `d44f829`, predictions `/mnt/new-pvc/predictions/apr16/gilbert/d44f829/val.pt`.
+
 ### 2026-04-18 — point_hidden 384 → 512 (capacity bump under unnormalized MSE) [discarded]
 - **Hypothesis:** With exp 21's loss-metric alignment win (0.9098), the gradient signal is now well-calibrated to the val objective. A larger point-head (384→512, ~1.8× params in the head) should convert that cleaner signal into better fit, since exp 16 plateaued at a smaller capacity under the misaligned loss.
 - **Change:** `train.py` + `predict.py` — single kwarg change `point_hidden=384 → 512`. No other modifications.
