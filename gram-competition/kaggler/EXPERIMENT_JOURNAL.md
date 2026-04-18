@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v43 KEPT ★★ — L2 + lr=3e-4 solo=0.7787 (weakest L2), 29-seed top29/T=0.02 = 0.7074 (gain 0.0051)
+- **Hypothesis:** lr=3e-4 was the strongest single-axis config in MSE regime (v31 0.8487). Transfer to L2 regime — expected to give another strong L2 basin distinct from v40/v41/v42. Even if solo is slightly weaker, L2-regime basin diversity should contribute ensemble gain.
+- **Change:** CLI only — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --lr 3e-4 --epochs 70`. 52s/epoch (voxel_mid=64), full cosine completed in ~60 min.
+- **Result:** v43 solo val/l2 = **0.7787** at ep65/70 — the *weakest* L2 seed so far (v40=0.7759, v41=0.7654, v42=0.7688). lr=3e-4 didn't help L2 (L2 has better-calibrated gradients, doesn't need slower LR). BUT: 29-seed ensemble top29_mean_T=0.02 = **0.7074** (gain 0.0051 over v42's 0.7125). Confirms L2 seeds still add diversity value even below-avg solo.
+- **Verdict:** KEPT. Sub-0.71 for the first time. Gap to thorfinn (0.7022) → 0.0052.
+- **Notes:** 4 L2 seeds now aggregate in the softmax. All three top L2 seeds (v40, v41, v42, v43) dominate the weights. Next (v44): **L2 + wd=5e-5 + full-cosine** — transfer v33's wd=5e-5 axis. v45: L2 + ema_beta=0.9999.
+
+
 ### 2026-04-18 — v42 KEPT ★★★ — L2 + voxel_mid=96 arch-diverse L2 seed solo=0.7688, 28-seed top28/T=0.02 = 0.7125 (gain 0.0115)
 - **Hypothesis:** v41 showed adding pure L2 seeds gives huge ensemble gains (0.0194). Adding a L2 seed on a DIFFERENT arch (voxel_mid=96) should be even more orthogonal — two diversity axes stacked (loss regime + arch capacity). v36/v39 showed voxel_mid=96 was saturated in MSE regime, but the L2 regime is fresh, and arch-diverse L2 basins should contribute meaningful orthogonality.
 - **Change:** CLI only — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --voxel_mid 96 --epochs 60`. Full cosine fit (60 × 66s = 66 min). 15M-param model (59MB ckpt).
