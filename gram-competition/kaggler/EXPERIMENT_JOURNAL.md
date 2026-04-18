@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage C 2nd pass-4 with EMA — iter 64 best=0.9867/ema=0.9857, 91-ensemble **0.9493** (**-0.07%**)
+- **Hypothesis:** Continue EMA rollout across lineages — iter64 on lineage C from iter49.final (drop=0.05).
+- **Change:** no code. `WANDB_MODE=offline --resume .../model-wt22hwy0/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9778 --ema_decay 0.999 --epochs 25`. 33.5 min, E8 early stop.
+- **Result:** best_run=0.9867 at E7, best_run_ema=0.9857 at E8 (0.10% EMA lift). Staged iter64.pt + iter64_ema.pt. Soups: soup_C5, soup_C_ema, soup_C4pair.
+  - **91-ensemble** = **0.9493** (Ux=0.6163, Uy=0.3034, Uz=0.4534). Submitted. **Cumulative session: 1.0625 → 0.9493 = 10.66%.**
+- **Verdict:** WIN (small). Lineage C EMA weaker contribution because single-model still >0.98 (vs B's 0.9757). EMA strategy worthwhile but decay curve continuing.
+- **Notes:** **Iter 65 launched = lineage D 2nd pass-4 EMA** (iter52.final, drop=0.2). **Iter 66 launched = lineage E 2nd pass-4 EMA** (iter55.final, drop=0.1). After full lineage rollout, consider: (a) cross-lineage EMA soups (careful — prior cross-lineage weight-avg failed); (b) 2nd-generation EMA: resume from iter63's best_run_ema and train again; (c) TTA: add X-rotation TTA to predict.py.
+
 ### 2026-04-18 — Lineage B 2nd pass-4 with EMA — iter 63 best=0.9775/ema=0.9757, 86-ensemble **0.9500** (**-0.16%**, crossed 0.95)
 - **Hypothesis:** Mirror iter62 EMA recipe for lineage B (from iter46.final = best pass-3 base). EMA expected to provide 0.1-0.2% lift and distinct soup ingredient.
 - **Change:** no code. `WANDB_MODE=offline --resume .../model-f63b23qm/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9778 --ema_decay 0.999 --epochs 25`. 31.0 min, E6 early stop.
