@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — lr 1.5e-3 → 2.5e-3 under L2 loss [discarded]
+- **Hypothesis:** After exp 30 won with L2 norm loss, test whether the L2 regime allows a higher LR ceiling than MSE. L2 gradient is capped in magnitude per-point (unit direction), so AdamW should see smaller-norm updates and might tolerate 2.5× the base LR. If so, faster convergence within the 30 min budget.
+- **Change:** `train.py` — `lr: float = 2.5e-3` (only).
+- **Result:** val/l2_error = **0.8263** (epoch 27 of 28 @ 30.9 min — timeout). **Worse than exp 30 (0.8073) by 2.4 %**.
+- **Verdict:** Discarded. Reverted to lr=1.5e-3.
+- **Notes:** Trajectory was consistently ~0.03-0.10 worse at every epoch after ep 7; gap stabilized at ~0.03 through the cosine tail and never closed. Interpretation: the "L2 has capped gradients" argument is wrong in the AdamW regime — AdamW already normalizes gradients per-parameter via its second-moment estimate, so the per-point gradient cap of L2 vs MSE doesn't change the effective step size after Adam's normalization. LR optimum appears to be a property of the loss landscape curvature, not the raw gradient magnitudes, and it stays near 1.5e-3 regardless of loss form. Lesson: **AdamW + any smooth loss → same LR ceiling**. Next: directions on top of exp 30 baseline that are actually orthogonal: (a) **higher EMA decay 0.999 → 0.9995** — doubles the averaging window, compensates for tight cosine tail; (b) **k-NN point attention** — architectural change for sub-voxel spatial context; (c) **per-component loss weighting** — L2 norm treats all 3 velocity components equally but Ux has ~3× Uy/Uz std in training data, may be systematically under-corrected.
+
 ### 2026-04-18 — L2 velocity loss (match val metric)
 - **Hypothesis:** Three consecutive feature-addition discards (27,28,29) suggest the bottleneck isn't input features. Current loss `(pred - v_out).pow(2).mean()` minimizes squared error; val metric is L2 norm `(pred - v_out).norm(dim=-1).mean()`. These differ: MSE weights each scalar component² (emphasizes outliers), L2 norm treats the 3-vector error as a single unit-length-clipped signal. Training on the actual val metric should directly reduce what's scored.
 - **Change:** `train.py` — `loss = (pred - v_out).norm(dim=-1).mean()` (one-line change).
