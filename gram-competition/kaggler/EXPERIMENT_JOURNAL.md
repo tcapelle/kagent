@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — point_hidden 384 → 512 (capacity bump under unnormalized MSE) [discarded]
+- **Hypothesis:** With exp 21's loss-metric alignment win (0.9098), the gradient signal is now well-calibrated to the val objective. A larger point-head (384→512, ~1.8× params in the head) should convert that cleaner signal into better fit, since exp 16 plateaued at a smaller capacity under the misaligned loss.
+- **Change:** `train.py` + `predict.py` — single kwarg change `point_hidden=384 → 512`. No other modifications.
+- **Result:** val/l2_error = **0.9152** (epoch 22 of 28 @ 31.4 min, 10.4 GB peak). Train loss 1.48. **Worse than exp 21 (0.9098) by 0.6 %**.
+- **Verdict:** Discarded. Reverted; kept exp 21 checkpoint.
+- **Notes:** Primary failure mode: 85 s/epoch vs exp 21's ~65 s/epoch, so only 22/28 epochs completed within 30 min budget. Cosine LR schedule was `T_max=28`, meaning at ep 22 the LR was still at `cos(22·π/28)·lr_max/2 ≈ 0.14·lr_max` — LR never reached its ~zero-tail, so EMA weights never got the fine-tuning from the final 6 epochs. Train loss was still falling (1.48 at ep 22 vs exp 21's 1.42 at ep 28), suggesting the bigger model could be competitive if given full schedule. Clean lesson on compute-aware capacity scaling: **always divide cosine T_max by per-epoch slowdown** when bumping capacity. Next: (a) retry point_hidden=512 with `epochs=22` (match actual completed count, full anneal); (b) lr bump 5e-4 → 7e-4 (gradients 300× larger under unnormalized loss); (c) radical inductive-bias change — 80³ voxel grid = ~3 cm/cell, far coarser than CFD boundary layers (~1 mm), so more voxel capacity is the wrong axis; try k-NN-GNN on points, Fourier neural operator on the grid, or an attention-based point-point mixer.
+
 ### 2026-04-18 — unnormalized MSE loss (align with val L2 weighting)
 - **Hypothesis:** Current normalized MSE `((pred-v_out)/vel_std).pow(2).mean()` equal-weights per-component squared error. But the val metric is un-normalized L2 norm `(pred-v_out).norm(dim=3).mean(...)`, which is naturally dominated by components with larger typical error (high vel_std — Ux has std=20 vs Uy=7, Uz=9.5). So the current loss over-weights Uy at the expense of Ux relative to what val rewards. Switching to `(pred-v_out).pow(2).mean()` scales per-component gradient by vel_std, matching how val weights errors.
 - **Change:** `train.py:216` — drop the `/vel_std_gpu` inside the loss: `loss = (pred - v_out).pow(2).mean()`. Single-line change; no other modifications.
