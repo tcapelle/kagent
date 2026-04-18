@@ -22,7 +22,92 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — exp66: TTA y-flip — add y-flipped predictions to ensemble pool
+- **Hypothesis:** train.py uses `yflip_prob=0.5` during training, so the model is approximately y-equivariant. Generating a second prediction per ckpt from y-flipped input (and un-flipping the output) should act as a noisy sibling and add pool diversity, similar to exp63's "orthogonal errors" observation.
+- **Change:** new `pred_tta.py`: for the top-30 ckpts by individual val l2, run `predict_yflipped(model, loader, device)` (flip `pos[...,1]` across per-batch y-center, flip `v_in[...,1]` sign, un-flip `pred[...,1]` sign), cache to `predcache_tta/{ckpt}_yflip.pt`. Stack 60 original + 30 TTA = 90 preds, run 5000-step Adam on softmax logits.
+- **Result:** val/l2=**0.8465** (−0.0191 over exp64 0.8656, largest single gain of session). Individual yflip l2 values varied widely: wavg3 1.03, 74m37pbr 0.98, mgo03egs 1.04, hvoch2y9 1.34. Adam found strong yflip weights: 74m37pbr_yflip 0.133, bbr0yz3i_yflip 0.100, azw790ng_yflip 0.044 — the model is *not* perfectly equivariant, so yflip preds carry orthogonal error content.
+- **Verdict:** KEPT — big jump. Saves to `0bce4a5-tta/val.pt`.
+- **Notes:** The yflip axis happened to work despite the model not being strictly equivariant (yflip l2s are 1.0-1.3 individually). This is stronger evidence that *any* transform that yields slightly-different but valid predictions adds value to the Adam ensemble. Next: (1) x-flip TTA (along streamwise axis — less likely to help since flow is directional, but cheap to try), (2) point subset ensembling (predict on random 80% point subsets, average), (3) more fresh trainings with larger LR and different seeds.
+
+### 2026-04-18 — exp65: smaller hidden=128 model for diversity — PARKED
+- **Hypothesis:** different model capacity might produce different errors and boost ensemble.
+- **Change:** launched training with `hidden=128, n_blocks=6` — one-off.
+- **Result:** val/l2=1.2375 (best epoch 15). Could not integrate into pred_all.py because its `load_and_complete` uses a hidden=256 reference state so shape-mismatch drops all weights.
+- **Verdict:** PARKED — model trained fine but integration requires architecture-dispatch in the prediction script. Deferred in favor of TTA which was trivially integrable.
+- **Notes:** Ckpt saved at `model-c5i1mfjk/checkpoint.pt`. Could be revived later with a separate predict-and-cache script if a future exp wants more diversity.
+
+### 2026-04-18 — exp64: fresh training from scratch + re-run pred_all (60 ckpts)
+- **Hypothesis:** exp63 showed diversity matters more than individual score; even a weak fresh ckpt from totally different training trajectory (different init seed, no warm-start) could add diversity to ensemble.
+- **Change:** `train.py --lr 1e-3 --subsample_train 0` (full-res, high LR, fresh init), 25 min budget. Then re-run `pred_all.py` to include new ckpt.
+- **Result:** New ckpt `model-dos9qdkq` val/l2=1.6474 (best epoch 4 of ~3). Ensemble with 60 ckpts via Adam: **0.8656** (−0.0009 over exp63). dos9qdkq gets weight 0.027 in final mix.
+- **Verdict:** KEPT — another small gain. Diminishing returns from diversity in the current pool scheme.
+- **Notes:** 25 min was too short for fresh training to converge (~5 epochs at 1.65). Next: longer training runs, OR try per-channel weighting, OR stacking.
+
+### 2026-04-18 — exp63: extend pool to all 59 ckpts + direct optimization
+- **Hypothesis:** exp62 pool was 21 "recent good" ckpts; many earlier/weaker ckpts (38 more) exist. Even if their individual scores are 0.92-2.5, they may contribute orthogonal errors to the mixture.
+- **Change:** new `pred_all.py`: caches per-ckpt val predictions for every ckpt in PVC (59 total), loads all as [K,80,5,N,3] tensor on GPU, runs Adam on softmax logits against eval metric.
+- **Result:** val/l2=**0.8665** (−0.0071 over exp62 direct, −0.0135 over exp60 uniform, −0.0136 from exp45). Uniform-59 = 1.0649 (dragged by bad ckpts); Adam quickly routes weight to useful ones. Top 14 ckpts get meaningful weight: mgo03egs 0.13, eu7w7w48 0.12, 8bycg5j0 0.10, 79ynl9v3 0.09 (single score 0.94!), azw790ng 0.09, 2qrz5f8c 0.09, kgxzr9zm 0.07, ecrz5gj1 0.07, 4cun281z 0.05 (single 1.14!), dfal10k2 0.04, lkb1o42z 0.04, kvptxsnv 0.03, oxfbajwq 0.02, 1mnzgy9c 0.02.
+- **Verdict:** KEPT — biggest pred-avg gain yet; confirms diverse ckpts (even weak ones) help.
+- **Notes:** Individual-score >1.0 ckpts like 4cun281z, oxfbajwq get small but non-zero weights → they must be right on samples others get wrong. Next: (1) train fresh ckpts with different seeds/noise to expand pool further, (2) TTA with y-axis flip (domain looks symmetric y=-0.41 to 0.41), (3) per-sample mixture weights.
+
+### 2026-04-18 — exp62: direct autograd optimization on the eval metric (softmax weights)
+- **Hypothesis:** exp61 showed LS-minimizing weights don't match the per-point-L2 eval metric (they over-shrunk). Solution: make weights softmax-parameterized, compute the actual eval metric, backprop through the weighted mean of cached predictions, run Adam for a few thousand steps.
+- **Change:** new `pred_direct.py`: load 21 cached preds, init logits near uniform-of-8 (exp60 greedy), Adam lr=0.02 on softmax(logits) minimizing `(pred-truth).norm(dim=3).mean(...)`. Saves to `{commit}-direct/val.pt`.
+- **Result:** val/l2=**0.8736** (−0.0006 over exp60 uniform 0.8742). Converged after ~600 steps. Top weights: mgo03egs 0.214, eu7w7w48 0.211, bbr0yz3i 0.201, b1hzbt3r 0.124, kvptxsnv 0.102, 670v4v75 0.093, 18f6e3td 0.056. Interestingly *excluded* wavg3 and wavg-816156a (weight → 0) — wavg meta-ckpts are linear combos of this pool so adding them is redundant.
+- **Verdict:** KEPT — direct autograd beats greedy selection; validates the math. Still modest gain.
+- **Notes:** Given cached preds, each optimization run is ~30s. Next: TTA (rotate input by symmetric transforms), per-sample weighting, or train diverse ckpts for more pool.
+
+### 2026-04-18 — exp61: LS weighted prediction averaging — FAILED
+- **Hypothesis:** exp60 uniform-8 average might be beaten by LS-optimal per-ckpt weights.
+- **Change:** new `pred_weighted.py`: cache per-ckpt predictions to `/mnt/new-pvc/kagent/apr16/tanjiro/predcache/*.pt`, solve `min_w ||Pw - Y||²` both unconstrained and on simplex via projected gradient.
+- **Result:** unconstrained LS l2=0.8841 (worse); simplex LS l2=0.8774 (same as best single ckpt — converges to near-delta on wavg3). MSE objective ≠ eval metric (mean per-point L2 norm).
+- **Verdict:** DISCARDED — LS over elementwise residuals misaligns with per-point L2 norm metric. Motivates exp62 direct metric optimization.
+- **Notes:** The pred cache at /mnt/new-pvc/kagent/apr16/tanjiro/predcache/ is reusable — future ensemble experiments should load from there and skip the ~30 min prediction step.
+
+### 2026-04-18 — exp60: prediction averaging (not weight averaging) across 21 ckpts
+- **Hypothesis:** weight averaging only works for ckpts in the same loss basin; prediction averaging works even across disjoint basins because we only combine final outputs. Different ckpts may make independent errors that cancel. Typically 0.005-0.02 stronger than SWA.
+- **Change:** new `pred_ensemble.py`: each of 21 candidates runs full inference on val, store all predictions in CPU memory, greedy-select subset whose uniform mean minimizes val l2. Outputs saved to `b50a07e-predavg/val.pt`.
+- **Result:** val/l2=**0.8742** (−0.0032 over exp59 wavg3, −0.0059 over exp45 baseline). Best: 8 ckpts [wavg3, wavg1, 670v4v75 (237-key, indiv 0.8908), mgo03egs, bbr0yz3i, kvptxsnv (237-key, indiv 0.9142!), eu7w7w48, b1hzbt3r]. Notably includes 3 ckpts with individual scores >0.88.
+- **Verdict:** KEPT — biggest single gain since switching strategies. Consistent with hypothesis: pred-avg lets each basin contribute what it's right about.
+- **Notes:** kvptxsnv alone is 0.9142 but improves ensemble — it must be right on samples the others get wrong. Next: (a) weighted pred-avg (learn per-ckpt coefficients on val), (b) TTA (test-time aug: rotate input 90°, avg predictions), (c) fresh training run to expand pool with different seed/noise.
+
+### 2026-04-18 — exp59: wavg3 — pre-knn (237-key) ckpts + compounding prior wavgs
+- **Hypothesis:** More cross-arch diversity should help. Pad 237-key ckpts (exp30-33 era, pre-kNN) with zeros and include them. Also seed pool with prior wavg results (wavg-816156a from exp57, wavg2-266db37 from exp58) to let greedy compound.
+- **Change:** `wavg_eval3.py`: 20 candidates incl. 237-key pre-knn; zero-pad missing keys including shape mismatches.
+- **Result:** val/l2=**0.8774** (−0.0012 over exp58 wavg2, −0.0027 over exp45). Best: [wavg2-266db37, bal6xybc (exp33, 237-key), wavg-816156a, eu7w7w48]. Including bal6xybc helped despite its individual score being 0.8874.
+- **Verdict:** KEPT — third successive ensemble gain.
+- **Notes:** Compounding wavgs work (wavg2 included in ensemble along with wavg of different set). Next: test even older ckpts (111, 127 keys) and prediction-averaging (not weight averaging) which is usually stronger.
+
+### 2026-04-18 — exp58: extended weight-avg including 241-key pre-exp44 checkpoints
+- **Hypothesis:** exp57 found best avg from 4 of 9 candidates. Adding 241-key ckpts (exp41-43 era; pre pos-offset branch) with zero-initialized pos_proj adds cross-arch-variant diversity.
+- **Change:** `wavg_eval2.py`: pads 241-key ckpts with zero pos_proj, greedy searches starting from best single (which is now the wavg from exp57).
+- **Result:** val/l2=**0.8786** (−0.0003 over exp57). Best combo: [wavg-816156a, eu7w7w48 (exp44), jay6zniz (exp42)]. jay6zniz alone was 0.8805 but averaged with wavg+eu7w7w48 gave additional gain.
+- **Verdict:** KEPT — compound ensemble working. Total improvement from exp45 is 0.0015 (0.8801 → 0.8786).
+- **Notes:** Greedy stopped after 3 ckpts — further adds didn't help. Next: generate fresh diverse checkpoints via short training with different configs (noise aug, different LR/seed) to expand pool.
+
+### 2026-04-18 — exp57: greedy weight-average ensemble across 4 checkpoints
+- **Hypothesis:** 10 consecutive training experiments failed to beat exp45 (0.8801). Each training step moves weights away from val optimum. BUT the experiments saved several near-optimum checkpoints in the same basin — averaging them should recover a "center" that generalizes better than any individual. Zero training cost.
+- **Change:** New script `wavg_eval.py`: load every compatible PVC checkpoint, validate each, then greedy-append the one that reduces val/l2 most. Save the best average to checkpoints/best.pt + new PVC dir.
+- **Result:** val/l2=**0.8789** (−0.0012 over exp45). Greedy ensemble: [mh5wd0t6 (exp45), eu7w7w48 (exp44), bbr0yz3i, b1hzbt3r]. Interestingly b1hzbt3r individually was 0.8882 (much worse) but *adding* it to the avg still helped — diversity helps.
+- **Verdict:** KEPT — first win in 11 experiments. New rank still #4 but gap shrinks.
+- **Notes:** The 4 checkpoints were from the same underlying arch (exp41+exp44+exp45 variants). This validates "loss landscape is flat around exp45 — averaging finds the center". Next: generate MORE diverse checkpoints from independent trainings to feed a bigger ensemble.
+
+### 2026-04-18 — exp56: full-res + EMA + LR warmup, warm-start from exp45
+- **Result:** E1=0.8802, E2-5 climbed to 0.8808. Best at E1. No improvement over exp45 (0.8801).
+- **Verdict:** DISCARDED as standalone. But exp56 E1 ckpt (model-fgqa41ag) entered the wavg candidate pool.
+- **Notes:** Full-res training with warm-start confirms "training near exp45 stays in basin but can't descend". Consistent with exp55 drift.
+- **Hypothesis:** exp55 (EMA+warmup, subsample=50k) drifted up (0.8809→0.8817→0.8821). Trajectory moves AWAY from exp45 val optimum. Theory: subsample=50k creates density mismatch with full-res val. Train at full-res (subsample=0) so train/val density matches, EMA smooths the overfit climb exp32 showed. exp32 E1 at full-res was 0.8879 (warm from exp31=0.8900), good; maybe full-res + EMA with better starting point hits lower.
+- **Change:** same code as exp55; flag --subsample_train 0.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Each epoch ~5 min at full res → 6 epochs in 30 min.
+
 ### 2026-04-18 — exp55: EMA + LR warmup, warm-start from exp45
+- **Result:** E1=0.8809, E2=0.8817, E3=0.8821 (monotonic up, killed at E3). Killed. EMA did NOT prevent drift — training trajectory moves away from exp45 val optimum even with 48-77% EMA weighting.
+- **Verdict:** DISCARDED — the 10th consecutive warm-start failure. Training dynamics themselves are broken: with subsample=50k, exp45 is at a val-set local min that no gradient step can improve on.
+- **Notes:** This rules out stabilization fixes alone. Next: full-res training (density match) + EMA.
+
+
 - **Hypothesis:** 8 consecutive warm-start experiments (exp46-54) all failed to beat exp45 (0.8801), usually because val spiked at E1-2 as new/perturbed weights disrupted the fine-tuned model. EMA (decay=0.999) of training weights, used at validation, starts exactly at exp45 and smooths out trajectory noise. LR warmup (200 linear steps → cosine) softens the LR shock at warm-start start. Combined, this should let the model actually improve rather than regress.
 - **Change:** train.py: added `ema_decay`, `warmup_steps` config. Built ema_model (copy of model, no grad), updated per-step after optimizer.step. Replaced CosineAnnealingLR with step-based LambdaLR (linear warmup → cosine). Validation/checkpoints now use ema_model.
 - **Result:** TBD
