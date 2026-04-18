@@ -1,0 +1,4 @@
+# Checkpoints used for exp 46 ensemble (val/l2 = 0.7898)
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-o61qmg5s/checkpoint.pt
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-6nla1uij/checkpoint.pt
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-pgbik4e5/checkpoint.pt
