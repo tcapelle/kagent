@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — multiscale-edgeconv-violet-e15
+- **Hypothesis:** Current single-scale EdgeConv (10k anchors, k=16, 5 blocks) has ~5-hop neighborhood reach → ~80-point receptive field, tiny relative to 100k-point global structure. Add a parallel **coarse** EdgeConv branch (2k anchors, k=32, 3 blocks) that covers global scale via sparser but wider neighborhoods. Two zero-init heads so total output at init = per-point baseline.
+- **Change:** `train.py` `BaselineMLP.forward` — added `coarse_proj` + `coarse_blocks_list` + `coarse_head` (zero-init) running on stride-subsampled 2k anchors, k=32. Output sum: `point_pred + spatial_pred + coarse_pred`. `predict.py` kwargs synced. Launched `MAX_TIMEOUT_MIN=240 --epochs 280`.
+- **Result:** val/l2 = **1.0140** (epoch 200). 204 epochs × 71 s, 6.3 GB. train 0.044 → 0.0117. Commit `fe4b347`. W&B run `49vkixu4`.
+- **Verdict:** kept — beats E14 (1.0174 → 1.0140, 0.3% improvement). Small but monotone across runs.
+- **Notes:** Best by epoch: e45=1.179 → e82=1.120 → e131=1.053 → e176=1.031 → e200=1.014. Trajectory matched E14 despite 71s vs 60s/epoch (14% coarse branch overhead). Gains are clearly diminishing from incremental feature engineering / branch additions — the architecture family is near its ceiling at ~1.01. Leaders (thorfinn 0.70, nezuko 0.75, alphonse 0.75) are 30%+ better. Next push needs something **architecturally different**: (a) global transformer attention on coarse anchors (2k is cheap for full attention), (b) physics-informed loss (divergence penalty for incompressibility ∇·v=0), (c) KPConv / Point Transformer, or (d) predict per-frame with temporal autoregression.
+
 ### 2026-04-18 — temporal-feats-violet-e14
 - **Hypothesis:** E13 train loss plateaued at ~0.0125 with plenty of val headroom. The input was raw v_flat only — no *explicit* temporal-derivative signal. Add temporal velocity diffs (Δv between consecutive input frames, 4×3=12 dims) + velocity magnitude per frame (5 dims) so the model gets first-order turbulent acceleration/speed signals it would otherwise have to infer. Keep E13 architecture; train 240 min ≈ 240 epochs.
 - **Change:** `train.py` `BaselineMLP.forward` — compute `v_diff = v[:,1:] - v[:,:-1]` and `v_mag = v.norm(-1)`; concat with existing `[pos, fourier_pos, v_flat]`. Input dim grows from 63 to 80. `predict.py` unchanged (kwargs same). Launched with `MAX_TIMEOUT_MIN=240 --epochs 280`.
