@@ -42,7 +42,7 @@ from model import VoxelFlowNet
 model = VoxelFlowNet(
     vel_mean=torch.zeros(3), vel_std=torch.ones(3),
     grid_res=80, grid_ch=32, n_grid_blocks=4,
-    point_hidden=384, n_point_blocks=6, point_dropout=0.0,
+    point_hidden=384, n_point_blocks=6, point_dropout=0.15,
 ).to(device)
 # Stats live in the state_dict as registered buffers, so just load everything.
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
