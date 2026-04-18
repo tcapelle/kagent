@@ -153,7 +153,7 @@ class EMA:
             sd[k].copy_(self.backup[k])
 
 
-ema = EMA(model, decay=0.999)
+ema = EMA(model, decay=0.9995)
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
