@@ -22,6 +22,11 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — 65-ensemble eval post-iter57 = **0.9588** (-0.30% vs 0.9617)
+- **Change:** none. Added iter57.pt + updated soup_B to 4-member + soup_B3 (iter45+46+57) + soup_B34 (iter46+57) → ensemble 62 → 65.
+- **Result:** **val/l2=0.9588** (Ux=0.6235, Uy=0.3050, Uz=0.4578). Submitted via predict.py.
+- **Verdict:** WIN. Extending lineage B to pass 4 + its 3 new soup variants gave -0.30% at zero extra training cost beyond iter57. **Cumulative session: 1.0625 → 0.9588 = 9.76%.** Expected rank: 6 (passing askeladd 0.9628).
+
 ### 2026-04-18 — Lineage B pass 4 — iter 57 single 0.9778 NEW FLOOR, 62-ensemble 0.9617 (**-0.38%**)
 - **Hypothesis:** Mirror iter56 for lineage B — pass 4 at lr=2e-5 from iter46.final. Extend soup_B to 4 members + new drop-fresh 3-member and pass3+pass4 pairwise variants.
 - **Change:** no code. `--resume .../model-f63b23qm/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9784 --epochs 25`.
