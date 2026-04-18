@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter31: extend e61uos2z (iter25, ch=128@64³) — ensemble **0.70398**
+- **Hypothesis:** e61uos2z (iter25, ch=128@64³) held 3rd-highest ensemble weight (0.193), never extended. Same pattern as iter28 (extend 690outlv) and iter30 (extend 922qsdfy) at lr=1e-5 should yield ~0.0003-0.0008 ensemble gain.
+- **Change:** `--unet_ch_base 128 --unet_grid 64³ --init_from model-e61uos2z --lr 1e-5 --epochs 35 --yflip_aug True` (run-id `iclg3vmk`). All 35 epochs fit in 27min at 38s/epoch.
+- **Result:** Best val/l2=**0.7774** at epoch 28/35. Solo+TTA=**0.7515** — new 3rd-best solo (behind 4ab6bl20=0.7471 and 690outlv=0.7496). Weight-opt sweep size=12 weighted=**0.70398**. Members: `[4ab6bl20, s72nkbjq, iclg3vmk, h0yvcd7w, 922qsdfy, 690outlv, 6tusrvjg, e61uos2z, i504xzr0, bbd64rlo, bn20n6rl, 7ftlim00]`. Weights: `[0.2368, 0.2841, 0.215, 0.0819, 0.0003, 0.0001, 0.0852, 0.0002, 0.0002, 0.0284, 0.0676, 0.0001]`. iclg3vmk takes **0.215** — 3rd-largest weight; e61uos2z collapsed 0.193 → 0.0002. **0.00026 improvement** over iter30 (0.70424), **0.044 below frozen leaderboard (0.7475)**.
+- **Verdict:** KEPT. All three top-weight cells now extended via ladder: ch=128@96³ (4ab6bl20), ch=96@80³ (s72nkbjq), ch=128@64³ (iclg3vmk) — together 0.74 of ensemble mass.
+- **Notes:** (1) Per-extension ensemble gain trajectory: iter28 (+0.00056), iter30 (+0.00051), iter31 (+0.00026) — diminishing. (2) Three top cells now fully ladder-extended; remaining extensions would target smaller-weight members (h0yvcd7w=0.08, 6tusrvjg=0.09) which are less likely to budge much. (3) Solo+TTA improvements are smaller too: e61uos2z 0.7528 → iclg3vmk 0.7515 = −0.0013 (vs iter28 −0.0025 and iter30 −0.0018). (4) Ensemble at 0.70398 — getting close to theoretical floor for current architecture family. (5) Next: **must try a genuinely orthogonal axis** (physics loss, k-NN attention, or Transolver revival warm-started from best UNet). Another simple-ladder extension is expected to give ≤0.0002.
+
 ### 2026-04-18 — iter30: extend 922qsdfy (iter27, ch=96@80³) — ensemble **0.70424**
 - **Hypothesis:** iter29's seed-decorrelation failed (undertrained solo). Return to the ladder: 922qsdfy (iter27, ch=96@80³) was the largest-weight member in iter28's ensemble (0.2703). Low-LR extension of top-weight member has consistently delivered 0.0005-0.0015 ensemble gain.
 - **Change:** `--unet_ch_base 96 --unet_grid 80³ --init_from model-922qsdfy --lr 1e-5 --epochs 25 --yflip_aug True` (run-id `s72nkbjq`). 25 epochs fit in 27min at 56s/epoch.
