@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage C pass 4 — iter 58 single 0.9869, 68-ensemble **0.9567** (**-0.22% vs 0.9588**)
+- **Hypothesis:** Mirror iter56/57 for lineage C. Pass 4 at lr=2e-5 from iter49.final (model-wt22hwy0). Extend soup_C to 4-member + soup_C3 + soup_C34 + update soup_Cw to 4-member weighted.
+- **Change:** no code. `WANDB_MODE=offline --resume .../model-wt22hwy0/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9778 --epochs 25`. 32.5 min. (wandb offline because prior init timed out.)
+- **Result:** best within-run = **0.9869** at E11 (init=0.9909, iter49 was 0.9823). Pass 4 didn't break iter49's record but still a diverse basin for soup. Staged as iter58.pt; computed soup_C (4-mem), soup_C3 (iter48+49+58), soup_C34 (iter49+58), updated soup_Cw (4-mem weighted 0.10/0.25/0.30/0.35).
+  - **68-ensemble** (65 + iter58 + soup_C3 + soup_C34) = **0.9567** (Ux=0.6220, Uy=0.3046, Uz=0.4568). Submitted.
+- **Verdict:** WIN. Soup extension pattern works consistently — lineage C contributes -0.22% despite iter58 not beating iter49 single-model. **Cumulative session: 1.0625 → 0.9567 = 9.96%.**
+- **Notes:** Lineage C has smaller dropout (0.05) and converged earlier → pass 4 didn't improve single-model floor. But ensemble diversity from the new soup variants still helps. **Iter 59 launched = lineage D pass 4** (iter52.final = model-93x7640e, lr=2e-5, drop=0.2, floor=0.9778). **Iter 60 options:** (a) lineage E pass 2 (only iter53 exists for E — build out the chain); (b) in-run EMA/SWA experiment; (c) cross-lineage weighted soup.
+
 ### 2026-04-18 — 65-ensemble eval post-iter57 = **0.9588** (-0.30% vs 0.9617)
 - **Change:** none. Added iter57.pt + updated soup_B to 4-member + soup_B3 (iter45+46+57) + soup_B34 (iter46+57) → ensemble 62 → 65.
 - **Result:** **val/l2=0.9588** (Ux=0.6235, Uy=0.3050, Uz=0.4578). Submitted via predict.py.
