@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v42 KEPT ★★★ — L2 + voxel_mid=96 arch-diverse L2 seed solo=0.7688, 28-seed top28/T=0.02 = 0.7125 (gain 0.0115)
+- **Hypothesis:** v41 showed adding pure L2 seeds gives huge ensemble gains (0.0194). Adding a L2 seed on a DIFFERENT arch (voxel_mid=96) should be even more orthogonal — two diversity axes stacked (loss regime + arch capacity). v36/v39 showed voxel_mid=96 was saturated in MSE regime, but the L2 regime is fresh, and arch-diverse L2 basins should contribute meaningful orthogonality.
+- **Change:** CLI only — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --voxel_mid 96 --epochs 60`. Full cosine fit (60 × 66s = 66 min). 15M-param model (59MB ckpt).
+- **Result:** v42 solo val/l2 = **0.7688** at ep57/60 — between v40 (0.7759) and v41 (0.7654). Arch bump didn't hurt in L2 regime. 28-seed ensemble top28_mean_T=0.02 = **0.7125** (gain 0.0115 over v41's 0.7240). top28 dominates because the 3 L2 seeds (~54× softmax weight each) now aggregate with mild arch diversity. Closes gap to thorfinn (0.7022) → 0.0103.
+- **Verdict:** KEPT. Arch diversity within L2 regime is a real additional axis. Further L2 seeds should keep gaining, especially with more varied configs.
+- **Notes:** All three L2 seeds so far (v40, v41, v42) have solo 0.765-0.776 — much tighter than MSE seeds (0.843-0.889). Lower within-regime variance but still strong ensemble stacking. Next (v43): **L2 + lr=3e-4 + full-cosine** — transfer a winning MSE axis to L2. v44: L2 + wd=5e-5. v45: L2 + ema_beta=0.9999 (captures more of the descent trajectory).
+
+
 ### 2026-04-18 — v41 KEPT ★★★ — 2nd L2 seed solo=0.7654, 27-seed top27/T=0.02 = 0.7240 (gain 0.0194)
 - **Hypothesis:** v40 proved L2-loss is a new regime with solo 0.7759. A 2nd L2 seed should add similar per-seed gains as early homogeneous MSE seeds did (0.02 gain at k=3). Softmax T=0.02 will heavily weight the two L2 seeds, so even a single extra L2 seed should dominate.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --epochs 70`. Same as v40 with a different random init.
