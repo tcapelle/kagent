@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage C fresh-init (iter 47, drop=0.05) — single 1.0830, 36-ensemble 0.9921
+- **Hypothesis:** Third independent fresh-init with different regularization (dropout=0.05 vs lineage A's 0.1 / B's 0.15). Should contribute 0.2-0.3% ensemble margin like prior fresh-inits.
+- **Change:** no code. `--lr 3e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9784 --epochs 25` (no `--resume`).
+- **Result:** best within-run = **1.0830** at E15/15 (31.5 min, contended). Monotonic descent 1.4116 → 1.0830. Staged as iter47.pt. **36-model ensemble:**
+  - **0.9921** ← submitted (**0.11% drop from 0.9932**, mae Ux=0.6488 Uy=0.3105 Uz=0.4731)
+- **Verdict:** Single-model DISCARDED. Ensemble inclusion **KEPT** — 0.11% marginal (half of iter44's 0.21%). Third-lineage adds less because correlation exists across fresh-inits of same arch. **Cumulative session: 1.0625 → 0.9921 = 6.63%.**
+- **Notes:** Fresh-init ensemble gain is decaying with lineage count (iter41 +0.39% → iter44 +0.21% → iter47 +0.11%) — suggests the post-FiLM arch has limited fresh-init diversity capacity with ~15-epoch budget. Iter 48: **continue iter47** (lr=1e-4) to extract lineage C's continuation gain (~0.3-0.4%). Then iter 49: if continuation gain < 0.2%, pivot to **SWA or architectural diversity** (different hidden width, attention heads).
+
 ### 2026-04-18 — Lineage B pass 3 (iter 46, lr=5e-5) — single 0.9784 NEW FLOOR, 35-ensemble 0.9932
 - **Hypothesis:** Iter 43 (lineage A pass 3) extracted +0.0081 of single-model drop at lr=5e-5. Apply same recipe to lineage B (iter45.final → iter46) and expect similar marginal drop to ~0.978.
 - **Change:** no code. `--resume .../model-zcithb4u/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9806 --epochs 25`.
