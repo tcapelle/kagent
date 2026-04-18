@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage B pass 3 (iter 46, lr=5e-5) — single 0.9784 NEW FLOOR, 35-ensemble 0.9932
+- **Hypothesis:** Iter 43 (lineage A pass 3) extracted +0.0081 of single-model drop at lr=5e-5. Apply same recipe to lineage B (iter45.final → iter46) and expect similar marginal drop to ~0.978.
+- **Change:** no code. `--resume .../model-zcithb4u/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9806 --epochs 25`.
+- **Result:** best within-run = **0.9784** at E15/15 (31.4 min). Trajectory: E1 0.9946 → E6 0.9886 → E10 0.9815 → E12 0.9802 (beat floor) → E15 0.9784. **New single-model floor** (was 0.9806 at iter43). best.pt updated. Staged as iter46.pt. **35-model ensemble:**
+  - **0.9932** ← submitted (**0.38% drop from 0.9970**, mae Ux=0.6496 Uy=0.3105 Uz=0.4736)
+- **Verdict:** **WIN.** Single-model new all-time floor 0.9784. Lineage B pass 3 gave bigger absolute drop (-0.0150) than lineage A pass 3 (-0.0081). **Cumulative session: 1.0625 → 0.9932 = 6.52%.**
+- **Notes:** Both lineages follow pattern: fresh → cont1 (big drop) → cont2 (small drop). Iter 47 should be **third independent fresh-init (lineage C) with dropout=0.05** — 0.05 gives a different regularisation regime than iter41's 0.1 or iter44's 0.15, and the ensemble pattern shows fresh-init is the high-leverage move. Expect single-model ~1.04-1.08 after 18 epochs, ensemble gain 0.2-0.3%.
+
 ### 2026-04-17 — Continue iter44 (iter 45, lineage B pass 2) — single 0.9934, 34-ensemble 0.9970 (SUB-1.0 ENSEMBLE)
 - **Hypothesis:** Same recipe as iter42's continuation of iter41 (lr=1e-4 from fresh-init's final). Should drop iter44 from 1.0771 → ~0.99 range, mirroring the 0.0548 drop iter42 extracted from iter41.
 - **Change:** no code. `--resume .../model-ea2vhamg/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9806 --epochs 25`.
