@@ -22,6 +22,39 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v23: Transolver PhysicsAttention, full 100k pts (KEPT)
+- **Hypothesis:** v22's failure (1.2205 single) was due to subsampling
+  causing train/eval statistical mismatch in voxel-stats features, not
+  the Transolver architecture itself. Running the same PhysicsAttention
+  on full 100k points should isolate whether learned soft slicing
+  beats hard-voxel attention (VoxelTokenAttn) on this task.
+- **Change:** Same as v22 but drop `--subsample_points` and bump dropout
+  to match v20: `--model_version v22 --n_blocks 10 --n_attn_blocks 4
+  --n_slices 64 --dropout_p 0.2 --layer_scale 1e-3 --yflip_aug True
+  --epochs 55` + 180min budget.
+- **Result:**
+  - Single: val/l2=**1.1241** at ep50 of 55 (181.6 min, hit timeout).
+    WandB `edward/v23-transolver-full` (0mdh97yr). 213s/epoch, 19.8GB.
+    Comparison vs v20 (v16 voxel-token attn) at same epochs:
+    ep16: v23 1.37 vs v20 1.37 (tied)
+    ep33: v23 1.19 vs v20 1.21 (v23 ahead)
+    ep50: v23 1.12 vs v20 at ~ep50 ≈ 1.14 (v23 ahead)
+    Transolver wins by ~0.02 on single at matched compute.
+  - **9-member ensemble: val/l2=1.0641** (better than 8-member 1.0648,
+    delta -0.0007). Modest ensemble bump despite being the best v16-family
+    single — suggests the 8-ensemble was already extracting most of the
+    decorrelation available from these arch variants.
+- **Verdict:** KEPT. Member #9.
+- **Notes:** Confirms Transolver > VoxelTokenAttn at matched compute.
+  v22 was the architecture paired with a bad augmentation. Lessons:
+  (1) Augmentations that change input N must preserve the feature
+  pipeline's input distribution, or training drifts from eval.
+  (2) Soft slicing (Transolver) > hard voxel binning on this problem
+  even without scaling up n_slices (M=64 is the sweet spot).
+  Next ideas: v24 could be Transolver with hidden=640 or more slices
+  (M=128), or combine Transolver + VoxelTokenAttn at different depths
+  for dual-path diversity.
+
 ### 2026-04-18 — v22: Transolver PhysicsAttention + 40k point subsampling (DISCARDED)
 - **Hypothesis:** Research survey identified Transolver-style
   PhysicsAttention (learned soft slicing over N points → M=64 tokens,

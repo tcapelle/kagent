@@ -42,6 +42,7 @@ MEMBERS = [
     CKPT_DIR / "model-76oie0fz" / "checkpoint.pt",
     CKPT_DIR / "model-rlzz6vjz" / "checkpoint.pt",
     CKPT_DIR / "model-sgsw7i4r" / "checkpoint.pt",
+    CKPT_DIR / "model-0mdh97yr" / "checkpoint.pt",  # v23 Transolver PhysicsAttn full 100k pts + yflip, 1.1241
     # v22 v8zk7fjd (Transolver PhysicsAttn + 40k subsample, 1.2205) — tested, hurts ensemble (1.0687 vs 1.0648)
 ]
 
