@@ -22,6 +22,35 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage E fresh-init drop=0.1 (iter 53) — single 1.0918, 42-ensemble 0.9819
+- **Hypothesis:** Repeat iter41's recipe (fresh, lr=3e-4, drop=0.1, warmup=100) with a new random seed. Tests whether *identical-recipe different-seed* still contributes ensemble diversity, or whether fresh-init diversity has saturated.
+- **Change:** no code. `--lr 3e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9784 --epochs 25` (no `--resume`).
+- **Result:** best within-run = **1.0918** at E14 (31.0 min, GPU-contended). Notably weaker than iter41's 1.0435 at same recipe — seed matters a lot for 14-epoch budget. Staged as iter53.pt. **42-model ensemble:**
+  - **0.9819** ← submitted (**0.02% drop from 0.9821**, mae Ux=0.6410 Uy=0.3089 Uz=0.4684) — effectively noise.
+- **Verdict:** Single DISCARDED. Ensemble inclusion marginal — 0.02% is the smallest fresh-init gain yet. **Cumulative session: 1.0625 → 0.9819 = 7.59%.** Fresh-init diversity has **saturated**.
+- **Notes:** Fresh-init ensemble gain by lineage: A 0.39% → B 0.21% → C 0.11% → D 0.04% → **E 0.02%**. Clear exponential decay. Iter 54 options: (a) **lineage E pass 2** from iter53.final at lr=1e-4 — likely ~0.1% continuation but continues the decay pattern; (b) **SWA on lineage winners** (iter43+iter46+iter49+iter52 final-epoch weights averaged) — untested, untried lift, potentially 0.2-0.4% drop for free; (c) **lineage A pass 4** from iter43.final at lr=2e-5 — squeeze more from the deepest lineage. (b) has highest upside/cost ratio and is the obvious pivot after decay; (a) tests whether lineage-E continuations still give 0.1-0.2% even with weak fresh-init. Try (a) first — cheap and completes the lineage E dataset; if <0.1%, hard pivot to (b).
+
+### 2026-04-18 — Lineage D pass 3 (iter 52) — single 1.0148, 41-ensemble 0.9821
+- **Hypothesis:** Mirror iter43/46/49 pass-3 recipe on lineage D (lr=5e-5, drop=0.2). Expect ~0.1-0.2% ensemble gain.
+- **Change:** no code. `--resume .../model-0n2b37op/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 0.9784 --epochs 25`.
+- **Result:** best within-run = **1.0148**. Staged as iter52.pt. **41-model ensemble:**
+  - **0.9821** ← submitted (**0.20% drop from 0.9841**, mae Ux=0.6413 Uy=0.3087 Uz=0.4684).
+- **Verdict:** Single DISCARDED. Ensemble **KEPT**. Lineage D total = 0.04% + 0.17% + 0.20% = **0.41%** (vs A=0.87, B=0.58, C=0.70). **Cumulative session: 1.0625 → 0.9821 = 7.57%.**
+- **Notes:** D is the weakest lineage; high-LR + high-drop recipe underperforms std recipe.
+
+### 2026-04-18 — Lineage D pass 2 (iter 51) — single 1.0277, 40-ensemble 0.9841
+- **Hypothesis:** Continue iter50's weak fresh-init at standard recipe (lr=1e-4, drop=0.2) to see if lineage D catches up on continuation.
+- **Change:** no code. `--resume .../model-2zpbt6ub/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 0.9784 --epochs 25`.
+- **Result:** best within-run = **1.0277**. Staged as iter51.pt. **40-ensemble 0.9841** (0.17% drop from 0.9858). Cumulative 7.38%.
+- **Verdict:** Single DISCARDED. Ensemble **KEPT** — 0.17% is below A/B/C pass-2 norm (~0.3-0.5%). Weaker fresh-init seed shows through.
+
+### 2026-04-18 — Lineage D fresh-init lr=5e-4 drop=0.2 (iter 50) — single 1.1105, 39-ensemble 0.9858
+- **Hypothesis:** Push fresh-init into a different basin by cranking LR (5e-4) and dropout (0.2). Adds diversity via recipe change, not just seed.
+- **Change:** no code. `--lr 5e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 0.9784 --epochs 25` (no `--resume`).
+- **Result:** best within-run = **1.1105**. Staged as iter50.pt. **39-ensemble 0.9858** (only 0.04% drop from 0.9862 — worst fresh-init yet). Cumulative 7.22%.
+- **Verdict:** Single DISCARDED. Ensemble marginal. **High LR + high dropout combined hurts both single AND diversity** — suggests fresh-init basins already well-explored by prior lineages; recipe diversity doesn't add what seed diversity didn't.
+- **Notes:** Disproved "different recipe gives different basin" hypothesis at this scale — arch has limited basin capacity at 14-epoch budget.
+
 ### 2026-04-18 — Lineage C pass 3 (iter 49) — single 0.9823, 38-ensemble 0.9862
 - **Hypothesis:** Mirror iter43/iter46 pass-3 recipe on lineage C. Expect -0.01 single + ~0.15% ensemble.
 - **Change:** no code. `--resume .../model-wt22hwy0/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9784 --epochs 25`.
