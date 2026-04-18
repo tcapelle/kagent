@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — linear velocity extrapolation as residual baseline [discarded]
+- **Hypothesis:** Change the residual anchor from `pred = last + delta·vel_std` to `pred = last + (last − prev)·t + delta·vel_std` — give the network a better zero-order prediction (first-order temporal extrapolation) so it only has to learn the 2nd-order correction. In steady freestream, `last − prev ≈ 0`, so extrap ≈ last (no loss). In unsteady wake, extrap captures local acceleration.
+- **Change:** `model.py:207-213` — compute `dv = last − velocity_in[:,-2:-1]`, broadcast with `dt_offsets = [1..5]`, form `v_extrap = last + dv · dt_offsets`, then `pred = v_extrap + delta_norm · vel_std`.
+- **Result:** val/l2_error = **1.0089** (epoch 28 of 28 @ 30.4 min, 8.2 GB peak). Train loss 0.014. **Worse than exp 16 (0.9147) by 10.3 %**. Every epoch 0.07–0.13 worse than exp 18 (which was already discarded). Trajectory NEVER caught up to exp 16's baseline.
+- **Verdict:** Discarded. Reverted; restored exp 16 checkpoint.
+- **Notes:** The linear extrapolation is WRONG for most points — it assumes constant acceleration, but CFD flows have highly non-linear time evolution (vortex shedding, separation, etc.). For wake points where `dv` is large, the extrap OVERSHOOTS by a factor ~5 (`dv · 5` at t=5 is 5× the actual velocity change, because flows decelerate as they evolve). The network then spends most of its capacity CANCELLING the bad prior, leaving nothing for learning genuine dynamics. Train loss confirms: 0.014 vs 0.0096 for exp 16 — residual magnitude stayed ~1.5× higher throughout. Lesson: hardcoded priors only help if the prior is approximately correct on the data distribution; "physically plausible" ≠ "numerically close to truth" for CFD. Three straight discards (17/18/19) — need to stop adding capacity/priors and instead tune what's working. Next: (a) unnormalized MSE loss — match val L2 weighting (current normalized MSE gives equal weight to tiny-std components that don't matter for val metric); (b) grad clipping 1.0 as hygiene; (c) point_hidden 384 → 512 as pure capacity.
+
 ### 2026-04-18 — LR warmup 1 ep linear + 27 ep cosine [discarded]
 - **Hypothesis:** Adam's second-moment variance estimate is poorly calibrated at step 0 (few samples). Warming LR up linearly over 1 epoch (0.01× → 1× peak) before cosine should reduce early optimization instability and let the cosine hit a slightly better minimum by end of budget. Standard "training hygiene" win across many CNN/transformer recipes.
 - **Change:** `train.py` — replace `CosineAnnealingLR(T_max=MAX_EPOCHS)` with `SequentialLR([LinearLR(start=0.01, iters=1), CosineAnnealingLR(T_max=MAX_EPOCHS-1)], milestones=[1])`. Nothing else.
