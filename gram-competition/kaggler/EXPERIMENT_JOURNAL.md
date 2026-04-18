@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — global-attention-violet-e16
+- **Hypothesis:** Replace E15's coarse EdgeConv branch (2k anchors, k=32 graph) with **true global self-attention** — multi-head Transformer on the 2k anchors gives unlimited receptive field (any anchor can attend to any other) and should capture long-range wake/vortex structure that KNN neighborhoods cut off. Added absolute Fourier-pos embedding inside the coarse branch so tokens are spatially aware.
+- **Change:** `train.py` `BaselineMLP.__init__` — swapped `EdgeConvBlock` → `TransformerBlock(num_heads=8)` for the coarse branch; added `coarse_pos_embed = Linear(fourier_dim, hidden)` and added pos feat to coarse input. `predict.py` kwargs synced. Launched `MAX_TIMEOUT_MIN=240 --epochs 280`.
+- **Result:** val/l2 = **1.0286** (epoch 209). 212 epochs × 68 s, 6.1 GB bf16. train 0.044 → 0.0121. Timed out at 240 min at E212 (planned 280). W&B run `..(global-attn-e16)`.
+- **Verdict:** **discarded** — regressed vs E15 (1.0140 → 1.0286, +1.4%). Reset code (`git reset --hard HEAD~1`) and restored E15 checkpoint via `git checkout fe4b347 -- checkpoints/best.pt`.
+- **Notes:** Trajectory: e50=1.21 → e90=1.12 → e130=1.09 → e170=1.07 → e209=1.029. Consistently ~2-5% behind E15 at matched epochs. Global attention appears to *underperform* EdgeConv on this point-cloud task — EdgeConv's geometric inductive bias (edge features use relative position delta) seems more helpful than unlimited-range context on a sparse 2k-anchor grid. The absolute-Fourier pos embed couldn't fully substitute for local relative geometry. Also, self-attention on 2k tokens has far fewer params than 3 EdgeConv blocks on the same tokens — likely *under-parameterized*. Next push should go bigger rather than different: scale hidden + more fine-scale anchors + stronger augmentation (rotations). The architecture class seems to top out near ~1.01-1.03; need a more aggressive recipe to break below 1.00.
+
 ### 2026-04-18 — multiscale-edgeconv-violet-e15
 - **Hypothesis:** Current single-scale EdgeConv (10k anchors, k=16, 5 blocks) has ~5-hop neighborhood reach → ~80-point receptive field, tiny relative to 100k-point global structure. Add a parallel **coarse** EdgeConv branch (2k anchors, k=32, 3 blocks) that covers global scale via sparser but wider neighborhoods. Two zero-init heads so total output at init = per-point baseline.
 - **Change:** `train.py` `BaselineMLP.forward` — added `coarse_proj` + `coarse_blocks_list` + `coarse_head` (zero-init) running on stride-subsampled 2k anchors, k=32. Output sum: `point_pred + spatial_pred + coarse_pred`. `predict.py` kwargs synced. Launched `MAX_TIMEOUT_MIN=240 --epochs 280`.
