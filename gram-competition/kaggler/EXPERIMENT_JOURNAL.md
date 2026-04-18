@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — temporal-feats-violet-e14
+- **Hypothesis:** E13 train loss plateaued at ~0.0125 with plenty of val headroom. The input was raw v_flat only — no *explicit* temporal-derivative signal. Add temporal velocity diffs (Δv between consecutive input frames, 4×3=12 dims) + velocity magnitude per frame (5 dims) so the model gets first-order turbulent acceleration/speed signals it would otherwise have to infer. Keep E13 architecture; train 240 min ≈ 240 epochs.
+- **Change:** `train.py` `BaselineMLP.forward` — compute `v_diff = v[:,1:] - v[:,:-1]` and `v_mag = v.norm(-1)`; concat with existing `[pos, fourier_pos, v_flat]`. Input dim grows from 63 to 80. `predict.py` unchanged (kwargs same). Launched with `MAX_TIMEOUT_MIN=240 --epochs 280`.
+- **Result:** val/l2 = **1.0174** (epoch 236). 240 epochs × 60 s, 6.0 GB bf16. train 0.020 → 0.0117 (normalized). Leaderboard l2=1.0174. Commit `9da4ee8`. W&B run `aqhb1y50`.
+- **Verdict:** kept — modest improvement (1% over E13's 1.0276) but consistent with the longer schedule. Temporal features + extra time both helped.
+- **Notes:** Best by epoch: e33=1.214 → e98=1.108 → e150=1.058 → e210=1.030 → e236=1.017. Train loss near 0.0117 suggests diminishing returns from raw-feature engineering. Trajectory was noisier than E13 in mid-training but converged cleanly. Ranking vs leaders (thorfinn 0.70, alphonse 0.75, nezuko 0.76) still large. Next: the per-point MLP + EdgeConv class may be ceiling'd near ~1.0 — consider (a) multi-scale coarse-to-fine GNN, (b) dedicated turbulence head (predict high-freq residual separately), (c) PDE-informed loss (divergence penalty for incompressibility), (d) cross-attention across input time frames — or pivot architecture toward a transformer-on-subsampled-anchors with far more aggressive feature mixing.
+
 ### 2026-04-18 — fourier-pos-violet-e13
 - **Hypothesis:** E11 hit 1.1204 after only 60 epochs with train loss still descending — clearly under-trained. Raw xyz positions limit the per-point MLP's ability to express high-frequency spatial variation needed for turbulent flow. Add multi-resolution Fourier (sinusoidal) position encoding (standard NeRF trick) + train 3× longer (180 min ≈ 180 epochs). Expect break below 1.10.
 - **Change:** `train.py` — new `FourierEmbed(n_freqs=8)` (base-2 geometric frequencies × π, sin+cos concat → 48-dim), concat with raw pos + v_flat at `proj_in`; kept E11's architecture (10k anchors, 5 EdgeConv blocks, k=16, bf16 autocast, y-flip aug) otherwise. `predict.py` kwargs synced. Launched with `MAX_TIMEOUT_MIN=180 --epochs 200`.
