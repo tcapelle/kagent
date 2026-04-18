@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage E branched pass-2 — iter 60 single 1.0263, 74-ensemble **0.9554** (flat -0.02%)
+- **Hypothesis:** Build out lineage E (originally had iter53-55) with a branched pass-2 from iter53 sibling to iter54. New soup_E (4-mem), soup_E3 (drop-fresh), soup_E35 (iter55+60), updated soup_Ew.
+- **Change:** no code. `WANDB_MODE=offline --resume .../model-sdjvasmj/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9778 --epochs 25`. 30.8 min, E8 early stop.
+- **Result:** best within-run = **1.0263** at E8 (init=1.0918 iter53). **74-ensemble = 0.9554** (Ux=0.6209, Uy=0.3045, Uz=0.4562). Submitted.
+- **Verdict:** DIMINISHING RETURNS — only -0.02%. Lineage E single-model is weakest (iter60=1.0263, iter55=0.9837), so its soup contributions get diluted. **Cumulative session: 1.0625 → 0.9554 = 10.08%.**
+- **Notes:** **PIVOT signal:** per-iteration ensemble gain dropped below noise floor. Lineage pass-4 soup pattern exhausted. **Iter 61 launched = lineage E pass 4 proper** (iter55.final model-shyjq4r0, lr=2e-5). **Iter 62 plan:** add **in-run EMA** to train.py — cheap 0.1-0.3% per run via exponential moving-average of weights across training steps. Stored as ema.pt alongside best_run.pt.
+
 ### 2026-04-18 — Lineage D pass 4 — iter 59 single 1.0130, 71-ensemble **0.9556** (**-0.11% vs 0.9567**)
 - **Hypothesis:** Mirror lineage-D with pass 4 at lr=2e-5 from iter52.final (model-93x7640e). Extend soup_D to 4-member + soup_D3 + soup_D34 + update soup_Dw.
 - **Change:** no code. `WANDB_MODE=offline --resume .../model-93x7640e/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 0.9778 --epochs 25`. 32.0 min. Terminated early at E9.
