@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v41 KEPT ★★★ — 2nd L2 seed solo=0.7654, 27-seed top27/T=0.02 = 0.7240 (gain 0.0194)
+- **Hypothesis:** v40 proved L2-loss is a new regime with solo 0.7759. A 2nd L2 seed should add similar per-seed gains as early homogeneous MSE seeds did (0.02 gain at k=3). Softmax T=0.02 will heavily weight the two L2 seeds, so even a single extra L2 seed should dominate.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --epochs 70`. Same as v40 with a different random init.
+- **Result:** v41 solo val/l2 = **0.7654** at ep66/70 — *better* than v40 (0.7759). Within-regime seed variance is larger at this stage than at MSE saturation. 27-seed ensemble (v6, v15-v36, v38-v41; v37 still excluded) = **0.7240** (gain 0.0194). Closes gap to thorfinn 0.7022 → 0.0218.
+- **Verdict:** KEPT. Within-L2-regime diminishing returns haven't kicked in yet — keep adding L2 seeds.
+- **Notes:** top-k optimum is now `top27` (all seeds in) because the two L2 seeds (weight ~54× each) dominate the softmax and the 25 weaker MSE seeds still contribute error-cancellation without hurting. Next (v42 — already launched in parallel): **L2 + voxel_mid=96** — combines L2-loss basin with arch diversity. v43+: more L2 seeds with combined axes (wd=5e-5, lr=3e-4).
+
+
 ### 2026-04-18 — v40 KEPT ★★★ BREAKTHROUGH — L2-norm loss (matches eval metric) solo=0.7759, 26-seed top26/T=0.02 = 0.7434 (gain 0.0049)
 - **Hypothesis:** current training loss is MSE in normalized velocity space (`diff.pow(2).mean()`), but the competition metric is **L2 norm** per point then mean (`diff.norm(dim=-1).mean()`). MSE over-weights outlier points quadratically; the metric weights them linearly. Training on the exact metric should give calibrated gradients and a much better solo. This is a loss-function axis completely untouched across v1-v39 (all 25 seeds were MSE-trained), so the basin is orthogonal → big ensemble gain too.
 - **Change:** train.py — added `loss_type: str = "mse"` config flag; training loop dispatches to `diff.norm(dim=-1).mean()` when `loss_type=='l2'`. Everything else identical to v28-style baseline (default lr=5e-4, wd=1e-4, voxel_mid=64). CLI: `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --epochs 70`.
