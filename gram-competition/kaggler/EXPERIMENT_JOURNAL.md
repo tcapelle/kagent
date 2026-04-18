@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — grid_ch 48 + epochs=22, T_max=22 (fix exp 44 LR mismatch) [discarded]
+- **Hypothesis:** Exp 44 (grid_ch=48, epochs=28) trailed baseline by 1.7 % but got cut off at ep 22/28 — the cosine LR was still at 12 % of peak when timeout hit. Drop `cfg.epochs` 28 → 22 so `T_max=22` matches the actual budget; the LR now fully decays and the capacity bump gets a proper polish phase.
+- **Change:** `train.py` + `predict.py` — same as exp 44 (`grid_ch=48`), plus `cfg.epochs=28 → 22`.
+- **Result:** val/l2_error = **0.8822** (epoch 22/22 @ 30.1 min, 9.0 GB peak). **Worse than exp 30 baseline (0.8073) by 9.3 %** and even worse than exp 44's 0.8209. Trajectory: ep 10: 1.117, ep 15: 0.949, ep 20: 0.889, ep 22: 0.882.
+- **Verdict:** Discarded. `git reset --hard HEAD~1`; restored `checkpoints/best.pt`.
+- **Notes:** Counter-intuitive result. My ep-10 exp 44 value was 1.036; exp 45 ep 10 is 1.117 — slightly *worse* at matched epoch even though they're the same architecture. This is just random-init noise (we're on the same code path, same data, different seed). The takeaway is that the capacity bump's "signal" I saw in exp 44 was within run-to-run variance. **grid_ch=48 is not a reliable win** — the direction is dead. Three capacity experiments total (exp 39 bigger model, exp 44, exp 45) have all failed. The bottleneck isn't capacity; it's either (a) data regime (need more effective training samples), (b) optimization (wrong schedule / insufficient total steps in the 30-min budget), or (c) a qualitative architectural gap. **Pivoting to multi-seed ensemble** — train 2 additional seeds from scratch (each ~30 min), modify `predict.py` to load all 3 checkpoints and average their predictions. This attacks (a) + (c) simultaneously: different random inits explore different basins, and averaging smooths out high-frequency errors. Proven technique, typically 1-3 % gain; if it works we commit a multi-checkpoint inference path. Need a checkpoint-path list (store on PVC, not git-tracked: too large for 3 copies).
+
 ### 2026-04-18 — grid_ch 32 → 48 (voxel-CNN capacity bump) [discarded, promising]
 - **Hypothesis:** Three loss-side experiments failed (exp 40 SDF-weighted, exp 41/42 div-free). Switch to architecture. The voxel CNN's dec0 output (only 32 channels) is what each point samples — possibly the bottleneck of the feature pipeline. Bump `grid_ch` 32 → 48 (U-Net becomes 48/96/192 ch). Peak GPU mem est +1 GB. Same G=80, same point head.
 - **Change:** `train.py` + `predict.py` — `grid_ch=48`. +50 % voxel-related params. Per-epoch time 71 s → 82 s (+15 %); in a 30-min budget this fits ~22 epochs instead of 28.
