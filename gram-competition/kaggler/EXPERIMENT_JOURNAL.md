@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — EMA decay 0.999 → 0.9995 [discarded]
+- **Hypothesis:** Exp 30 train loss was still descending at timeout ep 27 (train 0.66, val 0.8073). Double the EMA averaging window (1000 → 2000 steps, ~1.4 → ~2.8 epochs) to smooth late-training noise and better capture the cosine-tail trend.
+- **Change:** `train.py` — `ema = EMA(model, decay=0.9995)` (was 0.999).
+- **Result:** val/l2_error = **0.8383** (epoch 27 of 28 @ 31.0 min — timeout at ep 27 as usual). **Worse than exp 30 (0.8073) by 3.8 %**.
+- **Verdict:** Discarded. Reverted.
+- **Notes:** The EMA lag was visible from ep 1: 6.72 vs exp 30's 5.19 at ep 1 (higher decay = slower to adopt current weights). Gap stayed ~0.03-0.08 above exp 30 through all 27 epochs and never closed. Interpretation is *opposite* of my hypothesis: because training was monotonically descending, the CURRENT weights are the best each step — averaging with older weights pulls the EMA toward *worse* states. Longer window = more old-weight contamination = worse EMA. This only helps if training oscillates near the minimum; we're still smoothly descending. Lesson: **EMA decay should SHRINK, not grow, when training is monotonic**. Try decay=0.995 (shorter window, more responsive) as a future exp. More urgent lesson: 4 consecutive discards since exp 30 — I'm over-regularizing. Switch to *removing* regularization: (a) **point_dropout 0.15 → 0.0** (exp 30 was not overfitting, train/val gap is small); (b) **use `t` timestamps** currently ignored in forward() — adds free information; (c) **EMA decay 0.999 → 0.995** (opposite of this exp).
+
 ### 2026-04-18 — n_point_blocks 6 → 8 (MLP head capacity) [discarded]
 - **Hypothesis:** Three "safety" tweaks (clip / LR / none) all lost. Pivot to capacity: add one ResBlock per head-stack (6→8), +1.2 M params in the point MLP. Cheaper than grid_ch bump; exp 30 train loss was still dropping at ep 27, so head might be under-parameterized.
 - **Change:** `train.py` + `predict.py` — `n_point_blocks=8` (was 6). Both files to keep state_dict compatible.
