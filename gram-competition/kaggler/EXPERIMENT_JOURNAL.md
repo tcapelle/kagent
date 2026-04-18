@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v31 KEPT — lr=3e-4 + full-cosine combined, 18-seed weighted 0.7537 (gain 0.0026)
+- **Hypothesis:** combine two proven winning axes (full-cosine anneal + lr=3e-4). Full-cosine gave the strongest solo regime; lr=3e-4 gave an untapped basin at high solo quality. Together = new-basin with strong solo.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --lr 3e-4 --epochs 90`.
+- **Result:** v31 solo val/l2 = **0.8487** at ep87 — 2nd-best solo ever (v29 0.8420 still tops). 18-seed weighted (softmax T=0.02) = **0.7537** (gain 0.0026 vs 17-seed 0.7563). 13.4% under v6 solo.
+- **Verdict:** kept — combined-axis hypothesis validated.
+- **Notes:** Combining axes produces new-basin gains comparable to a single new axis in earlier iterations. Next (v32): `lr=7e-4 + full-cosine` (opposite-lr combined axis). If v32 also gives ~0.002 gain, combined-axes strategy will be worth exploiting systematically.
+
+
 ### 2026-04-17 — v30 KEPT — 3rd full-cosine seed 0.8516, 17-seed weighted 0.7563 (gain 0.0016)
 - **Hypothesis:** another full-cosine seed gives ~0.002 gain (within-axis diminishing).
 - **Change:** same as v28/v29 — `MAX_TIMEOUT_MIN=90, --epochs 90`.
