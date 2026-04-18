@@ -22,6 +22,34 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-17 — v20: v16-arch attn=4 + yflip (KEPT)
+- **Hypothesis:** v18/v19 both failed because their singles were far
+  outside our quality floor (1.23–1.25 vs floor 1.18). To improve the
+  6-ensemble (1.0681), a new member needs BOTH quality parity (val/l2
+  ≲ 1.18) AND architectural diversity. v17 was proof of concept
+  (1.1493, v16 arch + 2 attn blocks + yflip, helped ensemble from
+  1.0724 → 1.0681). v20 takes v17's recipe further: 4 attn blocks (2x
+  attention depth), layer_scale 1e-3 (looser init), dropout 0.2, 55
+  epochs with yflip. Expect lower single (more capacity + regularization
+  + aug) AND ensemble-useful diversity vs the v6-arch members.
+- **Change:** `--model_version v16 --n_blocks 10 --epochs 55 --dropout_p 0.2
+  --n_attn_blocks 4 --layer_scale 1e-3 --yflip_aug True` + 180min budget.
+- **Result:**
+  - Single: val/l2=**1.1304** at ep54 of 55 (180.1 min, trajectory still
+    improving; hit timeout). WandB `edward/v20-v16-attn4-long` (rlzz6vjz).
+    200s/epoch at 18.1GB peak VRAM. Better than v17's 1.1493.
+  - **7-member ensemble (add v20 to prior 6): val/l2=1.0654** (better
+    than 6-member 1.0681). Delta −0.0027.
+- **Verdict:** KEPT. Member #7.
+- **Notes:** Quality+diversity hypothesis confirmed. v20 is now our
+  best-single v16-arch checkpoint; doubling attn blocks didn't hurt
+  training stability (thanks to layer_scale=1e-3). Next ideas:
+  (A) v21 rerun of v20 with different seed — cheap way to get another
+      quality-parity diverse member.
+  (B) hidden=768 on v16 arch (capacity bump, ~40% slower).
+  (C) Reconsider whether val.pt auto-overwrite from predict.py is
+      causing silent regressions — watch for it.
+
 ### 2026-04-17 — v19: v6-arch + yflip aug only (DISCARDED)
 - **Hypothesis:** v17 combined yflip+v16-arch (1.1493). Isolating yflip
   on v6-arch would give either (a) improved single over v14's 1.1041

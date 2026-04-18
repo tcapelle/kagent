@@ -31,6 +31,7 @@ CKPT_DIR = Path("/mnt/new-pvc/kagent/apr16/edward/checkpoints")
 #   76oie0fz 1.1493 (v17 Fourier+attn+y-flip; diverse arch)
 #   bihmoi44 1.2532 (v18 v6-arch + near-airfoil weighted loss) — tested, hurts ensemble (1.0764 vs 1.0681)
 #   1m23al87 1.2316 (v19 v6-arch + yflip aug only, 44ep) — tested, hurts ensemble (1.0743 vs 1.0681)
+#   rlzz6vjz 1.1304 (v20 v16-arch attn4 + yflip, 54ep, dropout=0.2; quality-parity diverse member)
 MEMBERS = [
     CKPT_DIR / "model-jnseenin" / "checkpoint.pt",
     CKPT_DIR / "model-9vaz4wrn" / "checkpoint.pt",
@@ -38,6 +39,7 @@ MEMBERS = [
     CKPT_DIR / "model-oxopax5h" / "checkpoint.pt",
     CKPT_DIR / "model-fnyc7p7z" / "checkpoint.pt",
     CKPT_DIR / "model-76oie0fz" / "checkpoint.pt",
+    CKPT_DIR / "model-rlzz6vjz" / "checkpoint.pt",
 ]
 
 
