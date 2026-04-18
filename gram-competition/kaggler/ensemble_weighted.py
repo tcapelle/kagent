@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import GRAMDataset, load_data
-from train import VoxelResidualModel, compute_sdf, SDFDataset, collate_sdf
+from train import VoxelResidualModel, compute_sdf, SDFDataset, collate_sdf, infer_arch_from_state_dict
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -76,11 +76,12 @@ for split_name, base in val_splits.items():
 
     for ck_idx, ckpt_path in enumerate(cfg.checkpoints):
         print(f"  [{ck_idx+1}/{len(cfg.checkpoints)}] {ckpt_path}")
+        sd = torch.load(ckpt_path, map_location=device, weights_only=True)
+        arch = infer_arch_from_state_dict(sd)
         model = VoxelResidualModel(
-            vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
-            hidden=256, voxel_res=64, voxel_mid=64,
+            vel_mean=stats["vel_mean"], vel_std=stats["vel_std"], **arch,
         ).to(device)
-        model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
+        model.load_state_dict(sd)
         model.eval()
 
         preds_this: list[torch.Tensor] = []
