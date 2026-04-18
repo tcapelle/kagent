@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — gradient clipping max_norm=1.0 [discarded]
+- **Hypothesis:** Turbulent wake samples can produce big per-batch gradients that push AdamW's second-moment estimator; clipping at max_norm=1.0 should stabilize the cosine-decay tail where small LR steps matter most.
+- **Change:** `train.py` — add `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)` after `loss.backward()`.
+- **Result:** val/l2_error = **0.8394** (epoch 27 of 28 @ 31.0 min). **Worse than exp 30 (0.8073) by 4.0 %**.
+- **Verdict:** Discarded. Reverted.
+- **Notes:** Grad clipping actually helped EARLY (ep 3-4: ~13-14 % better than exp 30), then crossed over at ep 7 and stayed ~0.03 behind through the rest. Interpretation: with L2 loss + Adam, gradient magnitudes are naturally bounded (each-point grad is unit-norm, per-param adaptive), so clipping at 1.0 just truncates useful update directions when the batch happens to hit harder samples. Early-training batches have bigger losses → more clipping → sometimes beneficial for stability early. Late training has smaller grads (already under 1.0 after Adam's normalization) → clip is a no-op on average, but occasionally bites on an informative large-grad batch and strips signal. Lesson: **don't clip on top of Adam+L2 unless you see actual training instability** (train loss NaN / exploding). We never did — so clipping was pure downside. Next: given multiple failed "safety" tweaks, pivot to a capacity/architectural change. Top candidates: (a) **n_point_blocks 6→8** (one extra ResBlock per head — point_hidden=384 so each block is ~600k params, total +1.2M / 17M = ~7% capacity, keeps epoch time close); (b) **grid_ch 32→48** (small 3D-CNN capacity bump, probably slower per-epoch — risky with cosine T_max coupling); (c) **k-NN point attention over 8 neighbors** (genuinely new computation, but complex to implement/tune within one iteration).
+
 ### 2026-04-18 — lr 1.5e-3 → 2.5e-3 under L2 loss [discarded]
 - **Hypothesis:** After exp 30 won with L2 norm loss, test whether the L2 regime allows a higher LR ceiling than MSE. L2 gradient is capped in magnitude per-point (unit direction), so AdamW should see smaller-norm updates and might tolerate 2.5× the base LR. If so, faster convergence within the 30 min budget.
 - **Change:** `train.py` — `lr: float = 2.5e-3` (only).
