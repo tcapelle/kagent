@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage E pass 2 + WITHIN-LINEAGE MODEL SOUP (iter 54) — 48-ensemble 0.9763 (**-0.57%**)
+- **Hypothesis (pre-training):** iter54 = lineage E pass 2 (lr=1e-4 from iter53.final) to complete the lineage. Fresh-init decay predicted ~0.1% continuation gain.
+- **Hypothesis (mid-run pivot):** while iter54 trained, tested **within-lineage weight averaging** (model soup). Iter41→42→43 share a warm-start basin chain (same init) — averaging their staged best_run weights might add a diversified ensemble member without new training.
+- **Change:** no train.py edit. `/tmp/soup.py` averages state_dicts element-wise. Computed soup_A (iter41+42+43), soup_B (44+45+46), soup_C (47+48+49), soup_D (50+51+52), soup_E (53+54 only).
+- **Result (iter54 training):** best within-run = **1.0057** at E12 (31.6 min, GPU-contended). Trajectory E1 1.0736 → E12 1.0057, still descending. Staged as iter54.pt.
+- **Result (soup probes):**
+  - soup_A single = 0.9969 (worse than iter43=0.9806 alone — averaging weak+strong hurts single-model perf)
+  - **43-ensemble +soup_A = 0.9802** (-0.17% vs 0.9819) ← soup IS useful as ensemble member despite weak single
+  - **46-ensemble +soups A/B/C/D = 0.9776** (-0.44% vs 0.9819)
+  - **48-ensemble +soups +iter54 +soup_E = 0.9763** ← submitted (**-0.57% vs 0.9819**)
+  - **cross-lineage soup_winners (iter43+46+49+52) single = 1.7834** — confirms soup requires shared basin, fails across independent fresh-inits.
+- **Verdict:** **SESSION BREAKTHROUGH.** Within-lineage model soup contributes 22× more than iter53's fresh-init (0.44% vs 0.02%) at zero training cost. Confirms soup literature: averaging works within warm-start chain, fails across fresh-inits. **Cumulative session: 1.0625 → 0.9763 = 8.11%.**
+- **Notes:** Geometry of the trick — iter41 (fresh, val 1.04) and iter42/43 (warm-starts, val 0.99/0.98) share a continuous gradient-descent trajectory through weight-space. Averaging weights on this trajectory finds a flatter minimum (cf. Izmailov et al. SWA). soup_E has only 2 members (less averaging) so contributes less than A/B/C/D's 3-member soups. **Iter 55 natural next move: lineage E pass 3** from iter54.final at lr=5e-5 — brings E to 3 passes, then recompute soup_E with 3 members (should squeeze another ~0.1%). Other options: (b) **longer training on new lineage** (train.py timeout bump 30→45 min) so E3 extends deeper; (c) **eval sub-48 ensembles** (drop iter41/42/43 since soup_A supersedes them) to test if soup REPLACES or COMPLEMENTS lineage members. (a) keeps momentum with zero code change.
+
 ### 2026-04-18 — Lineage E fresh-init drop=0.1 (iter 53) — single 1.0918, 42-ensemble 0.9819
 - **Hypothesis:** Repeat iter41's recipe (fresh, lr=3e-4, drop=0.1, warmup=100) with a new random seed. Tests whether *identical-recipe different-seed* still contributes ensemble diversity, or whether fresh-init diversity has saturated.
 - **Change:** no code. `--lr 3e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9784 --epochs 25` (no `--resume`).
