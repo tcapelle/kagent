@@ -169,6 +169,9 @@ class BaselineMLP(nn.Module):
         self.proj_in = nn.Linear(in_dim, hidden)
         self.point_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.point_head = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
+        # Zero-init so at step 0, model output == last input frame (residual baseline)
+        nn.init.zeros_(self.point_head[1].weight)
+        nn.init.zeros_(self.point_head[1].bias)
 
         # Fine-scale EdgeConv (local detail)
         self.anchor_proj = nn.Linear(hidden, hidden)
@@ -246,8 +249,10 @@ class BaselineMLP(nn.Module):
         coarse_pred = self.coarse_head(interp_coarse)
 
         out_combined = (point_pred + spatial_pred + coarse_pred).reshape(B, N, T_OUT, 3)
-        out_norm = out_combined.permute(0, 2, 1, 3)  # [B, T_OUT, N, 3]
-        out = out_norm * self.vel_std + self.vel_mean
+        out_norm = out_combined.permute(0, 2, 1, 3)  # [B, T_OUT, N, 3] delta in normalized space
+        # Residual prediction: baseline = last input frame (normalized), model learns delta
+        v_last_norm = v_norm[:, -1:].expand(-1, T_OUT, -1, -1)  # [B, T_OUT, N, 3]
+        out = (v_last_norm + out_norm) * self.vel_std + self.vel_mean
 
         mask = torch.ones(B, N, device=out.device, dtype=out.dtype)
         for b in range(B):
