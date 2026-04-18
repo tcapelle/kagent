@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v45 KEPT — L2 + ema_beta=0.9999 solo=0.7879, 31-seed top20/T=0.02 = 0.7031 (gain 0.0011)
+- **Hypothesis:** EMA at 0.9999 averages training trajectory → different basin than non-EMA seeds. Orthogonal axis to wd/lr tried so far.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --ema_beta 0.9999 --epochs 70`. 64 min.
+- **Result:** Solo val/l2 = **0.7879** at ep63 — **weakest of L2 seeds** (v41=0.7654, v42=0.7688, v40=0.7759, v44=0.7760, v43=0.7787, v45=0.7879). 31-seed best = **top20_mean_T=0.02 = 0.7031** (gain 0.0011 over v44). Gap to thorfinn (0.7022) → **0.0009**.
+- **Verdict:** KEPT. Weak solo but still helpful to ensemble via decorrelation. Per-seed ensemble gain trend: v41=+0.0194 → v42=+0.0115 → v43=+0.0051 → v44=+0.0032 → v45=+0.0011. Asymptote near.
+- **Notes:** Top-20 now preferred over top-30. Next (v46): **L2 + hidden=384** — MLP arch diversity (bigger feature space, different basin). v47: L2 + voxel_mid=96 + lr=3e-4 (stack 2 diversity axes). v48: L2 + epochs=100 (longer optimization).
+
 ### 2026-04-18 — v44 KEPT ★★ — L2 + wd=5e-5 solo=0.7760, 30-seed top30/T=0.02 = 0.7042 (gain 0.0032)
 - **Hypothesis:** transfer v33's wd=5e-5 MSE-winning axis to L2 regime. Lower regularization, possibly better fit to training set, gives another distinct L2 basin.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --weight_decay 5e-5 --epochs 70`. Full cosine, 60 min.
