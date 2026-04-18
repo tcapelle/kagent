@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — inference-time y-flip TTA on exp 30 checkpoint [discarded]
+- **Hypothesis:** Averaging the prediction of `(v_in, pos)` with the prediction of its y-flipped twin (flip pos_y sign, flip Uy sign on inputs, flip Uy sign back on output) smooths out any y-asymmetric bias the model learned that doesn't reflect true physics. Zero training cost — just modify inference.
+- **Change:** Wrote `eval_tta.py` (standalone, since removed) that runs two forward passes per val sample and averages. Exp 30 checkpoint, no retraining.
+- **Result:** baseline val/l2 = 0.8073; TTA y-flip val/l2 = **0.9207** (+0.11, worse by 14 %).
+- **Verdict:** Discarded. The y-flipped prediction is *much* worse than the original — the model is strongly y-asymmetric, and averaging with a broken prediction wrecks the result.
+- **Notes:** F1 front wing has no y-symmetry: the airfoil camber, ground effect (if y is vertical), and vel_mean = [35.6, **0.5**, 1.9] (small but non-zero y-component) all break it. The model correctly learned asymmetric features. TTA only helps when the target is equivariant under the transform — not the case here. Eliminates a whole class of geometric TTA ideas (x-flip: streamwise, also asymmetric; z-flip: probably also not a symmetry). **No TTA direction remains cheap.** Pivoting to capacity bump (exp 44: grid_ch 32 → 48) — untried at current G=80, should give the CNN more voxel-feature channels for the point MLP to sample.
+
 ### 2026-04-18 — annealed divergence-free aux loss (λ: 0.1 → 0 by ep 15) [discarded]
 - **Hypothesis:** Exp 41 showed the div prior helps early (ep 1 val 4.67 vs baseline 5.19, −10 %) but hurts late (final 0.8489 vs 0.8073, +5 %). Anneal λ linearly from 0.1 at ep 0 to 0 at ep 15 (held 0 after). Preserves the early benefit; frees capacity for pure-L2 polish once the model is accurate enough that div_err is voxelization noise.
 - **Change:** `train.py` — `_lambda_div(epoch)` returns `0.1 * max(0, 1 - epoch/15)`; skip aux loss when λ=0 (faster). Training log also records `train/lambda_div`.
