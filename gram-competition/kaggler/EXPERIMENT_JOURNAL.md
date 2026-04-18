@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — n_point_blocks 6 → 8 (MLP head capacity) [discarded]
+- **Hypothesis:** Three "safety" tweaks (clip / LR / none) all lost. Pivot to capacity: add one ResBlock per head-stack (6→8), +1.2 M params in the point MLP. Cheaper than grid_ch bump; exp 30 train loss was still dropping at ep 27, so head might be under-parameterized.
+- **Change:** `train.py` + `predict.py` — `n_point_blocks=8` (was 6). Both files to keep state_dict compatible.
+- **Result:** val/l2_error = **0.8382** (epoch 22 of 28 @ 30.4 min — timeout). **Worse than exp 30 (0.8073) by 3.8 %**. Epoch time 83 s (vs ~68 s at n=6) → only 22 epochs fit in budget instead of 27.
+- **Verdict:** Discarded. Reverted both files.
+- **Notes:** At matched epoch 22 exp 30 was ~0.812 (interpolating 0.8077→0.8073 tail), exp 33 is 0.8382 — so even head-to-head at same epoch the bigger head was behind. The extra capacity didn't pay off in the compute budget: slower per-epoch + more params to fit + cosine T_max still 28 means the effective LR schedule was identical but we got only 78 % of the gradient updates. Interpretation: 17 M-param baseline is **not** capacity-limited for this dataset at 30 min — optimization/schedule is the bottleneck. Lesson: **don't grow the model without also growing the compute budget or speeding up per-epoch time**. Next candidate directions (schedule-aware, not capacity): (a) **cosine T_max → match actual epoch count hit under timeout** (exp 30 hits ep 27 at 30.9 min; T_max=25 would put us at final-tail LR by the timeout instead of mid-decay); (b) **EMA decay 0.999 → 0.9995** (longer-horizon average squeezes the tail); (c) **grid_ch 32 → 24** (speed up epochs, more training steps) — opposite direction from capacity but same "give the schedule more room" reasoning.
+
 ### 2026-04-18 — gradient clipping max_norm=1.0 [discarded]
 - **Hypothesis:** Turbulent wake samples can produce big per-batch gradients that push AdamW's second-moment estimator; clipping at max_norm=1.0 should stabilize the cosine-decay tail where small LR steps matter most.
 - **Change:** `train.py` — add `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)` after `loss.backward()`.
