@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter45: FRESH-SEED ch=128@64³ at 60min budget — ensemble **0.69301** (−0.00162)
+- **Hypothesis:** iter44's fresh-seed at ch=96@64³ gave -0.00744. Stacking a second fresh-seed at different arch (ch=128@64³) should add further decorrelation. iter29 (same arch) failed at 27min (solo 0.83); 60min should cross the threshold per iter44's evidence.
+- **Change:** `--unet_ch_base 128 --unet_grid 64³ --lr 3e-4 --epochs 120 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `we8kdyug`). Best at epoch 94.
+- **Result:** Best val/l2=**0.8039**. Solo+TTA=**0.7725** (worse than iter44's 0.7608; ch=128 is slower to converge than ch=96). Weight-opt sweep best at size=14 weighted=**0.69301**. Members: `[iazbqcv0, zb987yzv, 972sqtxv, we8kdyug, otybiegm, h0yvcd7w, mopmyfsq, s72nkbjq, o542zbvh, aik4lytt, 6tusrvjg, i39lwast, z5xvz0bu, bn20n6rl]`. Weights: `[0.1029, 0.2019, 0.1922, 0.1247, 0.1797, 0.0376, 0.0718, 0.0024, 0.0004, 0.0179, 0.0281, 0.0021, 0.0005, 0.0376]`. we8kdyug captures **0.125** weight (4th). **0.00162 improvement** over iter44 — fresh-seed stacking confirmed to give additive decorrelation gain.
+- **Verdict:** KEPT. Second fresh-seed delivers another strong gain (smaller than iter44's 0.00744 because iter44 broke the correlation ceiling; iter45 adds incremental decorrelation on top).
+- **Notes:** (1) Even though we8kdyug solo 0.7725 is worse than iter44's 0.7608, it still contributes 0.125 weight because its errors are decorrelated from zb987yzv's. This is the core fresh-seed value: orthogonal errors > lower solo l2 for ensemble gains. (2) Next: **more fresh-seeds at different archs**. Candidates: (a) ch=64@96³ fresh (small ch + isotropic); (b) ch=96@80³ fresh (matches 972sqtxv cell); (c) ch=64@128³ fresh (matches 6tusrvjg legacy cell); (d) ch=96@64³ with different seed (orthogonal basin same arch). (3) Ensemble trajectory: iter43=0.70207 → iter44=0.69463 → iter45=0.69301. **0.055 below frozen leaderboard (0.7475)**.
+
 ### 2026-04-18 — iter44: **BREAKTHROUGH** FRESH-SEED ch=96@64³ at 60min budget — ensemble **0.69463** (−0.00744)
 - **Hypothesis:** iter29/36/38 all failed fresh-seed at 27min budget (solo 0.82-0.83, useless in ensemble). With 2.5× budget (60min), ch=96@64³ fresh-seed might cross the 0.78 solo threshold — and critically, it would break the warm-start correlation chain that now caps all extensions (iter42/43 gains ~+0.00003). A decorrelated member from fresh init should decorrelate the ensemble substantially.
 - **Change:** `--unet_ch_base 96 --unet_grid 64³ --lr 3e-4 --epochs 150 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `zb987yzv`). Best at epoch 106.
