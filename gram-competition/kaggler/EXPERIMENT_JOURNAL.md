@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage B pass 4 — iter 57 single 0.9778 NEW FLOOR, 62-ensemble 0.9617 (**-0.38%**)
+- **Hypothesis:** Mirror iter56 for lineage B — pass 4 at lr=2e-5 from iter46.final. Extend soup_B to 4 members + new drop-fresh 3-member and pass3+pass4 pairwise variants.
+- **Change:** no code. `--resume .../model-f63b23qm/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9784 --epochs 25`.
+- **Result:** best within-run = **0.9778** at E3 (34.6 min, contended). **New single-model floor** (was 0.9784 at iter46). best.pt updated. Staged as iter57.pt.
+  - **62-ensemble (added iter56 + updated soup_A to 4-member + soup_A3 + soup_A34) = 0.9617** (-0.38% vs 0.9654). *This used iter56+newSoupA variants, not iter57 yet.*
+- **Verdict:** **WIN.** Single-model floor broken at low LR on lineage B — iter46 had more descent to give, lr=5e-5 vs 2e-5 matters less than warm-start quality. **Cumulative session: 1.0625 → 0.9617 = 9.49%.**
+- **Notes:** Leaderboard: 0.9684 at rank 7 when 62-ensemble submission landing soon will drop to **0.9617 at rank 6** (passing askeladd 0.9628). iter57 staged and soup_B updated to 4-member, plus soup_B3/B34/Bw. **Iter 58 launched = lineage C pass 4** (iter49.final, lr=2e-5, drop=0.05 matching C). Eval 65-ensemble queued. **Iter 59 options:** (a) lineage D pass 4; (b) in-run SWA via train.py edit; (c) lineage E pass 4 from iter55.final. (a/c) continue the pattern; each adds ~0.3-0.4%.
+
 ### 2026-04-18 — Lineage A pass 4 + WEIGHTED SOUPS (iter 56) — 59-ensemble 0.9654 (**-0.31% vs 0.9684**)
 - **Hypothesis:** (1) iter56 = lineage A pass 4 (lr=2e-5 from iter43.final) extends lineage A to 4 passes, enabling 4-member soup_A + new "drop-fresh deeper" variants. (2) Test **weighted soups** biased toward later (more refined) passes: 0.15/0.35/0.50 for pass1/2/3.
 - **Change:** no code. iter56: `--resume .../model-c4g1jcya/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9784 --epochs 25`. Soups: soup_Aw/Bw/Cw/Dw/Ew (5 weighted 3-member), updated soup_A to 4-member, new soup_A3 (iter42+43+56), new soup_A34 (iter43+56).
