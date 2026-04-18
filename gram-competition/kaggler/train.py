@@ -440,6 +440,8 @@ class Config:
     subsample_train: int = 50000
     warm_start: str | None = None
     yflip_prob: float = 0.5
+    ema_decay: float = 0.999
+    warmup_steps: int = 200
 
 
 def main():
@@ -476,7 +478,34 @@ def main():
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+    # LR warmup (linear ramp) then cosine decay over remaining epochs.
+    # Softens the warm-start perturbation that has killed recent chain experiments.
+    steps_per_epoch = max(1, len(train_loader))
+    total_steps = MAX_EPOCHS * steps_per_epoch
+    warmup_steps = min(cfg.warmup_steps, total_steps // 4)
+    def lr_lambda(step):
+        if step < warmup_steps:
+            return (step + 1) / max(1, warmup_steps)
+        p = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+        return 0.5 * (1 + torch.cos(torch.tensor(p * 3.141592653589793)).item())
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+    # EMA model — evaluate validation with EMA weights. Stabilizes noisy warm-start training.
+    ema_model = BaselineMLP(
+        hidden=cfg.hidden, n_blocks=cfg.n_blocks, grid_size=cfg.grid_size,
+        n_fourier=cfg.n_fourier, vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
+    ).to(device)
+    ema_model.load_state_dict(model.state_dict())
+    for p in ema_model.parameters():
+        p.requires_grad_(False)
+
+    def ema_update(decay):
+        with torch.no_grad():
+            for ep, p in zip(ema_model.parameters(), model.parameters()):
+                ep.mul_(decay).add_(p.detach(), alpha=1 - decay)
+            for eb, b in zip(ema_model.buffers(), model.buffers()):
+                eb.copy_(b)
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
@@ -565,16 +594,17 @@ def main():
             if cfg.grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
+            scheduler.step()
+            ema_update(cfg.ema_decay)
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
             epoch_loss += loss.item()
             n_batches += 1
 
-        scheduler.step()
         epoch_loss /= n_batches
 
-        mean_val, split_metrics = validate(model, val_loaders, device, global_step)
+        mean_val, split_metrics = validate(ema_model, val_loaders, device, global_step)
         dt = time.time() - t0
 
         wandb.log({"train/epoch_loss": epoch_loss, "lr": scheduler.get_last_lr()[0],
@@ -586,7 +616,7 @@ def main():
             best_metrics = {"epoch": epoch + 1, "val_l2_error": mean_val}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(model.state_dict(), model_path)
+            torch.save(ema_model.state_dict(), model_path)
             shutil.copyfile(model_path, git_ckpt_path)
             tag = " *"
 

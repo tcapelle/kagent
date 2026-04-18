@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — exp55: EMA + LR warmup, warm-start from exp45
+- **Hypothesis:** 8 consecutive warm-start experiments (exp46-54) all failed to beat exp45 (0.8801), usually because val spiked at E1-2 as new/perturbed weights disrupted the fine-tuned model. EMA (decay=0.999) of training weights, used at validation, starts exactly at exp45 and smooths out trajectory noise. LR warmup (200 linear steps → cosine) softens the LR shock at warm-start start. Combined, this should let the model actually improve rather than regress.
+- **Change:** train.py: added `ema_decay`, `warmup_steps` config. Built ema_model (copy of model, no grad), updated per-step after optimizer.step. Replaced CosineAnnealingLR with step-based LambdaLR (linear warmup → cosine). Validation/checkpoints now use ema_model.
+- **Result:** TBD
+- **Verdict:** TBD
+- **Notes:** Orthogonal to arch — first time trying optimization/regularization instead of architecture.
+
+### 2026-04-17 — exp46-54: eight consecutive failed chain experiments (exp46: k=32 KNNMixer, exp47: out_refine reinit, exp48: k=32 rerun, exp49: KNNAttn head, exp50: noise, exp51: noise=0.01, exp52: vscale aug, exp53: vmag features, exp54: 60-min chain). All stayed at or above 0.8801 — confirms exp45 saturation at current arch under warm-start.
+- **Verdict:** DISCARDED — pattern: every warm-start perturbation dominates the 5-epoch validation window. Need to either stabilize training (EMA, LR warmup) or cold-start a new arch.
+
 ### 2026-04-17 — exp45: chain exp44 @ lr=5e-6 (pos-offset refine)
 - **Hypothesis:** exp44 tied exp42 (0.8805) but pos_proj had only 2 epochs to learn. Chain at lr=5e-6 to give it time. If chain doesn't help, pos-offset at end-of-stack is genuinely unhelpful.
 - **Change:** No code. --warm_start <exp44 ckpt model-eu7w7w48> --lr 5e-6.
