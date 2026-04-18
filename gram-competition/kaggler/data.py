@@ -8,6 +8,7 @@ import json
 
 import torch
 from pathlib import Path
+from scipy.spatial import cKDTree
 from torch.utils.data import Dataset
 
 N_POINTS = 100_000
@@ -30,7 +31,12 @@ class GRAMDataset(Dataset):
 
     def __getitem__(self, idx):
         s = torch.load(self.files[idx], weights_only=True)
-        return s["velocity_in"], s["velocity_out"], s["pos"], s["t"], s["idcs_airfoil"]
+        pos = s["pos"]
+        airfoil_pos = pos[s["idcs_airfoil"]].numpy()
+        tree = cKDTree(airfoil_pos)
+        dist, _ = tree.query(pos.numpy(), k=1)
+        sdf = torch.from_numpy(dist).float()
+        return s["velocity_in"], s["velocity_out"], pos, s["t"], s["idcs_airfoil"], sdf
 
 
 def collate_fn(batch):
@@ -39,15 +45,17 @@ def collate_fn(batch):
     All samples have N_POINTS=100k points, so no padding needed.
     idcs_airfoil varies per sample — kept as a list.
 
-    Returns: velocity_in [B,5,N,3], velocity_out [B,5,N,3], pos [B,N,3], t [B,10], idcs_airfoil list[tensor]
+    Returns: velocity_in [B,5,N,3], velocity_out [B,5,N,3], pos [B,N,3], t [B,10],
+             idcs_airfoil list[tensor], sdf [B,N] (distance to nearest airfoil point)
     """
-    v_in, v_out, pos, t, idcs = zip(*batch)
+    v_in, v_out, pos, t, idcs, sdf = zip(*batch)
     return (
         torch.stack(v_in),
         torch.stack(v_out),
         torch.stack(pos),
         torch.stack(t),
         list(idcs),
+        torch.stack(sdf),
     )
 
 

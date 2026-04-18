@@ -124,7 +124,8 @@ class VoxelFlowNet(nn.Module):
         self.dec0 = GridConvBlock(grid_ch * 2 + grid_ch, grid_ch)
 
         pos_feat_dim = 3 + 3 * 2 * fourier_L  # raw pos + sin/cos at L scales
-        point_in = pos_feat_dim + T_IN * 3 + grid_ch
+        sdf_feat_dim = 1 + 2 * fourier_L  # raw sdf + sin/cos at L scales
+        point_in = pos_feat_dim + sdf_feat_dim + T_IN * 3 + grid_ch
         point_out = T_OUT * 3
         self.proj_in = nn.Linear(point_in, point_hidden)
         self.blocks = nn.Sequential(*[ResBlock(point_hidden, dropout=point_dropout) for _ in range(n_point_blocks)])
@@ -184,7 +185,15 @@ class VoxelFlowNet(nn.Module):
         sampled = F.grid_sample(grid, coords, mode="bilinear", padding_mode="border", align_corners=True)
         return sampled.view(B, C, -1).permute(0, 2, 1)  # [B, N, C]
 
-    def forward(self, velocity_in, pos, t, idcs_airfoil):
+    def _sdf_enc(self, sdf):
+        """Fourier-encode SDF at log-spaced scales. sdf in meters; bbox span ~2.3 m."""
+        sdf_scaled = sdf / 0.5  # ~unit scale (boundary-layer ~1cm, wake ~1m)
+        xw = sdf_scaled.unsqueeze(-1) * self.fourier_freqs  # [B, N, L]
+        sin_f = torch.sin(xw)
+        cos_f = torch.cos(xw)
+        return torch.cat([sdf_scaled.unsqueeze(-1), sin_f, cos_f], dim=-1)  # [B, N, 1 + 2L]
+
+    def forward(self, velocity_in, pos, t, idcs_airfoil, sdf):
         B, T, N, C = velocity_in.shape
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
 
@@ -201,7 +210,8 @@ class VoxelFlowNet(nn.Module):
 
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
         pos_feat = self._pos_enc(pos)
-        x = torch.cat([pos_feat, v_feat, voxel_feat], dim=-1)
+        sdf_feat = self._sdf_enc(sdf)
+        x = torch.cat([pos_feat, sdf_feat, v_feat, voxel_feat], dim=-1)
         x = self.proj_in(x)
         x = self.blocks(x)
         delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)

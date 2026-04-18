@@ -40,13 +40,14 @@ def validate(model, val_loaders, device, global_step):
         n_samples = 0
 
         with torch.no_grad():
-            for v_in, v_out, pos, t, idcs in vloader:
+            for v_in, v_out, pos, t, idcs, sdf in vloader:
                 v_in = v_in.to(device, non_blocking=True)
                 v_out = v_out.to(device, non_blocking=True)
                 pos = pos.to(device, non_blocking=True)
                 t = t.to(device, non_blocking=True)
+                sdf = sdf.to(device, non_blocking=True)
 
-                pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+                pred = model(v_in, pos, t, idcs, sdf)  # [B, 5, N, 3]
 
                 # L2 velocity error (competition hint metric)
                 l2_err = (pred - v_out).norm(dim=3).mean(dim=(1, 2))  # [B]
@@ -205,13 +206,14 @@ for epoch in range(MAX_EPOCHS):
     epoch_loss = 0.0
     n_batches = 0
 
-    for v_in, v_out, pos, t, idcs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+    for v_in, v_out, pos, t, idcs, sdf in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
         v_in = v_in.to(device, non_blocking=True)
         v_out = v_out.to(device, non_blocking=True)
         pos = pos.to(device, non_blocking=True)
         t = t.to(device, non_blocking=True)
+        sdf = sdf.to(device, non_blocking=True)
 
-        pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+        pred = model(v_in, pos, t, idcs, sdf)  # [B, 5, N, 3]
         # Unnormalized MSE: aligns per-component weighting with val L2 metric
         # (val is dominated by high-std components like Ux).
         loss = (pred - v_out).pow(2).mean()

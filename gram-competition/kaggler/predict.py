@@ -67,12 +67,13 @@ for split in TEST_SPLITS:
 
     predictions = []
     with torch.no_grad():
-        for v_in, v_out, pos, t, idcs in tqdm(loader, desc=split, leave=False):
+        for v_in, v_out, pos, t, idcs, sdf in tqdm(loader, desc=split, leave=False):
             v_in = v_in.to(device, non_blocking=True)
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
+            sdf = sdf.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            pred = model(v_in, pos, t, idcs, sdf)  # [B, 5, N, 3]
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
