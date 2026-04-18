@@ -125,7 +125,8 @@ class VoxelFlowNet(nn.Module):
 
         pos_feat_dim = 3 + 3 * 2 * fourier_L  # raw pos + sin/cos at L scales
         sdf_feat_dim = 1 + 2 * fourier_L  # raw sdf + sin/cos at L scales
-        point_in = pos_feat_dim + sdf_feat_dim + T_IN * 3 + grid_ch
+        # point_in: pos_feat + sdf_feat + v_in + v_in_local_deviation + voxel_feat
+        point_in = pos_feat_dim + sdf_feat_dim + T_IN * 3 + T_IN * 3 + grid_ch
         point_out = T_OUT * 3
         self.proj_in = nn.Linear(point_in, point_hidden)
         self.blocks = nn.Sequential(*[ResBlock(point_hidden, dropout=point_dropout) for _ in range(n_point_blocks)])
@@ -137,6 +138,9 @@ class VoxelFlowNet(nn.Module):
 
         Mean captures typical flow direction in each cell; max captures the
         most extreme component (useful for turbulent/separation regions).
+
+        Also returns a per-point local-deviation feature (v_in - voxel_mean_of_cell),
+        an explicit shear/turbulence signal gathered from the scatter-mean grid.
         """
         B, T, N, C = v_in_norm.shape
         G = self.grid_res
@@ -157,6 +161,12 @@ class VoxelFlowNet(nn.Module):
         counts.scatter_add_(1, flat_idx.unsqueeze(-1), ones)
         grid_mean = grid_sum / counts.clamp(min=1.0)
 
+        # Per-point local deviation: v_in - voxel_mean(cell of point). [B, N, T*C]
+        mean_v_only = grid_mean[..., : T * C]  # drop occupancy channel
+        gather_idx = flat_idx.unsqueeze(-1).expand(-1, -1, T * C)
+        point_mean = torch.gather(mean_v_only, 1, gather_idx)  # [B, N, T*C]
+        local_dev = v_feat - point_mean  # [B, N, T*C]
+
         # Scatter max (velocities only — occupancy max == mean, skip)
         grid_max = torch.zeros(B, G * G * G, T * C, device=v_feat.device, dtype=v_feat.dtype)
         idx_x = flat_idx.unsqueeze(-1).expand(-1, -1, T * C)
@@ -164,7 +174,8 @@ class VoxelFlowNet(nn.Module):
 
         grid = torch.cat([grid_mean, grid_max], dim=-1)  # [B, G³, 2*T*C+1]
         nch = grid.shape[-1]
-        return grid.reshape(B, G, G, G, nch).permute(0, 4, 1, 2, 3).contiguous()
+        grid = grid.reshape(B, G, G, G, nch).permute(0, 4, 1, 2, 3).contiguous()
+        return grid, local_dev
 
     def _pos_enc(self, pos):
         """Fourier feature encoding: concat [pos, sin(w*pos), cos(w*pos)] for w in 2^k * pi."""
@@ -197,7 +208,7 @@ class VoxelFlowNet(nn.Module):
         B, T, N, C = velocity_in.shape
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
 
-        grid = self._voxelize(v_in_norm, pos)
+        grid, local_dev = self._voxelize(v_in_norm, pos)
         g = self.grid_in(grid)
         e0 = self.enc0(g)                              # G, ch
         e1 = self.enc1(F.avg_pool3d(e0, 2))            # G/2, 2ch
@@ -211,7 +222,7 @@ class VoxelFlowNet(nn.Module):
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
         pos_feat = self._pos_enc(pos)
         sdf_feat = self._sdf_enc(sdf)
-        x = torch.cat([pos_feat, sdf_feat, v_feat, voxel_feat], dim=-1)
+        x = torch.cat([pos_feat, sdf_feat, v_feat, local_dev, voxel_feat], dim=-1)
         x = self.proj_in(x)
         x = self.blocks(x)
         delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
