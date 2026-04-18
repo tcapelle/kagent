@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v44 KEPT ★★ — L2 + wd=5e-5 solo=0.7760, 30-seed top30/T=0.02 = 0.7042 (gain 0.0032)
+- **Hypothesis:** transfer v33's wd=5e-5 MSE-winning axis to L2 regime. Lower regularization, possibly better fit to training set, gives another distinct L2 basin.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --weight_decay 5e-5 --epochs 70`. Full cosine, 60 min.
+- **Result:** v44 solo val/l2 = **0.7760** at ep68/70 — middle of pack (v41=0.7654, v42=0.7688, v40=0.7759, v44=0.7760, v43=0.7787). 30-seed top30_mean_T=0.02 = **0.7042** (gain 0.0032 over v43's 0.7074). Ensemble per-seed gain decreasing (0.0115 v42 → 0.0051 v43 → 0.0032 v44) as expected — 5 L2 seeds now. Gap to thorfinn (0.7022) → 0.0020.
+- **Verdict:** KEPT. Still productive but diminishing returns setting in.
+- **Notes:** L2 seeds so far: v40 (vanilla), v41 (vanilla 2nd seed), v42 (voxel_mid=96), v43 (lr=3e-4), v44 (wd=5e-5). Exhausted simple knob transfers. Next (v45): **L2 + ema_beta=0.9999** — EMA captures more of the descent trajectory, historically modest per-seed gain but orthogonal to weight-decay / LR axes. v46: L2 + hidden=384 (arch axis beyond voxel_mid). v47: L2 + voxel_mid=96 + different lr (stack arch + LR).
+
+
 ### 2026-04-18 — v43 KEPT ★★ — L2 + lr=3e-4 solo=0.7787 (weakest L2), 29-seed top29/T=0.02 = 0.7074 (gain 0.0051)
 - **Hypothesis:** lr=3e-4 was the strongest single-axis config in MSE regime (v31 0.8487). Transfer to L2 regime — expected to give another strong L2 basin distinct from v40/v41/v42. Even if solo is slightly weaker, L2-regime basin diversity should contribute ensemble gain.
 - **Change:** CLI only — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --lr 3e-4 --epochs 70`. 52s/epoch (voxel_mid=64), full cosine completed in ~60 min.
