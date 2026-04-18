@@ -113,8 +113,8 @@ class VoxelFlowNet(nn.Module):
         # Fourier frequencies: 2^k * pi for k in [0, L)
         self.register_buffer("fourier_freqs", (2.0 ** torch.arange(fourier_L)) * torch.pi)
 
-        # mean-pool: T_IN*3 + 1 (occupancy); max-pool: T_IN*3 extra
-        in_ch = 2 * T_IN * 3 + 1
+        # mean-pool: T_IN*3 + 1 (occupancy) + 1 (sdf); max-pool: T_IN*3 extra
+        in_ch = 2 * T_IN * 3 + 2
         self.grid_in = nn.Conv3d(in_ch, grid_ch, 1)
         # 3-level U-Net: G (ch), G/2 (2ch), G/4 (4ch); skip concat on the way back up.
         self.enc0 = GridConvBlock(grid_ch, grid_ch)
@@ -131,12 +131,13 @@ class VoxelFlowNet(nn.Module):
         self.blocks = nn.Sequential(*[ResBlock(point_hidden, dropout=point_dropout) for _ in range(n_point_blocks)])
         self.proj_out = nn.Sequential(nn.LayerNorm(point_hidden), nn.Linear(point_hidden, point_out))
 
-    def _voxelize(self, v_in_norm, pos):
+    def _voxelize(self, v_in_norm, pos, sdf):
         """Scatter per-point features onto a [B, C, G, G, G] grid using BOTH
         mean- and max-pooling, concatenated along channels.
 
         Mean captures typical flow direction in each cell; max captures the
         most extreme component (useful for turbulent/separation regions).
+        SDF mean gives the CNN a cell-resolution distance field to the airfoil.
         """
         B, T, N, C = v_in_norm.shape
         G = self.grid_res
@@ -146,7 +147,8 @@ class VoxelFlowNet(nn.Module):
 
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)  # [B, N, 15]
         ones = torch.ones(B, N, 1, device=v_feat.device, dtype=v_feat.dtype)
-        feat_mean_in = torch.cat([v_feat, ones], dim=-1)  # [B, N, 16] — +occupancy
+        sdf_scaled = (sdf / 0.5).unsqueeze(-1)  # [B, N, 1] — same scale as point head
+        feat_mean_in = torch.cat([v_feat, ones, sdf_scaled], dim=-1)  # [B, N, 17]
         nch_mean = feat_mean_in.shape[-1]
 
         # Scatter mean
@@ -197,7 +199,7 @@ class VoxelFlowNet(nn.Module):
         B, T, N, C = velocity_in.shape
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
 
-        grid = self._voxelize(v_in_norm, pos)
+        grid = self._voxelize(v_in_norm, pos, sdf)
         g = self.grid_in(grid)
         e0 = self.enc0(g)                              # G, ch
         e1 = self.enc1(F.avg_pool3d(e0, 2))            # G/2, 2ch
