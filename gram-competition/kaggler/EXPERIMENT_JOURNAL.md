@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage D pass 4 — iter 59 single 1.0130, 71-ensemble **0.9556** (**-0.11% vs 0.9567**)
+- **Hypothesis:** Mirror lineage-D with pass 4 at lr=2e-5 from iter52.final (model-93x7640e). Extend soup_D to 4-member + soup_D3 + soup_D34 + update soup_Dw.
+- **Change:** no code. `WANDB_MODE=offline --resume .../model-93x7640e/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.2 --best_val_floor 0.9778 --epochs 25`. 32.0 min. Terminated early at E9.
+- **Result:** best within-run = **1.0130** at E6 (init=1.0148, iter52 was 1.0148). Marginal single-model improvement — lineage D still weakest. Staged as iter59.pt; soup_D (4-mem), soup_D3 (iter51+52+59), soup_D34 (iter52+59), soup_Dw (4-mem weighted) built.
+  - **71-ensemble** (68 + iter59 + soup_D3 + soup_D34) = **0.9556** (Ux=0.6213, Uy=0.3044, Uz=0.4563). Submitted.
+- **Verdict:** WIN (small). -0.11% is lineage D's weakest extension contribution (vs C's -0.22%, B's -0.30%). Weak single-model dilutes soup averages. **Cumulative session: 1.0625 → 0.9556 = 10.06% — broke 10% barrier.**
+- **Notes:** Lineage rank: B > A > C > E > D in single-model quality. **Iter 60 launched = lineage E pass 2** (iter53.final model-sdjvasmj, lr=1e-4, drop=0.1, floor=0.9778) — first pass-2 for lineage E which was only fresh-initialized (iter53=1.0918). Building out E chain.
+
 ### 2026-04-18 — Lineage C pass 4 — iter 58 single 0.9869, 68-ensemble **0.9567** (**-0.22% vs 0.9588**)
 - **Hypothesis:** Mirror iter56/57 for lineage C. Pass 4 at lr=2e-5 from iter49.final (model-wt22hwy0). Extend soup_C to 4-member + soup_C3 + soup_C34 + update soup_Cw to 4-member weighted.
 - **Change:** no code. `WANDB_MODE=offline --resume .../model-wt22hwy0/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9778 --epochs 25`. 32.5 min. (wandb offline because prior init timed out.)
