@@ -214,9 +214,8 @@ for epoch in range(MAX_EPOCHS):
         sdf = sdf.to(device, non_blocking=True)
 
         pred = model(v_in, pos, t, idcs, sdf)  # [B, 5, N, 3]
-        # Unnormalized MSE: aligns per-component weighting with val L2 metric
-        # (val is dominated by high-std components like Ux).
-        loss = (pred - v_out).pow(2).mean()
+        # L2 velocity loss, matches the val metric exactly.
+        loss = (pred - v_out).norm(dim=-1).mean()
 
         optimizer.zero_grad()
         loss.backward()
