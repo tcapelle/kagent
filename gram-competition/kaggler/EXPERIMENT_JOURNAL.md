@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter48: FRESH-SEED ch=128@96³ at 60min budget — ensemble **0.68550** (−0.00060)
+- **Hypothesis:** 5th fresh-seed at largest arch (ch=128@96³, matches otybiegm cell). Biggest model yet tried fresh-seed; might not converge but still adds decorrelation.
+- **Change:** `--unet_ch_base 128 --unet_grid 96³ --lr 3e-4 --epochs 80 --yflip_aug True MAX_TIMEOUT_MIN=60` (run-id `zwtu9s7m`). Best at epoch 34, val/l2=0.8389.
+- **Result:** Solo+TTA=**0.8063** — worst of all 5 fresh-seeds (big model undertrained). Weight-opt sweep size=13 weighted=**0.68550**. Members: `[iazbqcv0, zb987yzv, kkpwt6kk, 972sqtxv, i69s5t02, otybiegm, we8kdyug, mopmyfsq, zwtu9s7m, s72nkbjq, o542zbvh, bn20n6rl, aik4lytt]`. zwtu9s7m still captures **0.057** weight. **0.00060 improvement** over iter47.
+- **Verdict:** KEPT, marginal. Despite worst solo, contributes because of orthogonal basin.
+- **Notes:** (1) Ensemble trajectory: iter44=0.69463 → iter45=0.69301 → iter46=0.68819 → iter47=0.68610 → iter48=0.68550. Gain pattern: 0.00744, 0.00162, 0.00482, 0.00209, 0.00060 — starting to level off. (2) Big fresh-seed underperforms in limited budget; smaller-arch fresh-seeds (ch=64-96) are more cost-effective. (3) Next: (a) ch=96@64³ seed#2 (pure noise-decorrelation from zb987yzv same arch); (b) ch=64@128³ fresh (large legacy grid); (c) start shipping — margin vs leaderboard is now 0.062.
+
 ### 2026-04-18 — iter47: FRESH-SEED ch=96@80³ at 60min budget — ensemble **0.68610** (−0.00209)
 - **Hypothesis:** 4th fresh-seed at ch=96@80³ (matches 972sqtxv extension cell but orthogonal SGD basin). Continue stacking decorrelated fresh-seeds.
 - **Change:** `--unet_ch_base 96 --unet_grid 80³ --lr 3e-4 --epochs 120 --yflip_aug True MAX_TIMEOUT_MIN=60` (run-id `i69s5t02`). Best at epoch 65, val/l2=0.8027.
