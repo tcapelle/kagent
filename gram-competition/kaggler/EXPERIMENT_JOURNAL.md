@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — exp 48: 50-epoch cosine, 60-min budget, seed 42 [KEPT]
+- **Hypothesis:** Baseline (exp 30 seed 42) stops at ep ~27 with val still descending at ~0.003/ep and LR fully annealed; extending `cfg.epochs` to 50 with `MAX_TIMEOUT_MIN=60` gives the cosine schedule a proper polish phase. Zero architectural risk, pure training-budget play.
+- **Change:** `train.py` — `epochs` default 28→50. Run command: `MAX_TIMEOUT_MIN=60 python train.py --seed 42 --epochs 50`.
+- **Result:** val/l2 = **0.7844** at ep 40 (of 50, 57.3 min, 8.2 GB peak). Training loss 0.58. Val plateaued from ep 40 onward (41: 0.7845, 45: 0.7850, 50: 0.7857) — slight over-training drift in the final 10 epochs (LR still annealing but weights losing generalization).
+- **Verdict:** KEPT. 2.8 % gain on single-seed vs exp 30 (0.8073 → 0.7844). Beats the 3-seed ensemble (0.7898) by 0.6 % with a single model — a huge capacity-free win.
+- **Notes:** Trajectory through ep 28 exactly matched exp 30 seed-42 run (0.8084 vs 0.8073) — the 50-epoch schedule's extra polish all happened between ep 28 and ep 40. EMA shadow had also fully caught up by then. Cosine LR at ep 40 ≈ 10 % of init. Ep 41+ drift suggests the cosine final 20 % is wasted compute OR we should track "best single-epoch" (already what we do via `best_val`). Next pivot: train seeds 7 and 99 at the same 50-ep schedule → 3-seed ensemble of 50-ep checkpoints should beat 0.7844 by another 1-2 %. Leaderboard gap to thorfinn (0.6930) now 0.09.
+
 ### 2026-04-18 — Transolver physics-attention at U-Net bottleneck [discarded]
 - **Hypothesis:** Based on literature research (Transolver, ICML 2024), adding 4 physics-attention blocks at the U-Net bottleneck (20³=8000 tokens, dim=128, heads=8, slice_num=32) should give global context the 3D convs lack, expected 5-12 % gain per paper's results on ShapeNet-Car / AirfRANS. O(NM+M²) cost, +500K params.
 - **Change:** `model.py` — added `PhysicsAttnBlock` class (slice-softmax projection → self-attn over slices → de-slice → MLP, all residual). Sequence of 4 blocks inserted after `enc2` and before the `u1` upsample.
