@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage C pass 3 (iter 49) — single 0.9823, 38-ensemble 0.9862
+- **Hypothesis:** Mirror iter43/iter46 pass-3 recipe on lineage C. Expect -0.01 single + ~0.15% ensemble.
+- **Change:** no code. `--resume .../model-wt22hwy0/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9784 --epochs 25`.
+- **Result:** best within-run = **0.9823** at ~E14 (30.1 min, only 14 epochs due to contention). Staged as iter49.pt. **38-model ensemble:**
+  - **0.9862** ← submitted (**0.31% drop from 0.9893**, mae Ux=0.6444 Uy=0.3094 Uz=0.4703) — 2× the expected 0.15%.
+- **Verdict:** **Above-expectation win.** Lineage C pass 3 delivered 0.31% (matching lineage B pass 3's 0.38% rather than lineage A's 0.28%). **Cumulative session: 1.0625 → 0.9862 = 7.18%.**
+- **Notes:** Lineage C full trajectory: iter47 0.11% → iter48 0.28% → iter49 0.31% = 0.70% combined (between A=0.87% and B=0.58%). Iter 50 options: (a) **lineage D fresh-init (drop=0.2, lr=5e-4)** — higher LR explores different basins; (b) **lineage A pass 4 from iter43.final** (lr=2e-5) — squeeze more from the best single-model lineage; (c) **SWA on final-epoch checkpoints across lineages** — average iter43+iter46+iter49 weights. (a) has highest upside for adding a genuinely new ensemble member; try it next.
+
 ### 2026-04-18 — Lineage C pass 2 (iter 48) — single 0.9909, 37-ensemble 0.9893
 - **Hypothesis:** Mirror iter42/iter45 continuation recipe on lineage C. Expect drop from 1.0830 to ~0.99 range.
 - **Change:** no code. `--resume .../model-b82apigi/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9784 --epochs 25`.
