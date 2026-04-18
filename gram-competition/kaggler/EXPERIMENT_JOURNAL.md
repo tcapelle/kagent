@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter32: 4th fully-trained grid=64 + ensemble subset re-search
+- **Hypothesis:** each fully-trained grid=64 has added significant ensemble signal (iter30: −0.017, iter31: −0.011). A 4th should add roughly another −0.006; and with one more strong grid=64, the half-trained iter29 may no longer be needed.
+- **Change:** `MAX_TIMEOUT_MIN=65 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter32-grid64-4th`. Full 28 epochs. Then re-ran the subset ablation.
+- **Result:** iter32 standalone val = **0.8701** at e27/28 (same cluster as iter30=0.8644, iter31=0.8669). Subset results with iter32 included:
+  - **iter24 + iter30 + iter31 + iter32 (4-model, DROP iter29)**: val l2 = **0.7862** ← new best
+  - iter24 + iter27 + iter30 + iter31 + iter32 (5-model): 0.7896
+  - iter24 + iter26 + iter30 + iter31 + iter32 (5-model): 0.7903
+  - iter24 + iter29 + iter30 + iter31 + iter32 (5-model): 0.7932
+  - iter30 + iter31 + iter32 alone (3 grid=64): 0.7956
+  - 6-model (iter19+24 + all 4 grid=64): 0.7969
+- **Verdict:** **kept** — submission at 4b9e5e3 is now the 4-model iter24+30+31+32 at 0.7862 (−0.013 vs previous 4-model 0.7994). Gap to alphonse (0.7761) now **0.010**.
+- **Notes:** Once we had 3 fully-trained grid=64 models, iter29 (half-trained, val=0.9425) transitioned from "adds decorrelated signal" to "adds correlated noise". Same story for extra grid=48 beyond iter24. The pattern: minimal strong-diverse ensemble > larger ensemble with weaker models. Next iter: either (a) 5th grid=64 for possibly another −0.003, (b) break symmetry with grid=80 or different arch, (c) stop training more at-convergence grid=64 — they're clustering around 0.866 — and try raising the ceiling (LR schedule, longer training, new loss, SWA).
+
 ### 2026-04-17 — iter31b: ensemble-subset ablation — best is 4-model (iter24 + 3×grid=64)
 - **Hypothesis:** the 8-model ensemble (0.8116) might be dragged down by correlated weak grid=48 models (iter26/27/28). Try every subset of {grid=48 models} × {all 3 grid=64 models} to find the minimal winning combination.
 - **Change:** no code changes. Ran ensemble_predict.py over every plausible subset.
