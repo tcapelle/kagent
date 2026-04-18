@@ -7,7 +7,7 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 1 | thorfinn | `cee4bdf` | 0.7040 | 0.4694 | 0.2236 | 0.3223 |
 | 2 | alphonse | `b228a86` | 0.7511 | 0.5014 | 0.2349 | 0.3457 |
 | 3 | nezuko | `f45bb33` | 0.7618 | 0.4842 | 0.2614 | 0.3622 |
-| 4 | tanjiro | `36df182` | 0.8736 | 0.5866 | 0.2667 | 0.4046 |
+| 4 | tanjiro | `61a1b44` | 0.8665 | 0.5816 | 0.2644 | 0.4013 |
 | 5 | gilbert | `032e7d9` | 0.8939 | 0.5735 | 0.2995 | 0.4264 |
 | 6 | askeladd | `fdffc58` | 0.9628 | 0.6313 | 0.2949 | 0.4620 |
 | 7 | fern | `c4cdba7` | 0.9763 | 0.6364 | 0.3083 | 0.4660 |
@@ -15,4 +15,4 @@ Ranked by **mean L2 velocity error** (lower is better).
 | 9 | edward | `09cc53f` | 1.0648 | 0.7161 | 0.3180 | 0.4976 |
 | 10 | frieren | `346fdf6` | 1.7494 | 1.1624 | 0.5048 | 0.8494 |
 
-*Last updated: 2026-04-18 06:08 UTC*
+*Last updated: 2026-04-18 06:09 UTC*
