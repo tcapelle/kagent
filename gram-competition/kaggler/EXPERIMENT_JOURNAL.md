@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — gradient clipping at norm=1.0 [discarded]
+- **Hypothesis:** Single-sample batch gradients are noisy. Clipping global grad norm to 1.0 caps occasional blow-ups, acting as free training hygiene. Typical gain 0.5–1 %.
+- **Change:** `train.py` — add `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)` between `backward()` and `step()`. Nothing else.
+- **Result:** val/l2_error = **0.9163** (epoch 28 of 28 @ 30.4 min, 8.2 GB peak). Train loss 0.0094 (vs 0.0096 exp 16). **Worse than exp 16 (0.9147) by 0.17 %** — below noise floor of n=80 val samples but technically worse.
+- **Verdict:** Discarded. Roughly neutral; reverted to keep exp 16 as best.
+- **Notes:** The clip *did* help early (ep 1 val 2.77 vs exp 18's 4.54, ep 8 1.08 vs exp 18's 1.14) — clipping smooths the initial volatility when EMA hasn't converged. But by ep 28 it matched exp 16 within ~0.002. Interpretation: AdamW already handles gradient scale well; clipping only shaves off the rare spikes that didn't matter for final convergence. Four straight discards (17/18/19/20) — three radical/structural (deeper U-Net, LR warmup, linear extrap) and one hygiene (grad clip). Exp 16 (U-Net + dropout + EMA + 28 ep cosine) is a strong local optimum. Next strategy: target loss-metric alignment (current normalized MSE equal-weights components, but val L2 metric is dominated by Ux which has std=20 vs Uy=7, Uz=9.5 — normalized MSE effectively over-trains Uy at expense of Ux). Unnormalized MSE gives per-component gradient scale ~ vel_std, which matches how val weights per-component errors. Single-factor change, clean single-line diff.
+
 ### 2026-04-18 — linear velocity extrapolation as residual baseline [discarded]
 - **Hypothesis:** Change the residual anchor from `pred = last + delta·vel_std` to `pred = last + (last − prev)·t + delta·vel_std` — give the network a better zero-order prediction (first-order temporal extrapolation) so it only has to learn the 2nd-order correction. In steady freestream, `last − prev ≈ 0`, so extrap ≈ last (no loss). In unsteady wake, extrap captures local acceleration.
 - **Change:** `model.py:207-213` — compute `dv = last − velocity_in[:,-2:-1]`, broadcast with `dt_offsets = [1..5]`, form `v_extrap = last + dv · dt_offsets`, then `pred = v_extrap + delta_norm · vel_std`.
