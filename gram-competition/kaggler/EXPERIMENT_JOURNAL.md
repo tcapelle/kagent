@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage B 2nd pass-4 with EMA — iter 63 best=0.9775/ema=0.9757, 86-ensemble **0.9500** (**-0.16%**, crossed 0.95)
+- **Hypothesis:** Mirror iter62 EMA recipe for lineage B (from iter46.final = best pass-3 base). EMA expected to provide 0.1-0.2% lift and distinct soup ingredient.
+- **Change:** no code. `WANDB_MODE=offline --resume .../model-f63b23qm/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.15 --best_val_floor 0.9778 --ema_decay 0.999 --epochs 25`. 31.0 min, E6 early stop.
+- **Result:** best_run=**0.9775** at E4 (**NEW ABSOLUTE FLOOR — beat best_val_floor of 0.9778, best.pt updated**); best_run_ema=**0.9757** at E5 (**all-time single-model record**). Staged iter63.pt + iter63_ema.pt. New soups: soup_B5 (5-mem uniform), soup_B_ema (5-mem w/ EMA substitute), soup_B4pair (iter57+iter63_ema).
+  - **86-ensemble** (81 + 5 new: iter63, iter63_ema, soup_B5, soup_B_ema, soup_B4pair) = **0.9500** (Ux=0.6169, Uy=0.3034, Uz=0.4537). Submitted.
+- **Verdict:** **WIN.** EMA + lineage extension continues to add ~0.2%/iter. **Cumulative session: 1.0625 → 0.9500 = 10.59%, crossed 0.95 barrier.**
+- **Notes:** Cross-lineage EMA soup (iter62_ema + iter63_ema averaged) was **skipped** before eval — prior session tests showed cross-lineage weight averaging catastrophic (1.78 standalone). Kept only within-lineage soups. **Iter 64 launched = lineage C 2nd pass-4 with EMA** (iter49.final model-wt22hwy0, drop=0.05). Plan iter65+ = lineage D/E 2nd pass-4 with EMA.
+
 ### 2026-04-18 — Lineage A 2nd pass-4 with EMA — iter 62 best=0.9802/ema=0.9791, 81-ensemble **0.9515** (**-0.24% vs 0.9539**)
 - **Hypothesis:** First run with new `--ema_decay 0.999` flag — both best_run.pt and best_run_ema.pt as ensemble members. Second pass-4 on lineage A gives stochastic diversity from iter56 (same warm-start but different seed).
 - **Change:** no code (train.py ema code already in). `WANDB_MODE=offline --resume .../model-c4g1jcya/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9778 --ema_decay 0.999 --epochs 25`. 32.5 min, E7 early stop.
