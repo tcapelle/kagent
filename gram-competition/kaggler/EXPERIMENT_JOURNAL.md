@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v40 KEPT ★★★ BREAKTHROUGH — L2-norm loss (matches eval metric) solo=0.7759, 26-seed top26/T=0.02 = 0.7434 (gain 0.0049)
+- **Hypothesis:** current training loss is MSE in normalized velocity space (`diff.pow(2).mean()`), but the competition metric is **L2 norm** per point then mean (`diff.norm(dim=-1).mean()`). MSE over-weights outlier points quadratically; the metric weights them linearly. Training on the exact metric should give calibrated gradients and a much better solo. This is a loss-function axis completely untouched across v1-v39 (all 25 seeds were MSE-trained), so the basin is orthogonal → big ensemble gain too.
+- **Change:** train.py — added `loss_type: str = "mse"` config flag; training loop dispatches to `diff.norm(dim=-1).mean()` when `loss_type=='l2'`. Everything else identical to v28-style baseline (default lr=5e-4, wd=1e-4, voxel_mid=64). CLI: `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --epochs 70`.
+- **Result:** v40 solo val/l2 = **0.7759** at ep67/70 — 0.066 below prior best v29 (0.8420). 52s/epoch (same as MSE). Train loss curve is cleaner — descends monotonically from 0.12 → 0.046 with near-zero oscillation. 26-seed ensemble (v6, v15-v36, v38-v40; v37 still excluded) top26_mean_T=0.02 = **0.7434** (gain 0.0049 over 0.7483). Sub-0.745 for the first time. Best scheme is `top26` (all seeds) because v40's softmax weight dominates (~exp(4) = 54× the MSE seeds') and the remaining 25 MSE seeds still add error cancellation.
+- **Verdict:** KEPT — the single biggest improvement since v15→v16 (3-seed ensemble 0.019). L2 loss is a genuinely new regime.
+- **Notes:** L2 loss had always been theoretically obvious (it matches the eval metric exactly) but never tried in this codebase. Journal should mark this as a warning to test fundamentals before chasing 0.0005/seed incrementals on a single regime. Next (v41): **2nd L2-loss seed** — vanilla L2 full-cosine at epochs=70. If per-seed solo variance is like MSE (std ~0.005), two L2 seeds at ~0.77-0.78 will ensemble to ~0.73-0.74. If big gain, expand to L2 + voxel_mid=96 (v42) and L2 + wd=5e-5 / lr=3e-4 (v43) for further diversity.
+
+
+### 2026-04-18 — v39 DISCARDED — voxel_mid=96 + wd=5e-5 + full-cosine solo 0.8523, 25-seed ensemble 0.7483 (no gain, saturated)
+- **Hypothesis:** transfer the wd=5e-5 winning axis (v33 0.8471) onto voxel_mid=96 arch — expected to give a strong voxel_mid=96 seed with distinct basin.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=75 python train.py --voxel_mid 96 --weight_decay 5e-5 --epochs 60`. Full cosine fit (60 × 66s = 66 min).
+- **Result:** v39 solo val/l2 = **0.8523** at ep58/60 — 5th-best solo ever, good. BUT: 25-seed ensemble (v39 added; top18) = **0.7483**, identical to 24-seed. No gain.
+- **Verdict:** discarded for ensemble purposes (checkpoint kept as `_v39seed.pt` for possible future use). Voxel_mid=96 arch family is ensemble-saturated — v36 gave 0.0007, v39 gives 0.
+- **Notes:** This reinforces that the 25-seed ensemble is fundamentally saturated on the MSE-loss / voxel-UNet regime. Another ~25 MSE seeds would give at most ~0.745. Only a NEW regime (loss, arch, or feature) can break through. Pivoting to v40 (L2 loss).
+
+
 ### 2026-04-18 — v38 KEPT (small) — triple-axis lr=3e-4+wd=5e-5+full-cosine solo 0.8534, 24-seed top16/T=0.02 0.7483 (gain 0.0005)
 - **Hypothesis:** combine the two winning single-axes — lr=3e-4 (v31 0.8487) + wd=5e-5 (v33 0.8471) + full-cosine — should give a new-basin seed with strong solo, mirroring how v31 double-combined (lr + full-cosine) produced v29-grade solos with ensemble gain of 0.0026. Triple-combined-axis is the natural extension.
 - **Change:** CLI only — `MAX_TIMEOUT_MIN=80 python train.py --lr 3e-4 --weight_decay 5e-5 --epochs 90`. No code changes.

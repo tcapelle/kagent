@@ -283,6 +283,7 @@ class Config:
     voxel_res: int = 64
     voxel_mid: int = 64
     ema_beta: float = 0.0  # 0 = off; typical: 0.999 (short window) to 0.9999 (long)
+    loss_type: str = "mse"  # "mse" (current) or "l2" (norm-L2 per point, matches eval metric)
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -388,7 +389,10 @@ def main():
             pred = model(v_in, pos, t, idcs, sdf)
             vel_std = stats["vel_std"].to(device).view(1, 1, 1, 3)
             diff = (pred - v_out) / vel_std
-            loss = diff.pow(2).mean()
+            if cfg.loss_type == "l2":
+                loss = diff.norm(dim=-1).mean()
+            else:
+                loss = diff.pow(2).mean()
 
             optimizer.zero_grad()
             loss.backward()
