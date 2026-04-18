@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — scale-up-violet-e17
+- **Hypothesis:** E15 architecture ceilinged near ~1.01 at hidden=256 / 10k anchors / 5 edge blocks with pure cosine LR schedule. Scale up capacity moderately (hidden 256→320, edge_blocks 5→6, n_anchors 10k→12k) and add a linear LR warmup (5 epochs, start_factor 0.1) to let the wider network stabilize early. Keep the E15 coarse EdgeConv branch (3 blocks, k=32, 2k anchors). Budget 300 min / 240 epochs so the cosine tail fully anneals.
+- **Change:** `train.py` — bumped `BaselineMLP` constructor kwargs (hidden=320, edge_blocks=6, n_anchors=12000), wrapped cosine schedule in `SequentialLR([LinearLR warmup, CosineAnnealingLR])` with 5-epoch warmup. `predict.py` kwargs synced.
+- **Result:** val/l2 = **0.9843** (epoch 176). 178 epochs × 102 s, 9.4 GB bf16. train 0.047 → 0.0107 (normalized). Timed out at 300 min before planned 240 epochs (got 178). Leaderboard l2=0.9843. Commit `dc67c69` (code), `dcc1ed5` (ckpt). W&B run `n67937ch`.
+- **Verdict:** kept — **first break below 1.0** (1.0140 → 0.9843, -2.9%). Lifts out of the 1.01 ceiling.
+- **Notes:** Trajectory: e19=1.286 → e46=1.157 → e80=1.095 → e105=1.065 → e135=1.015 → e145=1.010 → e151=1.000 → e165=0.987 → e176=0.984. Capacity bump helped meaningfully; the warmup may have contributed too (early epochs were noisy before e20, stable after). Train loss still descending at timeout — more epochs / smaller final LR would likely help. **Next ideas to push further past leaders at ~0.70–0.75**: (a) even bigger hidden=384 + larger anchor counts, (b) physics-informed divergence-free penalty (incompressibility ∇·v≈0 via local least-squares gradient estimation), (c) longer schedule (360 min, T_max=200), (d) test-time augmentation via Y-flip ensembling, (e) KPConv / Point Transformer as architectural swap.
+
 ### 2026-04-18 — global-attention-violet-e16
 - **Hypothesis:** Replace E15's coarse EdgeConv branch (2k anchors, k=32 graph) with **true global self-attention** — multi-head Transformer on the 2k anchors gives unlimited receptive field (any anchor can attend to any other) and should capture long-range wake/vortex structure that KNN neighborhoods cut off. Added absolute Fourier-pos embedding inside the coarse branch so tokens are spatially aware.
 - **Change:** `train.py` `BaselineMLP.__init__` — swapped `EdgeConvBlock` → `TransformerBlock(num_heads=8)` for the coarse branch; added `coarse_pos_embed = Linear(fourier_dim, hidden)` and added pos feat to coarse input. `predict.py` kwargs synced. Launched `MAX_TIMEOUT_MIN=240 --epochs 280`.
