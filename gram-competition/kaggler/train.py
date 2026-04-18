@@ -585,6 +585,7 @@ class Config:
     train_n_points: int = 0  # if >0, subsample each train sample to this many points (val unchanged)
     feat_dropout: float = 0.0  # dropout p on trunk features (after proj_in + sdf + rel); stateless so warm-start is identity at eval
     best_val_floor: float = float("inf")  # don't save a checkpoint unless val/l2 beats this (guards against worse runs overwriting best.pt)
+    ema_decay: float = 0.0  # if >0, maintain an EMA of model weights with this decay and save best_run_ema.pt
 
 
 def main():
@@ -668,6 +669,12 @@ def main():
     global_step = 0
     train_start = time.time()
 
+    ema_state = None
+    best_ema_val = float("inf")
+    best_ema_path = pvc_dir / "best_run_ema.pt"
+    if cfg.ema_decay > 0:
+        ema_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
     # When warm-starting, eval the resumed model before training so we never
     # overwrite the in-repo best.pt with a worse checkpoint (which silently
     # happened on iter 16 E1 at 1.10 clobbering iter 15 at 1.066).
@@ -723,6 +730,10 @@ def main():
             optimizer.step()
             scheduler.step()
             global_step += 1
+            if ema_state is not None:
+                with torch.no_grad():
+                    for k, v in model.state_dict().items():
+                        ema_state[k].mul_(cfg.ema_decay).add_(v.detach(), alpha=1 - cfg.ema_decay)
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
             epoch_loss += loss.item()
@@ -758,10 +769,23 @@ def main():
             torch.save(model.state_dict(), best_run_path)
             tag += "+"
 
+        ema_val = None
+        if ema_state is not None:
+            orig_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            model.load_state_dict(ema_state)
+            ema_val, _ = validate(model, val_loaders, device, global_step)
+            model.load_state_dict(orig_state)
+            if ema_val < best_ema_val:
+                best_ema_val = ema_val
+                torch.save(ema_state, best_ema_path)
+                tag += "~"
+            wandb.log({"val/ema_l2_error": ema_val, "global_step": global_step})
+
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+        ema_str = f"  ema={ema_val:.4f}" if ema_val is not None else ""
         print(
             f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
-            f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{tag}"
+            f"train={epoch_loss:.4f}  val/l2={mean_val:.4f}{ema_str}{tag}"
         )
 
     total_time = (time.time() - train_start) / 60.0
@@ -773,6 +797,8 @@ def main():
     torch.save(model.state_dict(), final_path)
     print(f"Final weights -> {final_path}")
     print(f"Best-within-run val/l2={best_run_val:.4f} -> {best_run_path}")
+    if ema_state is not None:
+        print(f"Best-within-run EMA val/l2={best_ema_val:.4f} -> {best_ema_path}")
 
     if best_metrics:
         print(f"Best: epoch {best_metrics['epoch']}, val/l2_error={best_metrics['val_l2_error']:.4f}")
