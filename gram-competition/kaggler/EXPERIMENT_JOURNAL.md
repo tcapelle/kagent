@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage A pass 4 + WEIGHTED SOUPS (iter 56) — 59-ensemble 0.9654 (**-0.31% vs 0.9684**)
+- **Hypothesis:** (1) iter56 = lineage A pass 4 (lr=2e-5 from iter43.final) extends lineage A to 4 passes, enabling 4-member soup_A + new "drop-fresh deeper" variants. (2) Test **weighted soups** biased toward later (more refined) passes: 0.15/0.35/0.50 for pass1/2/3.
+- **Change:** no code. iter56: `--resume .../model-c4g1jcya/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9784 --epochs 25`. Soups: soup_Aw/Bw/Cw/Dw/Ew (5 weighted 3-member), updated soup_A to 4-member, new soup_A3 (iter42+43+56), new soup_A34 (iter43+56).
+- **Result:** iter56 best_run = **0.9810** at E4 & E8 (34.9 min, contended). Barely moved from iter43 floor (0.9806) since lr=2e-5 is small. Staged as iter56.pt.
+  - **59-ensemble (54 + 5 weighted soups) = 0.9654** ← submitted (**-0.31% vs 0.9684**, -1.68% vs 0.9819 baseline)
+- **Verdict:** Weighted soups give UNCORRELATED ensemble contribution to uniform soups. Even though weighted Aw ≈ Aw_uniform, predict-TTA nonlinearities create distinct outputs. **Cumulative session: 1.0625 → 0.9654 = 9.14%.**
+- **Notes:** Each soup variant (uniform/drop-fresh/weighted) samples a different flat-minima point. Running 17 soup files now across 5 lineages. **Iter 57 launched = lineage B pass 4** (iter46.final → lr=2e-5) — mirror of iter56. **Iter 58 options:** (a) lineage C pass 4; (b) **in-run EMA snapshots** (edit train.py to save last-3-epoch avg as swa.pt); (c) "deep soup_A": pairwise soups per lineage (soup_A_12, A_13, A_14, A_23, A_24, A_34); (d) hard pivot to arch. (b) is classical SWA — unused so far — likely gives a genuinely better single-model and a new ensemble member; high EV. Target (b) for iter58.
+
 ### 2026-04-18 — Lineage E pass 3 + 2-MEMBER SOUPS (iter 55) — 54-ensemble 0.9684 (**-1.38% vs 0.9819**)
 - **Hypothesis:** (1) iter55 = lineage E pass 3 (lr=5e-5 from iter54.final) to bring lineage E to 3 passes, enabling soup_E to grow from 2→3 members. (2) Test "drop-weak-fresh" 2-member soups per lineage — avg(pass2, pass3) without the weak fresh-init — to see if uniform averaging is suboptimal.
 - **Change:** no code. iter55: `--resume .../model-r62nndp7/final.pt --lr 5e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9784 --epochs 25`. Soups: soup_E 3-member + 5 new 2-member soups (A2=iter42+43, B2=45+46, C2=48+49, D2=51+52, E2=54+55).
