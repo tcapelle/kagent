@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter26: iso-48³ ch=128 — marginal gain, ensemble **0.70620**
+- **Hypothesis:** After iter25 (iso-64³) added huge value, extend iso ladder below 64³. iso-48³ = 110K voxels, even cheaper (24s/epoch, 2.7GB VRAM). Warm from e61uos2z (iter25) to transfer ch=128 channel weights.
+- **Change:** `--unet_ch_base 128 --unet_grid 48³ --init_from model-e61uos2z --lr 6e-5 --epochs 60 --yflip_aug True` (run-id `bbd64rlo`). 55 epochs fit in budget.
+- **Result:** Best val/l2=**0.8087** at epoch 42/55 (plateau around 0.81). Solo+TTA=**0.7848** (12th of 16 members). Weight-opt sweep size=12 weighted=**0.70620**. Members: `[690outlv, i504xzr0, e61uos2z, h0yvcd7w, 6tusrvjg, bbd64rlo, 7ftlim00, edabraoh, bn20n6rl, uxqos5pk, dzvhynv9, w3f26spn]`. Weights: `[0.229, 0.255, 0.209, 0.094, 0.081, **0.037**, 0.000, 0.001, 0.058, 0.008, 0.000, 0.028]`. bbd64rlo weight=**0.037** (5th). **0.00009 improvement** over iter25 (0.70629) — essentially at the noise floor for iso-ladder members.
+- **Verdict:** KEPT (technically). **iso-grid axis now fully saturated** — adding smaller iso grids yields diminishing returns beyond 64³. This is the plateau.
+- **Notes:** (1) Gain trajectory in iso ladder: 128³ → +0.0015, 96³ → +0.0043, 80³ → +0.0074, 64³ → +0.0034, 48³ → +0.0001. Peak at 80³; fall-off both sides. (2) Solo+TTA trajectory for ch=128 iso family: 128³=? 96³=0.7496, 80³=0.7718, 64³=0.7786, 48³=0.7848 — solo gets worse at smaller iso (expected: too few voxels to resolve wake structure). (3) Ensemble contribution from smaller-iso members is purely decorrelation-based, not accuracy-based. (4) Decision: **leave iso-axis for good.** Next iterations must try: (a) non-grid axis — physics loss (divergence-free regularizer), x-flip aug if applicable, k-NN local attention, (b) Transolver revival with warm-start from best UNet to diversify the architecture family, (c) same-arch different-seed runs for pure noise decorrelation.
+
 ### 2026-04-18 — iter25: iso-64³ ch=128 — **biggest gain since iter19**, ensemble **0.70629**
 - **Hypothesis:** iter24 (big iso 128³) failed due to undertraining. Opposite direction: small iso (64³ = 262K voxels, 4× smaller than 96³) should be **cheap and fast** → many training epochs fit in budget. Warm-start from 690outlv (iter23, ch=128@96³) to transfer channel weights; only voxelizer changes. Decorrelation from 80³ and 96³ should add ensemble value.
 - **Change:** `--unet_ch_base 128 --unet_grid 64³ --init_from model-690outlv --lr 6e-5 --epochs 50 --yflip_aug True` (run-id `e61uos2z`). 33M params, **3.5GB VRAM** (5× smaller than iter24!), **38s/epoch** (5× faster) → **42 epochs** fit in 27-min budget.
