@@ -90,7 +90,7 @@ class Config:
     lr: float = 1.5e-3
     weight_decay: float = 1e-4
     batch_size: int = 1
-    epochs: int = 28
+    epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
     wandb_group: str | None = None
     wandb_name: str | None = None
