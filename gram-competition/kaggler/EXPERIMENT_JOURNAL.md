@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — LR warmup 1 ep linear + 27 ep cosine [discarded]
+- **Hypothesis:** Adam's second-moment variance estimate is poorly calibrated at step 0 (few samples). Warming LR up linearly over 1 epoch (0.01× → 1× peak) before cosine should reduce early optimization instability and let the cosine hit a slightly better minimum by end of budget. Standard "training hygiene" win across many CNN/transformer recipes.
+- **Change:** `train.py` — replace `CosineAnnealingLR(T_max=MAX_EPOCHS)` with `SequentialLR([LinearLR(start=0.01, iters=1), CosineAnnealingLR(T_max=MAX_EPOCHS-1)], milestones=[1])`. Nothing else.
+- **Result:** val/l2_error = **0.9363** (epoch 28 of 28 @ 30.3 min, 8.2 GB peak). Train loss 0.0106 (vs 0.0096 exp 16 — model trained less). **Worse than exp 16 (0.9147) by 2.4 %**. Trajectory stayed ~0.03 worse than exp 16 the whole run, never caught up.
+- **Verdict:** Discarded. Reverted; restored exp 16 checkpoint.
+- **Notes:** Two likely mechanisms: (a) The first epoch at 0.005–0.5× peak LR is nearly wasted for the actual weights, but the EMA (decay=0.999, need ~1000 steps = 2 epochs to converge) started from random init and lost its first-epoch mixing opportunity — EMA at ep 1 val was 4.54, vs ~3 for a normally-initialized run. (b) Losing 1 full epoch of peak-LR training from a 28-epoch budget is a real compute hit here. Lesson: warmup is a free win with *many* epochs, but at 28 epochs it's a net loss. If we ever run ≥50 epochs it's worth revisiting. Not a blanket "warmup doesn't work" — it's "warmup + EMA at short budget doesn't work." Next candidates: (a) stride-2 conv downsampling (learned, not avg_pool3d); (b) grad clipping (gradient norm at 1.0); (c) point hidden 384 → 512 (capacity — risk is throughput); (d) multi-timestep loss weighting (harder future timesteps get higher weight).
+
 ### 2026-04-18 — U-Net 4-level (G/8 bottleneck) [discarded]
 - **Hypothesis:** Adding a fourth U-Net level (bottleneck at G/8 = 10 voxels across 2.3 m bbox) gives the model a global receptive field over the whole domain — useful for capturing freestream context + large-scale wake. Compute at G/8 is tiny (10³×256² < 2 GFLOPs), so per-epoch should barely grow.
 - **Change:** `model.py` — add `enc3` at G/8 with 8×grid_ch channels + `dec2` at G/4 (skip from enc2). Pool/interp chain grows to 3 levels deep.
