@@ -215,7 +215,12 @@ class VoxelFlowNet(nn.Module):
         x = self.proj_in(x)
         x = self.blocks(x)
         delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
-        pred = velocity_in[:, -1:, :, :] + delta_norm * self.vel_std
+        # Linear momentum extrapolation baseline: v[-1] + (v[-1] - v[-2]) * t_offset
+        last = velocity_in[:, -1:, :, :]
+        dv = velocity_in[:, -1:, :, :] - velocity_in[:, -2:-1, :, :]
+        t_offset = torch.arange(1, T_OUT + 1, device=last.device, dtype=last.dtype).view(1, T_OUT, 1, 1)
+        baseline = last + dv * t_offset
+        pred = baseline + delta_norm * self.vel_std
         for b, idc in enumerate(idcs_airfoil):
             pred[b, :, idc, :] = 0.0
         return pred
