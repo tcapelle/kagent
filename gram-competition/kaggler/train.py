@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import N_POINTS, T_IN, T_OUT, VAL_SPLIT_NAMES, collate_fn, load_data
-from model import ResidualMLP, ResidualMLPv16
+from model import ResidualMLP, ResidualMLPv16, ResidualMLPv22
 
 
 # ---------------------------------------------------------------------------
@@ -92,11 +92,13 @@ class Config:
     dropout_p: float = 0.0  # dropout in ResBlock (between GELU and 2nd Linear); 0 = off
     loss_type: str = "mse"   # "mse" | "huber" | "l1" (all in normalized residual space)
     huber_delta: float = 1.0
-    model_version: str = "v6"  # "v6" (ResidualMLP) | "v16" (ResidualMLPv16 w/ voxel-token attn + Fourier pos)
-    n_attn_blocks: int = 2      # v16 only: number of VoxelTokenAttn blocks
-    layer_scale: float = 1e-4   # v16 only: LayerScale init for attention residual
+    model_version: str = "v6"  # "v6" (ResidualMLP) | "v16" (VoxelTokenAttn) | "v22" (Transolver PhysicsAttention)
+    n_attn_blocks: int = 2      # v16/v22 only: number of attention blocks
+    layer_scale: float = 1e-4   # v16/v22 only: LayerScale init for attention residual
+    n_slices: int = 64          # v22 only: number of Transolver physics slices per head
     amp: bool = False  # enable mixed-precision (bf16 autocast, no scaler needed)
     yflip_aug: bool = False  # random y-flip data augmentation (50% prob). Doubles effective train data.
+    subsample_points: int = 0   # if >0, subsample each training batch to this many points (keeps all airfoil pts)
     loss_weight_near_airfoil: float = 0.0  # if >0, up-weight per-point loss by exp(-dist/scale) * weight (0 = uniform)
     loss_weight_scale: float = 0.05  # spatial scale of near-airfoil weighting
     splits_dir: str = "/mnt/new-pvc/datasets/gram/splits"
@@ -122,7 +124,18 @@ val_loaders = {
     for name, ds in val_splits.items()
 }
 
-if cfg.model_version == "v16":
+if cfg.model_version == "v22":
+    model = ResidualMLPv22(
+        vel_mean=stats["vel_mean"],
+        vel_std=stats["vel_std"],
+        hidden=cfg.hidden,
+        n_blocks=cfg.n_blocks,
+        dropout_p=cfg.dropout_p,
+        n_attn_blocks=cfg.n_attn_blocks,
+        n_slices=cfg.n_slices,
+        layer_scale=cfg.layer_scale,
+    ).to(device)
+elif cfg.model_version == "v16":
     model = ResidualMLPv16(
         vel_mean=stats["vel_mean"],
         vel_std=stats["vel_std"],
@@ -210,6 +223,36 @@ for epoch in range(MAX_EPOCHS):
             v_in[..., 1] *= -1
             v_out[..., 1] *= -1
             pos[..., 1] *= -1
+
+        # Point subsampling: keep all airfoil points + random volume points up
+        # to `subsample_points` total. Gives a much larger effective training set
+        # and cuts memory. Per-sample (batch size is 1 in practice).
+        if cfg.subsample_points > 0:
+            B_, _, N_, _ = v_in.shape
+            K = min(cfg.subsample_points, N_)
+            new_v_in, new_v_out, new_pos, new_idcs = [], [], [], []
+            for b in range(B_):
+                idc = idcs[b].to(device)
+                airfoil_mask = torch.zeros(N_, dtype=torch.bool, device=device)
+                airfoil_mask[idc] = True
+                n_airfoil = airfoil_mask.sum().item()
+                n_vol = max(0, K - n_airfoil)
+                non_idx = (~airfoil_mask).nonzero(as_tuple=True)[0]
+                picked = non_idx[torch.randperm(non_idx.shape[0], device=device)[:n_vol]]
+                keep_mask = airfoil_mask.clone()
+                keep_mask[picked] = True
+                kept = keep_mask.nonzero(as_tuple=True)[0]
+                # Re-index airfoil pts into the kept subset
+                new_pos_idx = torch.full((N_,), -1, dtype=torch.long, device=device)
+                new_pos_idx[kept] = torch.arange(kept.shape[0], device=device)
+                new_v_in.append(v_in[b, :, kept, :])
+                new_v_out.append(v_out[b, :, kept, :])
+                new_pos.append(pos[b, kept, :])
+                new_idcs.append(new_pos_idx[idc])
+            v_in = torch.stack(new_v_in)
+            v_out = torch.stack(new_v_out)
+            pos = torch.stack(new_pos)
+            idcs = new_idcs
 
         # Optional per-point weighting by proximity to airfoil (boundary layer focus).
         # w = exp(-dist/scale)^alpha, per-sample normalized so mean(w)=1.

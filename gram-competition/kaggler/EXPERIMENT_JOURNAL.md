@@ -22,6 +22,31 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — v21: v16-arch attn=3 + yflip + dropout=0.15 (KEPT)
+- **Hypothesis:** v20 (1.1304 single, 1.0654 7-ensemble) succeeded because
+  v16-family + yflip + higher dropout form a quality-parity diverse
+  member. v21 is a near-variant with lighter hyperparams (n_attn_blocks=3
+  vs 4, dropout=0.15 vs 0.2, same layer_scale=1e-3) to add a seed- and
+  hyperparam-diversified member. Expect single ~1.12-1.13, 8-ensemble
+  delta -0.001 to -0.002 (diminishing returns).
+- **Change:** `--model_version v16 --n_blocks 10 --epochs 54 --dropout_p 0.15
+  --n_attn_blocks 3 --layer_scale 1e-3 --yflip_aug True` + 180min budget.
+- **Result:**
+  - Single: val/l2=**1.1354** at ep54 of 54 (171.7 min, still improving).
+    WandB `edward/v21-v16-attn3-dropout15` (sgsw7i4r). 191s/epoch, 17.5GB.
+  - **8-member ensemble: val/l2=1.0648** (better than 7-member 1.0654,
+    delta -0.0006). Marginal but positive.
+- **Verdict:** KEPT. Member #8.
+- **Notes:** Diminishing returns exactly as predicted — v20 added -0.0027,
+  v21 only -0.0006. Confirms ensemble is saturating on v6/v16-family
+  diversity. To meaningfully close the gap to rank 7 (0.072 away), need
+  (a) a step-change in single-model quality or (b) a fundamentally
+  different architecture. Researched alternatives: Transolver-style
+  PhysicsAttention (learned soft slicing + Ada-Temp) is the highest
+  evidence lever — my VoxelTokenAttn is a hard-voxel caricature of the
+  same idea, and Transolver is SOTA on ShapeNetCar / DrivAerNet++
+  benchmarks. v22 will prototype this with point subsampling aug.
+
 ### 2026-04-17 — v20: v16-arch attn=4 + yflip (KEPT)
 - **Hypothesis:** v18/v19 both failed because their singles were far
   outside our quality floor (1.23–1.25 vs floor 1.18). To improve the

@@ -185,6 +185,67 @@ class VoxelTokenAttn(nn.Module):
         return h + out
 
 
+class PhysicsAttention(nn.Module):
+    """Transolver-style Physics-Attention with learned soft slicing.
+
+    Each attention head learns a soft assignment of N points to M 'slice
+    tokens' (per-point softmax over M). Tokens aggregate point features
+    weighted by slice membership; self-attention runs over M tokens; tokens
+    scatter back to points via the same weights. O(N*M*H + M^2*H).
+
+    Includes Ada-Temp (Transolver++): per-head per-point softmax temperature
+    conditioned on positional encoding, so the slicing adapts to geometry.
+
+    Residual is LayerScaled (near-identity at init).
+    """
+    def __init__(self, dim, n_heads=4, n_slices=64, layer_scale=1e-4, pos_dim=39):
+        super().__init__()
+        assert dim % n_heads == 0
+        self.H = n_heads
+        self.M = n_slices
+        self.hd = dim // n_heads
+        self.norm = nn.LayerNorm(dim)
+        # Per-head per-point slice logits: h -> H*M
+        self.slice_proj = nn.Linear(dim, n_heads * n_slices)
+        # Ada-Temp: per-head base + per-point positional offset. softplus->positive
+        self.temp_base = nn.Parameter(torch.full((n_heads,), 0.5))  # softplus(0.5)≈0.97
+        self.temp_proj = nn.Linear(pos_dim, n_heads)
+        # QKV over the M slice tokens
+        self.qkv = nn.Linear(dim, 3 * dim)
+        self.out = nn.Linear(dim, dim)
+        self.gamma = nn.Parameter(torch.full((dim,), layer_scale))
+
+    def forward(self, h, pos_embed):
+        # h: [B, N, d]  pos_embed: [B, N, pos_dim]
+        B, N, d = h.shape
+        H, M, hd = self.H, self.M, self.hd
+
+        h_norm = self.norm(h)
+
+        # Slice weights [B, N, H, M] with Ada-Temp
+        logits = self.slice_proj(h_norm).view(B, N, H, M)
+        temps = F.softplus(self.temp_base.view(1, 1, H) + self.temp_proj(pos_embed))  # [B,N,H]
+        temps = temps.clamp_min(1e-3).unsqueeze(-1)
+        w = F.softmax(logits / temps, dim=-1)
+
+        # Slice: z_j = Σ_i w_ij v_i / Σ_i w_ij   (per head)
+        v_points = h_norm.view(B, N, H, hd)
+        num = torch.einsum("bnhm,bnhd->bhmd", w, v_points)
+        denom = w.sum(dim=1).unsqueeze(-1).clamp_min(1e-6)        # [B,H,M,1]
+        tokens = num / denom                                       # [B,H,M,hd]
+
+        # Attention over M tokens
+        tokens_cat = tokens.permute(0, 2, 1, 3).reshape(B, M, d)   # [B,M,d]
+        qkv = self.qkv(tokens_cat).reshape(B, M, 3, H, hd).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)                                    # each [B,H,M,hd]
+        attended = F.scaled_dot_product_attention(q, k, v)         # [B,H,M,hd]
+
+        # Descice: h_i' = Σ_j w_ij z_j'
+        out_pts = torch.einsum("bnhm,bhmd->bnhd", w, attended).reshape(B, N, d)
+        out_pts = self.out(out_pts)
+        return h + self.gamma * out_pts
+
+
 class ResidualMLP(nn.Module):
     # Per-point input features:
     #   pos(3) + v_in_norm_flat(T_IN*3) + v_in_diff_flat((T_IN-1)*3)
@@ -405,15 +466,144 @@ class ResidualMLPv16(nn.Module):
         return pred
 
 
+class ResidualMLPv22(nn.Module):
+    """v22: v16 backbone + Transolver PhysicsAttention (learned soft slicing).
+
+    Replaces VoxelTokenAttn with PhysicsAttention. Keeps Fourier pos embedding,
+    voxel scatter-mean input features, voxel-mix message passing. The attention
+    module uses Ada-Temp (positional softmax temperature) and LayerScale residual.
+
+    Distinct state_dict keys (`phys_attns.*` vs v16's `attns.*`) allow clean
+    checkpoint dispatch.
+    """
+    IN_DIM_V22 = 3 * (1 + 2 * FOURIER_FREQS) + T_IN * 3 + (T_IN - 1) * 3 + 1 + 1 + len(VOXEL_SCALES) * 12 + 3
+    POS_DIM = 3 * (1 + 2 * FOURIER_FREQS)
+
+    def __init__(self, vel_mean, vel_std, hidden=512, n_blocks=12,
+                 dropout_p=0.0, n_attn_blocks=4, n_slices=64, layer_scale=1e-4):
+        super().__init__()
+        self.register_buffer("vel_mean", vel_mean.view(1, 1, 1, 3))
+        self.register_buffer("vel_std", vel_std.view(1, 1, 1, 3))
+
+        self.fourier_pos = FourierPosEmbed(FOURIER_FREQS)
+        self.proj_in = nn.Linear(self.IN_DIM_V22, hidden)
+        self.blocks = nn.ModuleList([ResBlock(hidden, dropout_p=dropout_p) for _ in range(n_blocks)])
+        self.n_mixes = n_blocks // MIX_EVERY
+        self.mixes = nn.ModuleList(
+            [VoxelMix(hidden, len(VOXEL_MIX_SCALES)) for _ in range(self.n_mixes)]
+        )
+        self.n_attn_blocks = n_attn_blocks
+        self.n_slices = n_slices
+        self.phys_attns = nn.ModuleList(
+            [PhysicsAttention(hidden, n_heads=4, n_slices=n_slices,
+                              layer_scale=layer_scale, pos_dim=self.POS_DIM)
+             for _ in range(n_attn_blocks)]
+        )
+        step = max(1, n_blocks // (n_attn_blocks + 1))
+        self.attn_after_block = [(i + 1) * step for i in range(n_attn_blocks)]
+
+        self.out = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, T_OUT * 3))
+        t_dim = T_IN + T_OUT + T_OUT
+        self.t_mlp = nn.Sequential(
+            nn.Linear(t_dim, hidden), nn.GELU(), nn.Linear(hidden, hidden),
+        )
+
+    def _build_features(self, velocity_in, pos, idcs_airfoil):
+        B, T, N, _ = velocity_in.shape
+        device = velocity_in.device
+
+        v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
+        v_in_flat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * 3)
+        v_in_diff = v_in_norm[:, 1:] - v_in_norm[:, :-1]
+        v_in_diff_flat = v_in_diff.permute(0, 2, 1, 3).reshape(B, N, (T - 1) * 3)
+
+        mask = torch.zeros(B, N, 1, device=device)
+        log_dist = torch.zeros(B, N, 1, device=device)
+        per_scale_feats = [torch.zeros(B, N, 12, device=device) for _ in VOXEL_SCALES]
+        laplacian = torch.zeros(B, N, 3, device=device)
+
+        v_last = v_in_norm[:, -1]
+        for i in range(B):
+            idc = idcs_airfoil[i].to(device)
+            mask[i, idc, 0] = 1.0
+            dist = min_distance_to(pos[i], pos[i, idc])
+            log_dist[i, :, 0] = torch.log1p(dist * 10.0)
+            means = []
+            for s, vs in enumerate(VOXEL_SCALES):
+                mean_at, std_at, dev, offset = voxel_stats(pos[i], v_last[i], vs)
+                per_scale_feats[s][i] = torch.cat([mean_at, std_at, dev, offset], dim=-1)
+                means.append(mean_at)
+            laplacian[i] = means[-1] - means[0]
+
+        vox_cat = torch.cat(per_scale_feats, dim=-1)
+        pos_embed = self.fourier_pos(pos)
+        feats = torch.cat(
+            [pos_embed, v_in_flat, v_in_diff_flat, mask, log_dist, vox_cat, laplacian],
+            dim=-1,
+        )
+        return feats, v_in_norm, pos_embed
+
+    def forward(self, velocity_in, pos, t, idcs_airfoil):
+        B, _, N, _ = velocity_in.shape
+        device = velocity_in.device
+
+        mix_invs = [[voxel_inv(pos[b], vs) for b in range(B)] for vs in VOXEL_MIX_SCALES]
+
+        feats, v_in_norm, pos_embed = self._build_features(velocity_in, pos, idcs_airfoil)
+        h = self.proj_in(feats)
+
+        t_in, t_out = t[:, :T_IN], t[:, T_IN:]
+        dt = t_out - t[:, T_IN - 1 : T_IN]
+        t_feat = torch.cat([t_in, t_out, dt], dim=-1)
+        h = h + self.t_mlp(t_feat).unsqueeze(1)
+
+        mix_iter = iter(self.mixes)
+        attn_schedule = set(self.attn_after_block)
+        attn_iter = iter(self.phys_attns)
+        for i, blk in enumerate(self.blocks):
+            h = blk(h)
+            if (i + 1) % MIX_EVERY == 0:
+                h = h + next(mix_iter)(h, mix_invs)
+            if (i + 1) in attn_schedule:
+                h = next(attn_iter)(h, pos_embed)
+
+        delta_norm = self.out(h).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3).contiguous()
+        last_norm = v_in_norm[:, -1:].expand(-1, T_OUT, -1, -1)
+        pred_norm = last_norm + delta_norm
+        pred = pred_norm * self.vel_std + self.vel_mean
+
+        for i, idc in enumerate(idcs_airfoil):
+            pred[i, :, idc.to(device), :] = 0.0
+        return pred
+
+
 def build_from_checkpoint(state_dict, stats, device):
-    # Dispatch by presence of v16-only keys in state_dict
+    # Dispatch by presence of version-specific keys in state_dict
+    is_v22 = any(k.startswith("phys_attns.") for k in state_dict.keys())
     is_v16 = any(k.startswith("attns.") for k in state_dict.keys())
     hidden = state_dict["proj_in.weight"].shape[0]
     n_blocks = sum(
         1 for k in state_dict.keys()
         if k.startswith("blocks.") and k.endswith(".net.1.weight")
     )
-    if is_v16:
+    if is_v22:
+        n_attn_blocks = sum(
+            1 for k in state_dict.keys()
+            if k.startswith("phys_attns.") and k.endswith(".qkv.weight")
+        )
+        # Infer n_slices from slice_proj.weight shape: [n_heads*n_slices, d]
+        slice_w = state_dict["phys_attns.0.slice_proj.weight"]
+        n_heads = 4
+        n_slices = slice_w.shape[0] // n_heads
+        model = ResidualMLPv22(
+            vel_mean=stats["vel_mean"],
+            vel_std=stats["vel_std"],
+            hidden=hidden,
+            n_blocks=n_blocks,
+            n_attn_blocks=n_attn_blocks,
+            n_slices=n_slices,
+        ).to(device)
+    elif is_v16:
         n_attn_blocks = sum(
             1 for k in state_dict.keys()
             if k.startswith("attns.") and k.endswith(".qkv.weight")
