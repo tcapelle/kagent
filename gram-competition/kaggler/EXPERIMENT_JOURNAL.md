@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage A 2nd pass-4 with EMA — iter 62 best=0.9802/ema=0.9791, 81-ensemble **0.9515** (**-0.24% vs 0.9539**)
+- **Hypothesis:** First run with new `--ema_decay 0.999` flag — both best_run.pt and best_run_ema.pt as ensemble members. Second pass-4 on lineage A gives stochastic diversity from iter56 (same warm-start but different seed).
+- **Change:** no code (train.py ema code already in). `WANDB_MODE=offline --resume .../model-c4g1jcya/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9778 --ema_decay 0.999 --epochs 25`. 32.5 min, E7 early stop.
+- **Result:** best_run=0.9802 at E2; **best_run_ema=0.9791** at E3 (0.11% lift from EMA smoothing). Both staged as iter62.pt + iter62_ema.pt. New soups: soup_A5 (5-mem uniform with iter62), soup_A_ema (5-mem with iter62_ema), soup_A4pair (iter56+iter62_ema).
+  - **81-ensemble** (76 + 5 new: iter62, iter62_ema, soup_A5, soup_A_ema, soup_A4pair) = **0.9515** (Ux=0.6181, Uy=0.3037, Uz=0.4544). Submitted.
+- **Verdict:** **WIN (big).** -0.24% drop. EMA confirmed as free 0.1% single-model lift + extra ensemble diversity. **Cumulative session: 1.0625 → 0.9515 = 10.45%.**
+- **Notes:** **Iter 63 launched with EMA = lineage B 2nd pass-4** (iter46.final model-f63b23qm, drop=0.15). Early signal very strong: E1 ema=0.9764 **already new single-model floor** (beats iter57's 0.9778). E4 val=0.9775 beat 0.9778 floor — best.pt updated too. EMA strategy = apply to each lineage's best pass-3 base.
+
 ### 2026-04-18 — Lineage E pass 4 + EMA code — iter 61 single 0.9815, 76-ensemble **0.9539** (**-0.15% vs 0.9554**)
 - **Hypothesis:** Proper lineage E pass 4 from iter55.final (model-shyjq4r0). Lineage E now has iter53→54→55→61 chain (plus iter60 branched sibling). Add in-run EMA to train.py for iter62+.
 - **Change:** train.py: added `--ema_decay` flag + EMA shadow state_dict + EMA validation per epoch + `best_run_ema.pt` save. Commit 2c61913. iter61: `WANDB_MODE=offline --resume .../model-shyjq4r0/final.pt --lr 2e-5 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.1 --best_val_floor 0.9778 --epochs 25`. 32.5 min, E8 early stop.
