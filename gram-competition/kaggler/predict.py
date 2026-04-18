@@ -38,14 +38,16 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import VoxelResidualModel, compute_sdf, SDFDataset, collate_sdf
+from train import VoxelResidualModel, compute_sdf, SDFDataset, collate_sdf, infer_arch_from_state_dict
 from data import load_data
 _, _, stats = load_data(cfg.splits_dir)
+sd = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
+arch = infer_arch_from_state_dict(sd)
+print(f"Detected arch: {arch}")
 model = VoxelResidualModel(
-    vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
-    hidden=256, voxel_res=64, voxel_mid=64,
+    vel_mean=stats["vel_mean"], vel_std=stats["vel_std"], **arch,
 ).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+model.load_state_dict(sd)
 
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")

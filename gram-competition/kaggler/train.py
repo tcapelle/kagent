@@ -217,6 +217,13 @@ class VoxelResidualModel(nn.Module):
         return pred * no_slip
 
 
+def infer_arch_from_state_dict(sd):
+    """Given a model state_dict, recover the arch kwargs for VoxelResidualModel."""
+    hidden = sd["proj_in.weight"].shape[0]
+    voxel_mid = sd["spatial.unet.enc1.block.0.weight"].shape[0]
+    return {"hidden": hidden, "voxel_res": 64, "voxel_mid": voxel_mid}
+
+
 def validate(model, val_loaders, device, global_step):
     model.eval()
     val_metrics: dict[str, dict] = {}
