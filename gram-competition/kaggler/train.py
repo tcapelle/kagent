@@ -212,8 +212,9 @@ for epoch in range(MAX_EPOCHS):
         t = t.to(device, non_blocking=True)
 
         pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
-        # Normalized MSE so all velocity components are weighted equally
-        loss = ((pred - v_out) / vel_std_gpu).pow(2).mean()
+        # Unnormalized MSE: aligns per-component weighting with val L2 metric
+        # (val is dominated by high-std components like Ux).
+        loss = (pred - v_out).pow(2).mean()
 
         optimizer.zero_grad()
         loss.backward()
