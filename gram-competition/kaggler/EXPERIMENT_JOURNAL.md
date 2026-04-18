@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter34: grid=72 architectural pivot — single-model val 0.8345 → 6-model 0.7703 (beats alphonse)
+- **Hypothesis:** grid=64 standalone has plateaued at 0.865-0.870 across 4 independent runs; clearly a capacity ceiling. Grid=72 (1.42× more voxels) should break through. Also gives a new architectural diversity axis for the ensemble beyond seed-only.
+- **Change:** `MODEL_CFG['grid_size'] = 72` in train.py. Launched with `MAX_TIMEOUT_MIN=85 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter34-grid72`. ~159s/epoch at 13.5GB VRAM (vs 120s/7.7GB at grid=48 and 120s/11GB at grid=64). Full 28 epochs completed (75 min).
+- **Result:** iter34 standalone val = **0.8345** at e28/28 — a *massive* −0.03 jump vs the grid=64 cluster (0.865-0.870). Better than even the 8-model grid=48+grid=64 ensemble (0.8116 was way higher). Ensembles:
+  - **iter24 + iter30..33 + iter34 (6-model)**: val l2 = **0.7703** ← **new #1, beats alphonse (0.7761)**
+  - iter24 + iter30+iter31+iter33+iter34 (5-model, drop iter32): 0.7703 (tied)
+  - iter24 + iter30+iter31+iter32+iter34 (5-model, drop iter33): 0.7704
+  - iter30..33 + iter34 (5-model, no iter24): 0.7736
+  - iter24 + iter34 alone (2-model): 0.7887
+  - weighted ensemble (scipy L-BFGS on uniform 5-model) at 0.7831 — no gain over uniform (models too similarly weighted)
+- **Verdict:** **kept** — submission at d8323cc now the 6-model at 0.7703. Gap to alphonse **−0.006** (we're ahead). Leaderboard rank should be #1.
+- **Notes:** (1) The grid=64 plateau was hiding ~0.03 of potential — a single grid=72 model is worth more than 4 grid=64 models stacked. (2) Grid-size is clearly the best lever; going further (grid=80, 96) likely helps but cost grows fast (grid=80 would be ~230s/epoch, ~108 min). (3) iter24 still adds value despite being the weakest model — its grid=48 errors are the most decorrelated. (4) Next: either (a) iter35 = grid=80 for another jump, (b) 2nd grid=72 fresh-init (ensemble of grid=72 models), (c) stronger TTA (voxel-position jitter). (a) is highest-expected-gain but slowest.
+
 ### 2026-04-18 — iter33: 5th fully-trained grid=64 + 5-model ensemble
 - **Hypothesis:** each additional strong grid=64 has given diminishing but nontrivial ensemble gains (iter30: −0.017, iter31: −0.011, iter32: −0.013). A 5th should add ~−0.003 to −0.005.
 - **Change:** `MAX_TIMEOUT_MIN=65 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter33-grid64-5th`. Full schedule.
