@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter32: 3rd-gen extend iclg3vmk (iter31, ch=128@64³) at lr=5e-6 — ensemble **0.70369**
+- **Hypothesis:** Extend iclg3vmk one more generation at even lower LR (5e-6, half of iter31's 1e-5). The ch=128@64³ ladder was on 2nd gen; another pass may yield ~0.00020-0.00030 matching the ch=96@80³ 3rd-gen gain in iter30.
+- **Change:** `--unet_ch_base 128 --unet_grid 64³ --init_from model-iclg3vmk --lr 5e-6 --epochs 35 --yflip_aug True` (run-id `i39lwast`).
+- **Result:** Best val/l2=**0.7777** at epoch 25/35 (iclg3vmk was 0.7774 — essentially tied; lr=5e-6 too low to move meaningfully). Solo+TTA=**0.7514** (iclg3vmk was 0.7515 — noise-level). Weight-opt sweep size=12 weighted=**0.70369** (size=15 weighted=0.70357; 13-15 blocked by predict.py 12-slot cap). Members: `[4ab6bl20, s72nkbjq, i39lwast, h0yvcd7w, 922qsdfy, iclg3vmk, 6tusrvjg, 690outlv, i504xzr0, bn20n6rl, e61uos2z, 7ftlim00]`. Weights: `[0.2341, 0.2849, 0.2411, 0.0834, 0.0003, 0.0002, 0.0862, 0.0001, 0.0002, 0.0692, 0.0001, 0.0001]`. i39lwast takes **0.241** (3rd largest); iclg3vmk collapsed 0.215 → 0.0002. **0.00029 improvement** over iter31 (0.70398), **0.044 below frozen leaderboard (0.7475)**.
+- **Verdict:** KEPT. Even though solo is tied with iclg3vmk, different training trajectory produces decorrelated predictions; ensemble gain matches the ch=96@80³ 3rd-gen result.
+- **Notes:** (1) Ladder 3rd-gen gain pattern: ch=96@80³ gave +0.00051 (iter30 from 922qsdfy); ch=128@64³ gave +0.00029 (iter32 from iclg3vmk). ch=128@96³ was 3rd-gen in iter28 and gave +0.00056 — consistent. (2) Ensemble trajectory: iter21=0.71389 → iter31=0.70398 → iter32=0.70369 (+0.01020 below starting). (3) Size=12 is leaving ~0.00012 on the table — predict.py slot cap is now the bottleneck. Consider: expand predict.py to 15 slots, or drop more redundant ladder ancestors to free up slots. (4) Next: either (a) extend 4ab6bl20 (3rd-gen ch=128@96³), (b) widen predict.py slot cap, (c) finally try physics loss / k-NN attention for a true orthogonal axis.
+
 ### 2026-04-18 — iter31: extend e61uos2z (iter25, ch=128@64³) — ensemble **0.70398**
 - **Hypothesis:** e61uos2z (iter25, ch=128@64³) held 3rd-highest ensemble weight (0.193), never extended. Same pattern as iter28 (extend 690outlv) and iter30 (extend 922qsdfy) at lr=1e-5 should yield ~0.0003-0.0008 ensemble gain.
 - **Change:** `--unet_ch_base 128 --unet_grid 64³ --init_from model-e61uos2z --lr 1e-5 --epochs 35 --yflip_aug True` (run-id `iclg3vmk`). All 35 epochs fit in 27min at 38s/epoch.
