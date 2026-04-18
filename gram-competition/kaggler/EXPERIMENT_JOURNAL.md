@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — fourier-pos-violet-e13
+- **Hypothesis:** E11 hit 1.1204 after only 60 epochs with train loss still descending — clearly under-trained. Raw xyz positions limit the per-point MLP's ability to express high-frequency spatial variation needed for turbulent flow. Add multi-resolution Fourier (sinusoidal) position encoding (standard NeRF trick) + train 3× longer (180 min ≈ 180 epochs). Expect break below 1.10.
+- **Change:** `train.py` — new `FourierEmbed(n_freqs=8)` (base-2 geometric frequencies × π, sin+cos concat → 48-dim), concat with raw pos + v_flat at `proj_in`; kept E11's architecture (10k anchors, 5 EdgeConv blocks, k=16, bf16 autocast, y-flip aug) otherwise. `predict.py` kwargs synced. Launched with `MAX_TIMEOUT_MIN=180 --epochs 200`.
+- **Result:** val/l2 = **1.0276** (epoch 179). 180 epochs × 60 s, 6.0 GB bf16. train 0.042 → 0.0125 (normalized). Leaderboard l2=1.0276 — **rank 8** (up from 9). Commit `e227457`.
+- **Verdict:** kept — biggest improvement yet (9% over E11). Both longer training and Fourier encoding contributed.
+- **Notes:** Best by epoch: e55=1.159 → e90=1.110 → e125=1.069 → e157=1.039 → e179=1.028. Still descending at cutoff — a 4× longer run would likely push to ~0.95. Train loss plateaued around 0.0125 at ep 180 (small headroom left). Rank-7 (askeladd 0.974) is now within reach. Leaders (thorfinn 0.71, alphonse 0.75, nezuko 0.78) still far ahead — next push needs either (a) even longer training run, (b) richer features (Fourier on velocity input too?), or (c) architectural change (e.g., temporal attention across the 5 input frames, or multi-scale GNN with coarse + fine anchors).
+
+### 2026-04-17 — edgeconv-20k-violet-e12
+- **Hypothesis:** E11 was under-converged at 60 min with train loss still descending — scaling anchor budget from 10k→20k should denser KNN interpolation to the 90k non-anchor points, plus +1 more edge block (5→6) for deeper multi-hop reach. 120 min budget for more epochs.
+- **Change:** `train.py` — `BaselineMLP(edge_blocks=6, n_anchors=20000)`. `predict.py` synced. Launched with `MAX_TIMEOUT_MIN=120 --epochs 150`.
+- **Result:** val/l2 = **1.1277** (epoch 52). 62 epochs × 117 s, 10.4 GB bf16. train 0.041 → 0.017. Commit `1e7dd92`.
+- **Verdict:** discarded — regressed vs. E11 (1.1204 → 1.1277). Code reset to E11 config.
+- **Notes:** Per-epoch descent was **identical** to E11 at same epoch count (e.g., e28=1.2275 vs E11 e30=1.2279). But at ~2× wall-clock cost per epoch, we got fewer total epochs in 120min than E11 got in 60min relative to schedule. Takeaway: **scaling anchors alone provides no per-epoch speedup**; the learning bottleneck is optimization/training steps, not anchor density. Better path is extending training time with a leaner architecture — confirmed by E13.
+
 ### 2026-04-17 — edgeconv-scaled-violet-e11
 - **Hypothesis:** E10 EdgeConv tied e9 at 1.24 — likely under-powered at 3 blocks/k=12/4k anchors and under-trained (30-epoch budget). Scale the GNN (5 edge blocks, k=16, 10k anchors) + add y-flip data aug (F1 wake symmetry) + bf16 autocast for 2x speedup, extend timeout to 60 min. Expect break below 1.24 ceiling.
 - **Change:** `train.py` — `BaselineMLP(edge_blocks=5, edge_k=16, n_anchors=10000)`; training loop: 50% chance to flip `v_in`/`v_out`/`pos` Y-axis; wrap forward+loss in `torch.autocast(bfloat16)`. `predict.py` kwargs synced.
