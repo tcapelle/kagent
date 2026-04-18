@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — Lineage C pass 2 (iter 48) — single 0.9909, 37-ensemble 0.9893
+- **Hypothesis:** Mirror iter42/iter45 continuation recipe on lineage C. Expect drop from 1.0830 to ~0.99 range.
+- **Change:** no code. `--resume .../model-b82apigi/final.pt --lr 1e-4 --warmup_steps 30 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9784 --epochs 25`.
+- **Result:** best within-run = **0.9909** at E15/15 (31.7 min, contended). Similar trajectory to iter42/45. Staged as iter48.pt. **37-model ensemble:**
+  - **0.9893** ← submitted (**0.28% drop from 0.9921**, mae Ux=0.6467 Uy=0.3100 Uz=0.4718)
+- **Verdict:** Single-model discarded (sub-1.0 but above floor). Ensemble **KEPT** — 0.28% gain, weaker than lineage A/B continuations (0.48%, 0.37%) but strong. **Cumulative session: 1.0625 → 0.9893 = 6.89%.**
+- **Notes:** Lineage C total: iter47 0.11% + iter48 0.28% = 0.39% vs lineage A's 0.87% and B's 0.58%. Fresh-init diversity decay confirmed (A > B > C). Iter 49 options: (a) **lineage C pass 3** (lr=5e-5, expect -0.01 single + ~0.15% ensemble); (b) **lineage D fresh-init** (drop=0.2 + lr=3e-4, expect ~0.1% ensemble); (c) **SWA on lineage A+B+C final-epoch clusters** — no new training, merge existing checkpoints. (c) is untested and could give a big jump. Start with (a) since cheapest.
+
 ### 2026-04-18 — Lineage C fresh-init (iter 47, drop=0.05) — single 1.0830, 36-ensemble 0.9921
 - **Hypothesis:** Third independent fresh-init with different regularization (dropout=0.05 vs lineage A's 0.1 / B's 0.15). Should contribute 0.2-0.3% ensemble margin like prior fresh-inits.
 - **Change:** no code. `--lr 3e-4 --warmup_steps 100 --sobolev_lambda 0.5 --feat_dropout 0.05 --best_val_floor 0.9784 --epochs 25` (no `--resume`).
