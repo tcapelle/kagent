@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter46: FRESH-SEED ch=64@96³ at 60min budget — ensemble **0.68819** (−0.00482)
+- **Hypothesis:** Third fresh-seed, different arch (ch=64 smallest, @96³ isotropic). Continue stacking decorrelated members. ch=64 is fastest (smallest model), should converge more in 60min.
+- **Change:** `--unet_ch_base 64 --unet_grid 96³ --lr 3e-4 --epochs 200 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `kkpwt6kk`). Best at epoch 65.
+- **Result:** Best val/l2=**0.8089**. Solo+TTA=**0.7753**. Weight-opt sweep best at size=11 weighted=**0.68819**. Members: `[iazbqcv0, zb987yzv, kkpwt6kk, 972sqtxv, otybiegm, we8kdyug, mopmyfsq, s72nkbjq, h0yvcd7w, o542zbvh, aik4lytt]`. Weights: `[0.1116, 0.1739, 0.1836, 0.1687, 0.1269, 0.0963, 0.0789, 0.0027, 0.0393, 0.0017, 0.0163]`. kkpwt6kk captures **0.184** weight — **new top member** despite being the highest-solo of the ensemble. **0.00482 improvement** over iter45 (0.69301). **0.059 below frozen leaderboard (0.7475)**.
+- **Verdict:** KEPT. Third fresh-seed gives bigger gain than expected. Fresh-seed dominates the ensemble: 3 fresh-seeds (zb987yzv 0.174 + kkpwt6kk 0.184 + we8kdyug 0.096 = 0.454) + 4 extensions (iazbqcv0, 972sqtxv, otybiegm, mopmyfsq = 0.486) = full ensemble weight. h0yvcd7w, 6tusrvjg, bn20n6rl, others collapse to near-zero.
+- **Notes:** (1) Ensemble trajectory: iter43=0.70207 → iter44=0.69463 → iter45=0.69301 → iter46=0.68819. Cumulative fresh-seed gain: -0.014 over 3 iters (vs +0.00009-0.00003 for extensions). (2) **Fresh-seed stacking is the primary strategy now**. Each new fresh-seed from a different (ch, grid) cell adds decorrelated contribution even with slightly higher solo l2. (3) Why does kkpwt6kk (smallest model, highest solo) get TOP weight? Because ch=64 is structurally different from all other members (all others are ch≥96 or warm-started), so its prediction errors are maximally orthogonal. (4) Next candidates: (a) **iter47 fresh-seed ch=96@80³** — matches 972sqtxv's cell but orthogonal basin; (b) **iter47 fresh-seed ch=128@96³** — matches otybiegm's cell; (c) alternate: multi-seed SAME arch — ch=96@64³ seed#2 (same as zb987yzv), pure noise-decorrelation.
+
 ### 2026-04-18 — iter45: FRESH-SEED ch=128@64³ at 60min budget — ensemble **0.69301** (−0.00162)
 - **Hypothesis:** iter44's fresh-seed at ch=96@64³ gave -0.00744. Stacking a second fresh-seed at different arch (ch=128@64³) should add further decorrelation. iter29 (same arch) failed at 27min (solo 0.83); 60min should cross the threshold per iter44's evidence.
 - **Change:** `--unet_ch_base 128 --unet_grid 64³ --lr 3e-4 --epochs 120 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `we8kdyug`). Best at epoch 94.
