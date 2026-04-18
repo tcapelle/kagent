@@ -125,7 +125,8 @@ class VoxelFlowNet(nn.Module):
 
         pos_feat_dim = 3 + 3 * 2 * fourier_L  # raw pos + sin/cos at L scales
         sdf_feat_dim = 1 + 2 * fourier_L  # raw sdf + sin/cos at L scales
-        point_in = pos_feat_dim + sdf_feat_dim + T_IN * 3 + grid_ch
+        t_feat_dim = 1 + 2 * fourier_L  # absolute time (last-input frame) + Fourier
+        point_in = pos_feat_dim + sdf_feat_dim + t_feat_dim + T_IN * 3 + grid_ch
         point_out = T_OUT * 3
         self.proj_in = nn.Linear(point_in, point_hidden)
         self.blocks = nn.Sequential(*[ResBlock(point_hidden, dropout=point_dropout) for _ in range(n_point_blocks)])
@@ -193,6 +194,18 @@ class VoxelFlowNet(nn.Module):
         cos_f = torch.cos(xw)
         return torch.cat([sdf_scaled.unsqueeze(-1), sin_f, cos_f], dim=-1)  # [B, N, 1 + 2L]
 
+    def _t_enc(self, t, N):
+        """Encode absolute simulation time of last-input frame (t[:, 4]) per point.
+        Values observed in data: ~0.3-0.5 seconds. Fourier-encoded for periodic basis."""
+        B = t.shape[0]
+        t_last = t[:, 4]  # [B] — last input-frame time
+        t_scaled = (t_last - 0.4) * 5.0  # ~center around 0, unit scale
+        t_per_point = t_scaled.view(B, 1, 1).expand(B, N, 1)  # [B, N, 1]
+        xw = t_per_point * self.fourier_freqs  # [B, N, L]
+        sin_f = torch.sin(xw)
+        cos_f = torch.cos(xw)
+        return torch.cat([t_per_point, sin_f, cos_f], dim=-1)  # [B, N, 1 + 2L]
+
     def forward(self, velocity_in, pos, t, idcs_airfoil, sdf):
         B, T, N, C = velocity_in.shape
         v_in_norm = (velocity_in - self.vel_mean) / self.vel_std
@@ -211,7 +224,8 @@ class VoxelFlowNet(nn.Module):
         v_feat = v_in_norm.permute(0, 2, 1, 3).reshape(B, N, T * C)
         pos_feat = self._pos_enc(pos)
         sdf_feat = self._sdf_enc(sdf)
-        x = torch.cat([pos_feat, sdf_feat, v_feat, voxel_feat], dim=-1)
+        t_feat = self._t_enc(t, N)
+        x = torch.cat([pos_feat, sdf_feat, t_feat, v_feat, voxel_feat], dim=-1)
         x = self.proj_in(x)
         x = self.blocks(x)
         delta_norm = self.proj_out(x).reshape(B, N, T_OUT, 3).permute(0, 2, 1, 3)
