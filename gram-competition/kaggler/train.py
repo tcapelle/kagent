@@ -153,31 +153,38 @@ class BaselineMLP(nn.Module):
     """
 
     def __init__(self, hidden=256, n_blocks=6, edge_blocks=4, edge_k=16,
-                 n_anchors=8192, fourier_freqs=8, vel_mean=None, vel_std=None):
+                 n_anchors=8192, coarse_blocks=3, coarse_k=32, n_anchors_coarse=2048,
+                 fourier_freqs=8, vel_mean=None, vel_std=None):
         super().__init__()
         self.n_anchors = n_anchors
+        self.n_anchors_coarse = n_anchors_coarse
         self.edge_k = edge_k
+        self.coarse_k = coarse_k
         self.fourier = FourierEmbed(n_freqs=fourier_freqs)
-        # Inputs per point:
-        #   raw pos (3), Fourier pos (6*n_freqs), raw velocities (T_IN*3),
-        #   temporal diffs (T_IN-1)*3, velocity magnitudes (T_IN)
         vel_diff_dim = (T_IN - 1) * 3
         vel_mag_dim = T_IN
         in_dim = 3 + self.fourier.out_dim + T_IN * 3 + vel_diff_dim + vel_mag_dim
         out_dim = T_OUT * 3
 
-        # --- Per-point MLP branch (baseline-equivalent) ---
         self.proj_in = nn.Linear(in_dim, hidden)
         self.point_blocks = nn.Sequential(*[ResBlock(hidden) for _ in range(n_blocks)])
         self.point_head = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, out_dim))
 
-        # --- EdgeConv GNN refinement branch ---
+        # Fine-scale EdgeConv (local detail)
         self.anchor_proj = nn.Linear(hidden, hidden)
         self.edge_blocks = nn.ModuleList([EdgeConvBlock(hidden) for _ in range(edge_blocks)])
         self.anchor_norm = nn.LayerNorm(hidden)
         self.spatial_head = nn.Linear(hidden, out_dim)
         nn.init.zeros_(self.spatial_head.weight)
         nn.init.zeros_(self.spatial_head.bias)
+
+        # Coarse-scale EdgeConv (global reach)
+        self.coarse_proj = nn.Linear(hidden, hidden)
+        self.coarse_blocks_list = nn.ModuleList([EdgeConvBlock(hidden) for _ in range(coarse_blocks)])
+        self.coarse_norm = nn.LayerNorm(hidden)
+        self.coarse_head = nn.Linear(hidden, out_dim)
+        nn.init.zeros_(self.coarse_head.weight)
+        nn.init.zeros_(self.coarse_head.bias)
 
         if vel_mean is None:
             vel_mean = torch.zeros(3)
@@ -206,23 +213,39 @@ class BaselineMLP(nn.Module):
         x = self.point_blocks(x)                   # [B, N, D]
         point_pred = self.point_head(x)            # [B, N, out_dim]
 
-        # EdgeConv branch: subsample anchors, build KNN graph, EdgeConv, interpolate back
+        # Fine-scale EdgeConv: subsample anchors, build KNN graph, EdgeConv, interpolate back
         K = min(self.n_anchors, N)
         if self.training:
             idx = torch.randperm(N, device=x.device)[:K]
         else:
             stride = max(N // K, 1)
             idx = torch.arange(0, stride * K, stride, device=x.device)[:K]
-        anchor_x = self.anchor_proj(x[:, idx])     # [B, K, D]
-        anchor_pos = pos_n[:, idx]                 # [B, K, 3]
-        knn_idx = knn_graph(anchor_pos, self.edge_k)  # [B, K, k]
+        anchor_x = self.anchor_proj(x[:, idx])
+        anchor_pos = pos_n[:, idx]
+        knn_idx = knn_graph(anchor_pos, self.edge_k)
         for block in self.edge_blocks:
             anchor_x = block(anchor_x, knn_idx)
         anchor_x = self.anchor_norm(anchor_x)
-        interp = knn_interpolate(pos_n, anchor_pos, anchor_x, k=3)  # [B, N, D]
-        spatial_pred = self.spatial_head(interp)   # zero at init
+        interp_fine = knn_interpolate(pos_n, anchor_pos, anchor_x, k=3)
+        spatial_pred = self.spatial_head(interp_fine)
 
-        out_combined = (point_pred + spatial_pred).reshape(B, N, T_OUT, 3)
+        # Coarse-scale EdgeConv: fewer anchors, larger k → global receptive field
+        Kc = min(self.n_anchors_coarse, N)
+        if self.training:
+            idx_c = torch.randperm(N, device=x.device)[:Kc]
+        else:
+            stride_c = max(N // Kc, 1)
+            idx_c = torch.arange(0, stride_c * Kc, stride_c, device=x.device)[:Kc]
+        coarse_x = self.coarse_proj(x[:, idx_c])
+        coarse_pos = pos_n[:, idx_c]
+        coarse_knn = knn_graph(coarse_pos, self.coarse_k)
+        for block in self.coarse_blocks_list:
+            coarse_x = block(coarse_x, coarse_knn)
+        coarse_x = self.coarse_norm(coarse_x)
+        interp_coarse = knn_interpolate(pos_n, coarse_pos, coarse_x, k=3)
+        coarse_pred = self.coarse_head(interp_coarse)
+
+        out_combined = (point_pred + spatial_pred + coarse_pred).reshape(B, N, T_OUT, 3)
         out_norm = out_combined.permute(0, 2, 1, 3)  # [B, T_OUT, N, 3]
         out = out_norm * self.vel_std + self.vel_mean
 
@@ -324,6 +347,7 @@ def main():
 
     model = BaselineMLP(
         hidden=256, n_blocks=6, edge_blocks=5, edge_k=16, n_anchors=10000,
+        coarse_blocks=3, coarse_k=32, n_anchors_coarse=2048,
         vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     ).to(device)
 
