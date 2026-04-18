@@ -87,7 +87,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 1.5e-3
+    lr: float = 2.5e-3
     weight_decay: float = 1e-4
     batch_size: int = 1
     epochs: int = 28
