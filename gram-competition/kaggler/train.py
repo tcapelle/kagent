@@ -346,14 +346,17 @@ def main():
     }
 
     model = BaselineMLP(
-        hidden=256, n_blocks=6, edge_blocks=5, edge_k=16, n_anchors=10000,
+        hidden=320, n_blocks=6, edge_blocks=6, edge_k=16, n_anchors=12000,
         coarse_blocks=3, coarse_k=32, n_anchors_coarse=2048,
         vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    warmup_epochs = 5
+    warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=warmup_epochs)
+    cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS - warmup_epochs)
+    scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, [warmup, cosine], milestones=[warmup_epochs])
 
     RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 
