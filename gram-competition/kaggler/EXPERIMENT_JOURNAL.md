@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — U-Net voxel CNN (3-level multi-scale)
+- **Hypothesis:** Current 4 dilated same-res blocks at G=80 have limited multi-scale reasoning — the 3D CNN sees only fixed-resolution voxel features. A U-Net (G → G/2 → G/4, with skip concatenations) gives proper multi-scale: bottleneck at G/4 (~12 cm/cell) for global context, skip paths for fine detail at G=80 (~2.9 cm/cell). Napkin math says U-Net at (32, 64, 128) ch is slightly cheaper than current 4 × 32-ch same-res blocks because each deeper level has 8× fewer voxels than the one above.
+- **Change:** `model.py` — new `GridConvBlock` (two 3×3×3 + GN + GELU, residual with 1×1 channel-projection). `VoxelFlowNet` replaces `self.grid_blocks` ModuleList with `enc0/enc1/enc2/dec1/dec0` and forward does `avg_pool3d` downsampling + `F.interpolate(..., mode="trilinear")` upsampling + skip concat. `grid_in` → `enc0` → down → `enc1` → down → `enc2` (bottleneck) → up → cat(e1) → `dec1` → up → cat(e0) → `dec0` → interp to points.
+- **Result:** val/l2_error = **0.9147** (epoch 28 of 28 @ 30.4 min, 8.2 GB peak). Train loss 0.0096. 0.35 % improvement over exp 15 (0.9179 → 0.9147). Per-epoch time 65 s (vs 67 s at 4-block dilated — slightly cheaper as predicted; fit all 28 epochs vs exp 15's 27).
+- **Verdict:** Kept. The full 28-epoch run + multi-scale features together recovered one lost epoch AND added a modest architectural gain.
+- **Notes:** Val still dropping at ep 28 (0.9154 → 0.9150 → 0.9147), so cosine not quite fully tapped. Early trajectory lagged exp 15 through ep 12 (U-Net adapts slower initially — more params to calibrate), then overtook from ep 22 onward. Peak memory actually dropped (8.5 → 8.2 GB) since the top-level feature tensor shrank from 4×80³×32 to 2×80³×32 (enc0 + dec0 only, vs 4 same-res blocks). Next candidates: (a) bump grid_ch 32→40 (costs ~1.56× voxel compute — likely won't fit at 28 ep); (b) 4-level U-Net with bottleneck at G/8 = 10 (more global context, cheap); (c) cfg.epochs=30 if per-epoch holds at 65s (30×65 = 32.5 min — too tight); (d) widen point head with savings elsewhere; (e) stride-2 conv instead of avg_pool3d (learned downsampling).
+
 ### 2026-04-18 — dropout p=0.15 (bump from 0.1)
 - **Hypothesis:** Exp 14 (p=0.1) still had train loss 0.0096 vs val l2 0.9193 — gap remained, regularization might still be under-applied. Single-factor test: bump `point_dropout` 0.1 → 0.15, nothing else.
 - **Change:** `train.py`+`predict.py` — `point_dropout=0.15`. Identical trajectory through ~epoch 15; consistent small lead thereafter.
