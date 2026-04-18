@@ -22,6 +22,21 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter36: grid=80 pivot — single-model 0.8114 → 4-model ensemble 0.7459
+- **Hypothesis:** grid=72 jump (−0.03 from grid=64 standalone) suggests we haven't hit the grid-size ceiling yet. Try grid=80, expect another ~−0.02 standalone and bigger ensemble contribution than a second grid=72 would.
+- **Change:** `MODEL_CFG['grid_size'] = 80`. `MAX_TIMEOUT_MIN=110 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter36-grid80`. 213s/epoch at 16.5GB VRAM. Full 28 epochs in 100 min.
+- **Result:** iter36 standalone val = **0.8114** at e26/28 (−0.023 vs grid=72 cluster at 0.834-0.840). Subset ablation on the now-6 grid-axes:
+  - **iter30 + iter34 + iter35 + iter36 (4-model: 1 grid=64 + 2 grid=72 + 1 grid=80)**: val l2 = **0.7459** ← new best
+  - iter32+iter34+iter35+iter36: 0.7464
+  - iter33+iter34+iter35+iter36: 0.7465
+  - iter31+iter34+iter35+iter36: 0.7466
+  - iter34+iter35+iter36 alone (no grid=64): 0.7478
+  - iter24+iter30+iter34+iter35+iter36 (adds iter24): 0.7476
+  - all 8 models: 0.7527 (worse — correlated models diluting)
+  - pure grid-axis: iter30+iter34+iter36 (one of each size 64/72/80): 0.7486
+- **Verdict:** **kept** — submission at f45bb33 now the 4-model 0.7459 (−0.016 vs 5-model 0.7618). Gap to alphonse (0.7761): **−0.030** (we're comfortably ahead).
+- **Notes:** Key learnings: (1) iter24 (grid=48) is no longer needed — the grid-size axis alone provides enough diversity. (2) Only one grid=64 (best: iter30) is used — the others are redundant. (3) The ensemble benefits from **one model per grid size** plus seed-diversity within the strong sizes. (4) Next iter: iter37 = 2nd grid=80 fresh-init — ensemble gain should be large given iter35 (2nd grid=72) also added ~−0.03 to the ensemble. Grid=96 would be the next architectural jump but cost may be prohibitive (80→96 is 1.73× voxels → ~370s/epoch → 170 min).
+
 ### 2026-04-18 — iter35: 2nd grid=72 fresh-init + 5-model ensemble at 0.7618
 - **Hypothesis:** iter34 (grid=72) broke past the grid=64 plateau by −0.03 standalone and put the 6-model ensemble at 0.7703 (ahead of alphonse). A second grid=72 should keep pushing because (a) one more strong model per se, (b) extra *seed-diversity within the grid=72 architecture* (which we haven't had yet — just one grid=72 in the ensemble).
 - **Change:** `MAX_TIMEOUT_MIN=85 python train.py --epochs 28 --agent nezuko --wandb_name nezuko/iter35-grid72-2nd`. Full 28 epochs.

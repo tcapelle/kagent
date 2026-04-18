@@ -548,7 +548,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))  # minutes
 # Single source of truth for the model architecture; both train.py and
 # predict.py import it so the model can always be reconstructed from a checkpoint.
 MODEL_CFG = dict(
-    grid_size=72,
+    grid_size=80,
     base_ch=128,
     point_dim=256,
     head_hidden=384,
