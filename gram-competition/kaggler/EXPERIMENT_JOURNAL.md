@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — dropout p=0.15 (bump from 0.1)
+- **Hypothesis:** Exp 14 (p=0.1) still had train loss 0.0096 vs val l2 0.9193 — gap remained, regularization might still be under-applied. Single-factor test: bump `point_dropout` 0.1 → 0.15, nothing else.
+- **Change:** `train.py`+`predict.py` — `point_dropout=0.15`. Identical trajectory through ~epoch 15; consistent small lead thereafter.
+- **Result:** val/l2_error = **0.9179** (epoch 27 of 28 @ 30.3 min, 8.5 GB peak). Train loss 0.0096. 0.15 % improvement over exp 14 (0.9193 → 0.9179).
+- **Verdict:** Kept. Marginal but consistent across training (val lower from ~ep18 onward, monotonic through final).
+- **Notes:** Gain is right at the noise floor for 80 val samples, but val kept dropping by 0.0004–0.0006/epoch through ep 27, suggesting either more epochs or p=0.2 might still help. Given diminishing returns from tuning dropout, next experiment should be structural rather than hyperparameter. Gap to leader 0.75 now 0.17. Next: U-Net voxel CNN (multi-scale features, similar compute to current 4-block dilated CNN per napkin math) is the most promising structural change that hasn't been tried.
+
 ### 2026-04-17 — dropout p=0.1 in point ResBlocks
 - **Hypothesis:** At the end of exp 12 training loss was 0.0088 (very low) while val/l2 plateaued at 0.9277 — the point MLP is likely fitting noise in the per-point mapping. Add standard MLP dropout (p=0.1, after GELU in each ResBlock) to regularize the point head. No other changes.
 - **Change:** `model.py/ResBlock` — optional `dropout` param (default 0) inserted as `nn.Dropout(p)` between GELU and second Linear. `VoxelFlowNet.__init__` — new `point_dropout` arg wired to ResBlocks. `train.py` + `predict.py` — `point_dropout=0.1`.
