@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-18 — iter24: ch=96 @ 128³ iso — DISCARDED (undertrained, ensemble unchanged at 0.70967)
+- **Hypothesis:** Fill the remaining unsampled corner: (ch=96, 128³ iso). Should give a decorrelated member different from iter17 (ch=64@128³, ensemble weight 0.085 as 6tusrvjg). Warm from m8lvgn5z (ch=96@96³) so channel weights transfer; only voxelizer changes (96³ → 128³).
+- **Change:** `--unet_ch_base 96 --unet_grid 128³ --init_from model-m8lvgn5z --lr 6e-5 --epochs 20 --yflip_aug True` (run-id `uxqos5pk`). 20M params, **13.3GB VRAM** (exceeds iter17's 10.4GB due to 1.5× channels), **193s/epoch** (2× iter17) → only **8 epochs** fit in 27-min budget.
+- **Result:** Best val/l2=**0.8310** at epoch 8/9. Solo+TTA=**0.8042** (10th of 15 members; significantly worse than iter17's 0.831 which also ran 14 epochs). Greedy adds uxqos5pk at position 9 with weight **0.0014** (essentially zero). Ensemble score unchanged at **0.70967** (same as iter23; weight-opt result identical to 4 decimals).
+- **Verdict:** **DISCARDED**. Model too undertrained — ch=96@128³ needs ~20+ epochs to converge; 8 is nowhere near. The warm-start from 96³ → 128³ requires relearning spatial resolution, dominating the budget.
+- **Notes:** (1) **VRAM×Time product** dominated by voxel count: 128³ × ch=96 = 13.3GB × 193s/ep = 2568 GB·s per epoch, vs 96³×ch=128 (iter22/23) 7.7×103 = 793 GB·s/ep. Iter24 is **3.2× more expensive per epoch**. (2) At this cost point, (ch=96, 128³) would need to be trained at-least 4× cheaper than iter23 to match ROI — not feasible on current arch. (3) Next: (a) extend iter23 once more (very low LR, should squeeze another 0.0005-0.001), (b) try iso-64³ at ch=96 for a **cheap** diverse member (64³ = 262K voxels, 8x faster than 128³, fits many epochs), (c) leave iso-grid axis entirely: physics loss, k-NN attention, or re-train a same-arch model with a different random seed for pure noise decorrelation.
+
 ### 2026-04-18 — iter23: extend iter22 (warm from 7ftlim00) — broke below 0.71, ensemble **0.70967**
 - **Hypothesis:** iter22 (7ftlim00) still descending at epoch 16/16 when budget hit. The 5-generation warm-start ladder (iter16 → iter19 → iter20 → iter21 → iter22) has not diminished yet. Continue at even lower lr (2e-5) for another push.
 - **Change:** `--init_from model-7ftlim00 --lr 2e-5 --epochs 20 --subsample_points 60000 --yflip_aug True --unet_ch_base 128 --unet_grid 96³` (run-id `690outlv`). 16 epochs in 27-min budget (103s/epoch, 7.7GB VRAM).
