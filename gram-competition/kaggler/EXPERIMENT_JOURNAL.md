@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — iter50: FRESH-SEED ch=64@64³ (smallest arch) at 60min — ensemble **0.68372** (−0.00088)
+- **Hypothesis:** 7th fresh-seed at smallest arch (ch=64@64³) — fastest per-epoch, most epochs converge in budget (expected 150+). Small-model basins may give additional orthogonal errors.
+- **Change:** `--unet_ch_base 64 --unet_grid 64³ --lr 3e-4 --epochs 250 --yflip_aug True MAX_TIMEOUT_MIN=60` (run-id `79bxvr4h`). Best at epoch 152, val/l2=0.7894.
+- **Result:** Solo+TTA=**~0.76**. Weight-opt sweep size=12 weighted=**0.68372**. Members: `[iazbqcv0, zb987yzv, kkpwt6kk, 972sqtxv, 79bxvr4h, i69s5t02, otybiegm, ekhe78br, zwtu9s7m, mopmyfsq, s72nkbjq, we8kdyug]`. Weights: `[0.0815, 0.1076, 0.1181, 0.1419, 0.0968, 0.1027, 0.1235, 0.0796, 0.0536, 0.0583, 0.001, 0.0355]`. 79bxvr4h captures **0.097** weight. **0.00088 improvement** over iter49.
+- **Verdict:** KEPT. 7th fresh-seed still adding value. Gain stabilizing at ~-0.0009/iter.
+- **Notes:** (1) Ensemble trajectory: iter44→50: 0.69463, 0.69301, 0.68819, 0.68610, 0.68550, 0.68460, 0.68372. Total -0.011 over 7 fresh-seed iters. (2) 7 fresh-seeds now account for 59% of ensemble weight. (3) Diminishing but not saturated. Next: (a) ch=128@80³ fresh-seed (untried cell); (b) ch=64@128³ fresh-seed (legacy big grid); (c) ch=96@64³ seed#3 — test pure same-arch noise-decorrelation limit. (4) **0.064 below frozen leaderboard (0.7475)**.
+
 ### 2026-04-19 — iter49: FRESH-SEED ch=96@64³ seed#2 (pure noise decorr) at 60min — ensemble **0.68460** (−0.00090)
 - **Hypothesis:** Same arch as iter44's zb987yzv (ch=96@64³ the best-converging fresh cell). Pure noise-decorrelation test: if different random init alone adds value (beyond arch diversity), this should contribute.
 - **Change:** `--unet_ch_base 96 --unet_grid 64³ --lr 3e-4 --epochs 150 --yflip_aug True MAX_TIMEOUT_MIN=60` (run-id `ekhe78br`). Best at epoch 106, val/l2=0.7937.
