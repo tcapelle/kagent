@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — iter51: FRESH-SEED ch=128@80³ at 60min — ensemble **0.68255** (−0.00117)
+- **Hypothesis:** 8th fresh-seed at an **untried cell** (ch=128@80³ matches z5xvz0bu warm-start cell but from fresh init — orthogonal basin). Continue stacking decorrelated fresh-seeds; bigger-ch at mid-grid may contribute different error geometry than ch=64/96 seeds.
+- **Change:** `--unet_ch_base 128 --unet_grid 80³ --lr 3e-4 --epochs 100 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `nwco75x9`). Best at epoch 55, val/l2=0.7959.
+- **Result:** Solo+TTA=**~0.76**. Weight-opt sweep size=15 weighted=**0.68255**. Members: `[iazbqcv0, zb987yzv, kkpwt6kk, 972sqtxv, nwco75x9, 79bxvr4h, otybiegm, ekhe78br, i69s5t02, mopmyfsq, zwtu9s7m, s72nkbjq, we8kdyug, o542zbvh, aik4lytt]`. Weights: `[0.0595, 0.1033, 0.1085, 0.1253, 0.1021, 0.0855, 0.1316, 0.0754, 0.073, 0.0617, 0.0355, 0.0015, 0.0299, 0.0007, 0.0064]`. nwco75x9 captures **0.102** weight. **0.00117 improvement** over iter50.
+- **Verdict:** KEPT. 8th fresh-seed still yielding >-0.001 gain. Trend stable at ~-0.001/iter.
+- **Notes:** (1) Ensemble trajectory: iter44→51: 0.69463, 0.69301, 0.68819, 0.68610, 0.68550, 0.68460, 0.68372, 0.68255. Total -0.0121 across 8 fresh-seed iters. (2) 8 fresh-seeds (zb987yzv, kkpwt6kk, we8kdyug, i69s5t02, zwtu9s7m, ekhe78br, 79bxvr4h, nwco75x9) now **~65% of ensemble weight**. (3) ch=128@80³ fresh-seed weight (0.102) is comparable to other fresh-seeds — untried cells still add value. (4) Next: (a) ch=64@128³ fresh (largest legacy grid, untried fresh); (b) ch=96@96³ fresh (untried combo); (c) ch=96@64³ seed#3 — saturation test. (5) **0.065 below frozen leaderboard (0.7475)**.
+
 ### 2026-04-19 — iter50: FRESH-SEED ch=64@64³ (smallest arch) at 60min — ensemble **0.68372** (−0.00088)
 - **Hypothesis:** 7th fresh-seed at smallest arch (ch=64@64³) — fastest per-epoch, most epochs converge in budget (expected 150+). Small-model basins may give additional orthogonal errors.
 - **Change:** `--unet_ch_base 64 --unet_grid 64³ --lr 3e-4 --epochs 250 --yflip_aug True MAX_TIMEOUT_MIN=60` (run-id `79bxvr4h`). Best at epoch 152, val/l2=0.7894.
