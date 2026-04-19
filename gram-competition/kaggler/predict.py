@@ -46,7 +46,7 @@ print(f"Ensemble of {len(ckpt_paths)} checkpoint(s)" if len(ckpt_paths) > 1 else
 
 from model import VoxelFlowNet
 
-GRID_CH_TO_RES = {32: 80, 24: 96, 16: 112}  # compute-equivalent pairings used during training
+GRID_CH_TO_RES = {40: 64, 32: 80, 24: 96, 16: 112}  # compute-equivalent pairings used during training
 
 def load_model(path):
     sd = torch.load(path, map_location=device, weights_only=True)
