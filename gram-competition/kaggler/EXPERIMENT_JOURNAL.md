@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — exp 53: G=112 ch=16 (further resolution bump) [discarded]
+- **Hypothesis:** Exp 51's G=80 → G=96 win (0.7844 → 0.7645 on seed 42, −2.5 %) came from increased spatial resolution at fixed compute. Extrapolating, G=96 → G=112 with ch reduced to 16 (keeps GroupNorm-8 divisibility, under compute budget at ratio 0.70) should give another resolution gain. If it wins, would push single-seed into the 0.74s.
+- **Change:** `train.py` + `predict.py` — `grid_res=112, grid_ch=16` (from 96/24).
+- **Result:** val/l2 = **0.7904** at ep 40 (of 49, 60 min, 10.8 it/s — faster per-epoch as expected). **Worse than G=96 baseline (0.7645) by 3.4 %, worse than G=80 seed 42 baseline (0.7844) by 0.8 %**.
+- **Verdict:** Discarded. `git reset --hard HEAD~1`; best.pt unchanged (still the G=96 seed 42 ckpt, md5 match verified).
+- **Notes:** The 33 % channel reduction (24 → 16) cost more than the 17 % resolution increase (96 → 112) gained — feature channel capacity matters more than I estimated once we're past G=96. Also, the 70 % compute ratio meant fewer effective parameters overall. Two ways to recover the resolution direction: (a) **G=112 ch=24** at 1.58× FLOPs needs MAX_TIMEOUT_MIN=95 to fit 50 epochs, which breaks the per-experiment time budget, (b) hold ch=24 and try G=128 ch=24 — compute ratio 2.1×, even worse on time. Lesson: the resolution-vs-channels trade-off has a sweet spot near G=96, at least within the compute budget. **Next pivot:** **exp 54 = point_hidden bump at G=96 ch=24**. Train loss at 50 ep is 0.58 with ensemble val 0.73; there's headroom for more fit. The point-head MLP is a ResMLP with 6 blocks at hidden=384; doubling to 512 or adding blocks touches a different part of the architecture and leaves the voxel pipeline untouched. Cost: per-epoch time grows with point_hidden² · N_POINTS, maybe +10 %. Previously point-head bumps failed under 28-ep budget (exp 39); with 50-ep we get proper polish.
+
 ### 2026-04-19 — exp 52: G=96 ch=24 3-seed ensemble [KEPT — new best 0.7259]
 - **Hypothesis:** Exp 51 seed 42 at G=96 ch=24 gave single-seed 0.7645 (vs G=80 0.7844, −2.5 %). Replicating with seeds 7 and 99 and averaging the three should follow the same variance-reduction ratio seen in exp 49 (G=80 single avg 0.7877 → ensemble 0.7470, −5.2 %). Target: ~0.7300.
 - **Change:** Trained seeds 7 and 99 with `MAX_TIMEOUT_MIN=60`, 50-epoch cosine, G=96 ch=24 (no code change from exp 51 except `--seed`). Updated `.ensemble_ckpts` to point at the 3 G=96 run IDs (`model-hsxypcuj`, `model-uyhfdzvb`, `model-wmmjcjyw`). Ensemble via existing comma-separated `predict.py --checkpoint a,b,c`.
