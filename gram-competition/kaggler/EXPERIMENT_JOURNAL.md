@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — exp 51: G=96 ch=24 (resolution bump, compute-equivalent) [KEPT — new single-seed best 0.7645]
+- **Hypothesis:** At fixed voxel-CNN FLOPs (~G³·ch²), reallocating budget to *more cells, fewer channels* should buy spatial resolution where the airflow field is visibly under-resolved in the wake. G=80 ch=32 → G=96 ch=24 keeps FLOPs within 5 %, per-epoch time ~78 s vs 77 s. Same point head, same 50-ep cosine, same seed 42.
+- **Change:** `train.py` + `predict.py` — `grid_res=96, grid_ch=24` (from 80/32). No other changes.
+- **Result:** val/l2 = **0.7645** at ep 42 of 47 (60.9 min, 8.6 GB peak, train loss 0.578). Trajectory crossed the G=80 seed-42 baseline (0.7844 @ ep 40) at ep 28, kept descending through ep 42, then drifted slightly (43-47: 0.7646-0.7650).
+- **Verdict:** KEPT. 2.5 % gain on single-seed vs exp 48 (0.7844 → 0.7645). Beats the G=80 3-seed ensemble (0.7470) gap down to 2.3 %, meaning a G=96 3-seed ensemble should punch into the 0.73s and close most of the remaining gap to the top of the leaderboard.
+- **Notes:** Peak memory +0.4 GB vs G=80. The resolution direction was explored obliquely in exp 44/45 (grid_ch bump under 28-ep budget) and failed due to schedule mismatch; with the 50-ep cosine in place, reallocating FLOPs to *resolution* rather than *channels* is what unlocks the gain — consistent with the intuition that the wake has fine-grained spatial structure the G=80 grid couldn't represent. Next pivot: train seeds 7 and 99 at G=96 ch=24 for a pure 3-seed G=96 ensemble (~2 h sequential). Expected ensemble 0.73 if the variance-reduction ratio from exp 49 (0.7877 avg → 0.7470 ensemble, 5.2 %) holds. Leaderboard gap to thorfinn (0.6930) now 0.072.
+
 ### 2026-04-19 — exp 50: v_in Gaussian noise augmentation [discarded]
 - **Hypothesis:** Ep-40 seed-42 exhibits a large train/val gap (train 0.58 vs val 0.78), suggesting overfitting to un-generalizable per-point features. Adding Gaussian noise on input velocities (`v_in + N(0, noise_std * vel_std)`) should act as data augmentation, reducing that gap and improving val.
 - **Change:** `train.py` — `--noise_std` flag added; if >0, add `torch.randn_like(v_in) * noise_std * vel_std_gpu` before forward pass each batch. No other changes.
