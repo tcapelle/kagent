@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — exp 54: point_hidden 384 → 512 (point-head capacity) [discarded]
+- **Hypothesis:** Exp 51's seed 42 at G=96 ch=24 hit train loss 0.58 / val 0.7645 at ep 42 — clear gap between train and val suggesting more MLP capacity could fit better patterns. Previous point-head bumps (exp 39) failed under 28-ep budget; with the 50-ep schedule in place, doubling point_hidden (384 → 512) may finally pay off. Zero change to voxel CNN; only the 6-block ResMLP gets wider.
+- **Change:** `train.py` + `predict.py` — `point_hidden=512` (from 384). No other changes; `--seed 42 --epochs 50`.
+- **Result:** val/l2 = **0.7663** at ep 37 (60.3 min, timed out). **Essentially tied with baseline (0.7645), within seed-noise range**. Reached best slightly earlier than baseline (ep 37 vs 42) due to per-epoch time growing ~12 % — ran fewer total epochs in the same 60 min budget.
+- **Verdict:** Discarded. `git revert` the commit; `git restore checkpoints/best.pt` to get back the seed 42 G=96 ckpt (md5 verified).
+- **Notes:** Two takeaways: (a) **point-head capacity is NOT the bottleneck** — the MLP at 384 is already sufficient for the features the voxel CNN produces; making it wider doesn't help extract more signal; (b) the train/val gap is *not* closable by fit capacity — it's a generalization gap across scenes, same conclusion as exp 50's noise-aug failure. The remaining error is structural: architectural inductive bias or ensemble diversity. **Next pivot: 5-seed ensemble at G=96 ch=24**. Exp 52's 3-seed averaged 0.7705 → 0.7259 (−5.8 %). Scaling to 5 seeds should reduce variance by √(5/3) ≈ 1.29×, expected another ~1.3 % gain to ~0.716. Cost: 2 hours sequential training of seeds 123 and 2024. This is the most direct path to further gains given ensemble diversity is the one direction that keeps paying.
+
 ### 2026-04-19 — exp 52: G=96 ch=24 3-seed ensemble [KEPT — new best 0.7259]
 - **Hypothesis:** Exp 51 seed 42 at G=96 ch=24 gave single-seed 0.7645 (vs G=80 0.7844, −2.5 %). Replicating with seeds 7 and 99 and averaging the three should follow the same variance-reduction ratio seen in exp 49 (G=80 single avg 0.7877 → ensemble 0.7470, −5.2 %). Target: ~0.7300.
 - **Change:** Trained seeds 7 and 99 with `MAX_TIMEOUT_MIN=60`, 50-epoch cosine, G=96 ch=24 (no code change from exp 51 except `--seed`). Updated `.ensemble_ckpts` to point at the 3 G=96 run IDs (`model-hsxypcuj`, `model-uyhfdzvb`, `model-wmmjcjyw`). Ensemble via existing comma-separated `predict.py --checkpoint a,b,c`.
