@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — iter54: FRESH-SEED ch=64@64³ seed#2 (pure noise decorr) at 60min — ensemble **0.68216** (−0.00039)
+- **Hypothesis:** After iter52/53 discards, revert to proven-convergence arch: ch=64@64³ seed#2 (same cell as iter50's 79bxvr4h, fastest-converging arch). Expect 150+ epochs and solo ~0.79, adding pure noise-decorrelation to iter50's member.
+- **Change:** `--unet_ch_base 64 --unet_grid 64³ --lr 3e-4 --epochs 250 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `6e2trfqm`). Best at epoch 149, val/l2=0.7909 (virtually matches iter50's 0.7894).
+- **Result:** Solo+TTA competitive. Weight-opt sweep size=15 weighted=**0.68216**. Members: `[iazbqcv0, zb987yzv, kkpwt6kk, 972sqtxv, nwco75x9, 79bxvr4h, otybiegm, 6e2trfqm, i69s5t02, ekhe78br, mopmyfsq, zwtu9s7m, s72nkbjq, o542zbvh, we8kdyug]`. Weights: `[0.0616, 0.094, 0.1035, 0.127, 0.0985, 0.0749, 0.1296, 0.0669, 0.0695, 0.0661, 0.0534, 0.0334, 0.0003, 0.0006, 0.0208]`. 6e2trfqm captures **0.067** weight. **0.00039 improvement** over iter51.
+- **Verdict:** KEPT. 9 fresh-seeds now stacked. Smaller gain than iter49's same-arch seed#2 on ch=96 (0.00090), consistent with the gain-decay trend.
+- **Notes:** (1) Ensemble trajectory: iter44→54: 0.69463→0.69301→0.68819→0.68610→0.68550→0.68460→0.68372→0.68255→0.68216. Total -0.0125 over 9 fresh-seed iters (iter52/53 discarded). (2) Confirms that **re-seeding a proven arch is more reliable than untried-combo exploration**: iter52 ch=64@128³, iter53 ch=96@96³ both failed; iter54 same-arch reseed worked. (3) **0.066 below frozen leaderboard (0.7475)**. (4) Next: iter55 ch=96@64³ seed#3 (3rd same-arch) OR ch=128@64³ seed#2 (reseed we8kdyug cell).
+
 ### 2026-04-19 — iter53: FRESH-SEED ch=96@96³ at 60min — **DISCARDED** (solo 0.8708, below threshold)
 - **Hypothesis:** Untried isotropic cell ch=96@96³, expected to converge between iter47's ch=96@80³ (0.80) and iter48's ch=128@96³ (0.81).
 - **Change:** `--unet_ch_base 96 --unet_grid 96³ --lr 3e-4 --epochs 100 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `u7nzvj5c`). Best at epoch 38.
