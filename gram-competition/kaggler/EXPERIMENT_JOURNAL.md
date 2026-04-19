@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — exp 52: G=96 ch=24 3-seed ensemble [KEPT — new best 0.7259]
+- **Hypothesis:** Exp 51 seed 42 at G=96 ch=24 gave single-seed 0.7645 (vs G=80 0.7844, −2.5 %). Replicating with seeds 7 and 99 and averaging the three should follow the same variance-reduction ratio seen in exp 49 (G=80 single avg 0.7877 → ensemble 0.7470, −5.2 %). Target: ~0.7300.
+- **Change:** Trained seeds 7 and 99 with `MAX_TIMEOUT_MIN=60`, 50-epoch cosine, G=96 ch=24 (no code change from exp 51 except `--seed`). Updated `.ensemble_ckpts` to point at the 3 G=96 run IDs (`model-hsxypcuj`, `model-uyhfdzvb`, `model-wmmjcjyw`). Ensemble via existing comma-separated `predict.py --checkpoint a,b,c`.
+- **Result:** Single-seed vals — seed 42: **0.7645** (ep 42), seed 7: **0.7723** (ep 41), seed 99: **0.7746** (ep 37). **Ensemble val/l2 = 0.7259** (32 s inference). 5.1 % gain over best single-seed (0.7645 → 0.7259), 2.8 % over the G=80 3-seed ensemble (0.7470), 8.3 % over G=80 single-seed baseline (0.7844). Seeds 7/99 were launched sequentially to avoid the GPU-contention throughput drop from exp 49.
+- **Verdict:** KEPT. Best result to date. Gap to thorfinn (0.6930) now 0.033 (4.7 %) — down from 7.8 % before this experiment.
+- **Notes:** The G=96 ensemble variance-reduction ratio (5.1 %) is slightly less than G=80's (5.2 %), consistent with the stronger single-seed baseline having slightly lower diversity. Cost: ~2 h wall-clock sequentially. **Next pivot:** (a) **scale ensemble to 5 seeds** (add 2 more seeds at G=96) — another ~1.5 % gain, 2 more hours; (b) **resolution bump to G=112 or G=128** at compute-equivalent reduced `grid_ch` — extrapolating the G=80 → G=96 signal, higher resolution may still pay; (c) **point-head bump** (`point_hidden=512` or `n_point_blocks=8`) now that we know the 50-ep schedule gives room for more fit — seed 42 train loss at 50 ep is 0.58 vs ensemble val 0.73, still a gap. (a) and (b) are the surest bets; (c) is higher variance but higher ceiling. Going with **(b) G=112** next since the resolution direction is the one that pulled ahead in exp 51.
+
 ### 2026-04-19 — exp 51: G=96 ch=24 (resolution bump, compute-equivalent) [KEPT — new single-seed best 0.7645]
 - **Hypothesis:** At fixed voxel-CNN FLOPs (~G³·ch²), reallocating budget to *more cells, fewer channels* should buy spatial resolution where the airflow field is visibly under-resolved in the wake. G=80 ch=32 → G=96 ch=24 keeps FLOPs within 5 %, per-epoch time ~78 s vs 77 s. Same point head, same 50-ep cosine, same seed 42.
 - **Change:** `train.py` + `predict.py` — `grid_res=96, grid_ch=24` (from 80/32). No other changes.

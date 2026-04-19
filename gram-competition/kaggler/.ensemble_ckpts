@@ -1,5 +1,5 @@
-# Checkpoints used for exp 49 ensemble (val/l2 = 0.7470)
-# 3 seeds x 50-epoch cosine schedule (60-min budget each)
-/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-bfmpfwr3/checkpoint.pt  # seed 42, single 0.7844
-/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-jywxa3ad/checkpoint.pt  # seed 7,  single 0.7961
-/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-8p5elewy/checkpoint.pt  # seed 99, single 0.7926
+# Checkpoints used for exp 52 ensemble (val/l2 = 0.7259)
+# 3 seeds x 50-epoch cosine schedule (60-min budget each), G=96 ch=24
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-hsxypcuj/checkpoint.pt  # seed 42, single 0.7645
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-uyhfdzvb/checkpoint.pt  # seed 7,  single 0.7723
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-wmmjcjyw/checkpoint.pt  # seed 99, single 0.7746
