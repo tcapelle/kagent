@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — exp 50: v_in Gaussian noise augmentation [discarded]
+- **Hypothesis:** Ep-40 seed-42 exhibits a large train/val gap (train 0.58 vs val 0.78), suggesting overfitting to un-generalizable per-point features. Adding Gaussian noise on input velocities (`v_in + N(0, noise_std * vel_std)`) should act as data augmentation, reducing that gap and improving val.
+- **Change:** `train.py` — `--noise_std` flag added; if >0, add `torch.randn_like(v_in) * noise_std * vel_std_gpu` before forward pass each batch. No other changes.
+- **Attempt A (std=0.05):** ep 10 val 1.04 (baseline 1.06, ahead), ep 20 val 0.93 (baseline 0.85, +0.08 behind), ep 30 val 0.85 (baseline 0.80). Descent slowed mid-training; noise too strong.
+- **Attempt B (std=0.02):** ep 10 val 1.03 (baseline 1.06, ahead by 0.03), ep 20 val 0.86 (baseline 0.85, tied), ep 30 val 0.82 (baseline 0.80, +0.02 behind), ep 37-40 plateaued at 0.81 (baseline still at 0.79 dropping). Killed at ep 40.
+- **Verdict:** Discarded. Both variants converge slightly faster early but plateau earlier and higher. Restored best.pt; `git reset --hard` to pre-exp50.
+- **Notes:** Two possible reasons noise didn't help: (a) the **train/val gap is not due to overfitting on v_in fluctuations** — it's a structural gap between training and val scenes' geometries/inflow; noise on v_in doesn't simulate that shift; (b) EMA already provides weight-level regularization, so input noise is redundant. Key lesson: **don't attack a train/val gap with a regularizer that addresses the wrong mechanism**. The remaining val error is scene-level generalization, not spectral bias. Next candidates: (a) **more ensemble seeds** (direct variance reduction, the one thing that's consistently worked — exp 46 and exp 49), (b) **point-head capacity bump** with 50-ep schedule (previously failed at 28-ep budget; the train loss of 0.58 leaves room for more fit), (c) **SWA (stochastic weight averaging)** on the last 5 epochs instead of EMA-999 (which may still be biased by early phase).
+
 ### 2026-04-18 — exp 49: 3-seed 50-ep ensemble [KEPT — new best 0.7470]
 - **Hypothesis:** Exp 46's 28-ep 3-seed ensemble dropped single-seed avg (0.82) → ensemble 0.7898 (−3.7 %). Applying the same trick to the better 50-ep models (single-seed avg 0.79) should yield a similar-magnitude reduction → ensemble target ~0.76. Averaging diverse local optima reduces seed variance directly.
 - **Change:** Trained seeds 7 and 99 with same `--epochs 50`, `MAX_TIMEOUT_MIN=60`, architecture unchanged. Updated `.ensemble_ckpts` to point to the 3 new run IDs (`model-bfmpfwr3`, `model-jywxa3ad`, `model-8p5elewy`). Ensemble via existing comma-separated `predict.py --checkpoint a,b,c`.
