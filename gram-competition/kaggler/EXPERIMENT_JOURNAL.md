@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — iter49: FRESH-SEED ch=96@64³ seed#2 (pure noise decorr) at 60min — ensemble **0.68460** (−0.00090)
+- **Hypothesis:** Same arch as iter44's zb987yzv (ch=96@64³ the best-converging fresh cell). Pure noise-decorrelation test: if different random init alone adds value (beyond arch diversity), this should contribute.
+- **Change:** `--unet_ch_base 96 --unet_grid 64³ --lr 3e-4 --epochs 150 --yflip_aug True MAX_TIMEOUT_MIN=60` (run-id `ekhe78br`). Best at epoch 106, val/l2=0.7937.
+- **Result:** Solo+TTA=**0.7617** (virtually identical to zb987yzv's 0.7608). Weight-opt sweep size=14 weighted=**0.68460**. Members: `[iazbqcv0, zb987yzv, kkpwt6kk, 972sqtxv, ekhe78br, i69s5t02, otybiegm, we8kdyug, mopmyfsq, zwtu9s7m, s72nkbjq, o542zbvh, bn20n6rl, aik4lytt]`. Weights: `[0.0814, 0.1232, 0.1255, 0.1382, 0.0974, 0.112, 0.1237, 0.0495, 0.0715, 0.0553, 0.0017, 0.0005, 0.0069, 0.0131]`. ekhe78br captures **0.097** weight (comparable to zb987yzv's 0.123). **0.00090 improvement** over iter48. 6 fresh-seeds collectively **0.563** of ensemble weight.
+- **Verdict:** KEPT. Confirms pure-noise decorrelation (same arch, different seed) yields non-trivial gain.
+- **Notes:** (1) Ensemble trajectory: iter44→49: 0.69463, 0.69301, 0.68819, 0.68610, 0.68550, 0.68460 — total -0.010 for 6 fresh-seeds. (2) Same-arch re-seed yields +0.00090 — comparable to iter48's +0.00060 (different arch, big model). Suggests decorrelation is primarily from independent SGD trajectories, not just architecture diversity. (3) Next: (a) another ch=96@64³ seed#3 — test saturation of same-arch noise-decorrelation; (b) ch=64@64³ fresh-seed (only ch=64 fresh-seed so far is @96³); (c) ch=64@128³ fresh-seed (largest legacy grid). (4) **0.062 below frozen leaderboard (0.7475)**.
+
 ### 2026-04-18 — iter48: FRESH-SEED ch=128@96³ at 60min budget — ensemble **0.68550** (−0.00060)
 - **Hypothesis:** 5th fresh-seed at largest arch (ch=128@96³, matches otybiegm cell). Biggest model yet tried fresh-seed; might not converge but still adds decorrelation.
 - **Change:** `--unet_ch_base 128 --unet_grid 96³ --lr 3e-4 --epochs 80 --yflip_aug True MAX_TIMEOUT_MIN=60` (run-id `zwtu9s7m`). Best at epoch 34, val/l2=0.8389.
