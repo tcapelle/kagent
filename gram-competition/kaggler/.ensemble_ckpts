@@ -1,5 +1,13 @@
-# Checkpoints used for exp 55 ensemble (val/l2 = 0.7185)
-# 5 seeds x 50-epoch cosine schedule (60-min budget each), G=96 ch=24
+# Checkpoints used for exp 56 ensemble (val/l2 = 0.7121)
+# Mixed-arch 8-ckpt: 3 x G=80 ch=32 + 5 x G=96 ch=24, all 50-ep cosine
+# predict.py infers arch from state_dict shape (grid_ch -> grid_res map)
+
+# G=80 ch=32 (3 seeds)
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-bfmpfwr3/checkpoint.pt  # seed 42,   single 0.7844
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-jywxa3ad/checkpoint.pt  # seed 7,    single 0.7961
+/mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-8p5elewy/checkpoint.pt  # seed 99,   single 0.7926
+
+# G=96 ch=24 (5 seeds)
 /mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-hsxypcuj/checkpoint.pt  # seed 42,   single 0.7645
 /mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-uyhfdzvb/checkpoint.pt  # seed 7,    single 0.7723
 /mnt/new-pvc/kagent/apr16/gilbert/checkpoints/model-wmmjcjyw/checkpoint.pt  # seed 99,   single 0.7746

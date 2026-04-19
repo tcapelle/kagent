@@ -46,15 +46,21 @@ print(f"Ensemble of {len(ckpt_paths)} checkpoint(s)" if len(ckpt_paths) > 1 else
 
 from model import VoxelFlowNet
 
+GRID_CH_TO_RES = {32: 80, 24: 96, 16: 112}  # compute-equivalent pairings used during training
+
 def load_model(path):
+    sd = torch.load(path, map_location=device, weights_only=True)
+    grid_ch = sd["grid_in.weight"].shape[0]
+    point_hidden = sd["proj_in.weight"].shape[0]
+    grid_res = GRID_CH_TO_RES[grid_ch]
     m = VoxelFlowNet(
         vel_mean=torch.zeros(3), vel_std=torch.ones(3),
-        grid_res=96, grid_ch=24, n_grid_blocks=4,
-        point_hidden=384, n_point_blocks=6, point_dropout=0.15,
+        grid_res=grid_res, grid_ch=grid_ch, n_grid_blocks=4,
+        point_hidden=point_hidden, n_point_blocks=6, point_dropout=0.15,
     ).to(device)
-    m.load_state_dict(torch.load(path, map_location=device, weights_only=True))
+    m.load_state_dict(sd)
     m.eval()
-    print(f"  loaded {path}")
+    print(f"  loaded {path} (G={grid_res}, ch={grid_ch}, ph={point_hidden})")
     return m
 
 models = [load_model(p) for p in ckpt_paths]
