@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — iter52: FRESH-SEED ch=64@128³ at 60min — **DISCARDED** (too-slow combo)
+- **Hypothesis:** 9th fresh-seed at untried cell (smallest ch × biggest grid = different error geometry). Legacy big-grid class (6tusrvjg's 128×64×80 cell neighbor) but from fresh init.
+- **Change:** `--unet_ch_base 64 --unet_grid 128³ --lr 3e-4 --epochs 120 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `s7z9p0ok`). Only ran **30 epochs** before timeout — ch=64@128³ is the slowest per-epoch combo.
+- **Result:** Best val/l2=**0.8936** at epoch 30 — worst fresh-seed solo by large margin (all others converged to 0.79-0.81). Ensemble trajectory sweep did NOT select s7z9p0ok at any size — too weak to displace a member. Best ensemble remains **0.68255** (iter51, unchanged).
+- **Verdict:** DISCARDED. Small-ch + big-grid is the wrong tradeoff: grid expansion multiplies per-epoch cost ~8× without commensurate capacity gain to actually learn the field at fine grid.
+- **Notes:** (1) Key lesson: useful fresh-seeds need solo+TTA≤~0.80 in 60min; ch=64@128³ is below that threshold. (2) Safe recipe recap: ch=64@64³ (smallest, 150+ epochs), ch=96@64³ (8-10 epochs/min), ch=128@64³ (slower but converges) all hit 0.76-0.78 solo. (3) Next: iter53 ch=96@96³ fresh-seed (untried isotropic cell, expected to converge based on iter47's ch=96@80³ success).
+
 ### 2026-04-19 — iter51: FRESH-SEED ch=128@80³ at 60min — ensemble **0.68255** (−0.00117)
 - **Hypothesis:** 8th fresh-seed at an **untried cell** (ch=128@80³ matches z5xvz0bu warm-start cell but from fresh init — orthogonal basin). Continue stacking decorrelated fresh-seeds; bigger-ch at mid-grid may contribute different error geometry than ch=64/96 seeds.
 - **Change:** `--unet_ch_base 128 --unet_grid 80³ --lr 3e-4 --epochs 100 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `nwco75x9`). Best at epoch 55, val/l2=0.7959.
