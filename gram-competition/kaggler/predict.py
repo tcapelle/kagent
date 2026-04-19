@@ -77,7 +77,14 @@ for split in TEST_SPLITS:
             pos = pos.to(device, non_blocking=True)
             t = t.to(device, non_blocking=True)
 
-            pred = model(v_in, pos, t, idcs)  # [B, 5, N, 3]
+            # Y-flip TTA: average prediction from original and Y-flipped input
+            pred1 = model(v_in, pos, t, idcs)
+            flip = torch.tensor([1., -1., 1.], device=device)
+            v_in_f = v_in * flip.view(1, 1, 1, 3)
+            pos_f = pos * flip.view(1, 1, 3)
+            pred2_f = model(v_in_f, pos_f, t, idcs)
+            pred2 = pred2_f * flip.view(1, 1, 1, 3)
+            pred = (pred1 + pred2) / 2.0  # [B, 5, N, 3]
             for j in range(pred.shape[0]):
                 predictions.append(pred[j].cpu())
 
