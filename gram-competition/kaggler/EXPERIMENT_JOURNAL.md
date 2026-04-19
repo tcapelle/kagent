@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — v47 KEPT ★★ — L2 + hidden=384 + lr=3e-4 solo=0.7586, 33-seed top20/T=0.02 = **0.6942** (gain 0.0031)
+- **Hypothesis:** Second hidden=384 seed with different LR → validates v46 effect + adds decorrelated ensemble member at same successful arch.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=100 python train.py --loss_type l2 --hidden 384 --lr 3e-4 --epochs 70`. 87.7 min.
+- **Result:** Solo val/l2 = **0.7586** at ep67 — **2nd best solo** (v46=0.7572, v47=0.7586). 33-seed best = **top20_mean_T=0.02 = 0.6942** (gain 0.0031 over v46's 0.6973). Gap to thorfinn (0.7022) now **-0.0080** on val.
+- **Verdict:** KEPT ★★. Validates hidden=384 arch axis. Second seed produces comparable solo (0.7586 vs 0.7572) confirming the effect is systematic, not lucky. Gain per seed 0.0031 matches previous L2 seed gains before diminishing.
+- **Notes:** Both hidden=384 seeds now in top-7 of 33. v47 at lr=3e-4 completed nicely. Next (v48): **L2 + hidden=512** — scale further to test if solo improves monotonically. Risk: bigger model may overfit 730-sample train. v49: L2 + hidden=384 + wd=5e-5 (stack wd + h=384). v50: L2 + hidden=384 + ema_beta=0.9995.
+
 ### 2026-04-19 — v46 KEPT ★★★ — L2 + hidden=384 solo=0.7572 (BEST), 32-seed top20/T=0.02 = **0.6973** (gain 0.0058)
 - **Hypothesis:** MLP arch diversity. hidden=384 (vs default 256) → more capacity + different convergence basin. Larger per-point feature space might better capture fine-grained flow structure that per-point MLP sees.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --loss_type l2 --hidden 384 --epochs 70`. 87.7 min. 8.4GB VRAM.
