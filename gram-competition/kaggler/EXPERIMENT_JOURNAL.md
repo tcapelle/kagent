@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — v48 DISCARDED — L2 + hidden=512 solo=0.8396 (too weak), 34-seed = 0.6942 (gain 0.0000)
+- **Hypothesis:** hidden=512 → further arch scaling beyond hidden=384's success.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=150 python train.py --loss_type l2 --hidden 512 --epochs 70`. 119.2 min. 10.7GB VRAM.
+- **Result:** Solo val/l2 = **0.8396** at ep68 — **much worse** than hidden=384 (0.757) or hidden=256 (0.77-0.79). 34-seed best = 0.6942 (same as v47, v48 excluded from top-20 due to weak solo). **No gain.**
+- **Verdict:** DISCARDED. hidden=512 clearly overparameterized for 730-sample train set. 2.2h training for zero ensemble contribution. Model capacity peaks around hidden=384.
+- **Notes:** Wasted 2h. Next (v49): revert to proven arch. **L2 + hidden=384 + wd=5e-5** (stack wd diversity onto winning h=384). v50: L2 + hidden=384 + voxel_mid=96 (stack 2 arch axes, risky but untried). v51: L2 + hidden=320 (between 256 and 384).
+
 ### 2026-04-19 — v47 KEPT ★★ — L2 + hidden=384 + lr=3e-4 solo=0.7586, 33-seed top20/T=0.02 = **0.6942** (gain 0.0031)
 - **Hypothesis:** Second hidden=384 seed with different LR → validates v46 effect + adds decorrelated ensemble member at same successful arch.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=100 python train.py --loss_type l2 --hidden 384 --lr 3e-4 --epochs 70`. 87.7 min.
