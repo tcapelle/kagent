@@ -122,7 +122,7 @@ val_loaders = {
 model = VoxelFlowNet(
     vel_mean=stats["vel_mean"], vel_std=stats["vel_std"],
     grid_res=96, grid_ch=24, n_grid_blocks=4,
-    point_hidden=512, n_point_blocks=6, point_dropout=0.15,
+    point_hidden=384, n_point_blocks=6, point_dropout=0.15,
 ).to(device)
 vel_std_gpu = stats["vel_std"].to(device).view(1, 1, 1, 3)
 
