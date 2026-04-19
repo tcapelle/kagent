@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — v46 KEPT ★★★ — L2 + hidden=384 solo=0.7572 (BEST), 32-seed top20/T=0.02 = **0.6973** (gain 0.0058)
+- **Hypothesis:** MLP arch diversity. hidden=384 (vs default 256) → more capacity + different convergence basin. Larger per-point feature space might better capture fine-grained flow structure that per-point MLP sees.
+- **Change:** CLI — `MAX_TIMEOUT_MIN=90 python train.py --loss_type l2 --hidden 384 --epochs 70`. 87.7 min. 8.4GB VRAM.
+- **Result:** Solo val/l2 = **0.7572** at ep65 — **BEST solo of all seeds** (previous best v41=0.7654). 32-seed best = **top20_mean_T=0.02 = 0.6973** (gain **0.0058** over v45's 0.7031 — **biggest gain since v42!**). We're now **BELOW thorfinn's 0.7022 on val**.
+- **Verdict:** KEPT ★★★. Arch diversity is highly productive. hidden=384 beats hidden=256 on solo AND contributes strongly to ensemble (both effects unusual — normally bigger arch is redundant). Per-seed gain reversed the diminishing trend: v44=0.0032 → v45=0.0011 → v46=**0.0058**.
+- **Notes:** 2 arch-diverse seeds now: v42 (voxel_mid=96) and v46 (hidden=384). More arch axes to try. Next (v47): **L2 + hidden=384 + lr=3e-4** — second hidden=384 seed to validate effect + add diversity. v48: L2 + hidden=512 (even bigger MLP). v49: L2 + hidden=384 + voxel_mid=96 (stack both arch axes).
+
 ### 2026-04-18 — v45 KEPT — L2 + ema_beta=0.9999 solo=0.7879, 31-seed top20/T=0.02 = 0.7031 (gain 0.0011)
 - **Hypothesis:** EMA at 0.9999 averages training trajectory → different basin than non-EMA seeds. Orthogonal axis to wd/lr tried so far.
 - **Change:** CLI — `MAX_TIMEOUT_MIN=80 python train.py --loss_type l2 --ema_beta 0.9999 --epochs 70`. 64 min.
