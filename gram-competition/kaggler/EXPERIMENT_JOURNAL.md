@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-19 — iter53: FRESH-SEED ch=96@96³ at 60min — **DISCARDED** (solo 0.8708, below threshold)
+- **Hypothesis:** Untried isotropic cell ch=96@96³, expected to converge between iter47's ch=96@80³ (0.80) and iter48's ch=128@96³ (0.81).
+- **Change:** `--unet_ch_base 96 --unet_grid 96³ --lr 3e-4 --epochs 100 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `u7nzvj5c`). Best at epoch 38.
+- **Result:** Best val/l2=**0.8708**. Solo+TTA too weak. Ensemble trajectory sweep did NOT select u7nzvj5c — ensemble remains **0.68255** unchanged.
+- **Verdict:** DISCARDED. Solo below useful threshold (~0.80). ch=96@96³ per-epoch cost too high; only reached epoch 38 in 60min.
+- **Notes:** (1) Confirms **useful-solo threshold ~0.80** for decorrelated contribution at current ensemble size (15 members). Above that, member collapses to zero weight. (2) Both iter52/53 went off the convergence map — next iters should stick to proven archs: ch=64@64³, ch=96@64³, ch=128@64³, ch=96@80³. (3) Pivot to ch=64@64³ seed#2 (pure noise-decorrelation, same arch as iter50's 79bxvr4h).
+
 ### 2026-04-19 — iter52: FRESH-SEED ch=64@128³ at 60min — **DISCARDED** (too-slow combo)
 - **Hypothesis:** 9th fresh-seed at untried cell (smallest ch × biggest grid = different error geometry). Legacy big-grid class (6tusrvjg's 128×64×80 cell neighbor) but from fresh init.
 - **Change:** `--unet_ch_base 64 --unet_grid 128³ --lr 3e-4 --epochs 120 --yflip_aug True MAX_TIMEOUT_MIN=60` (no init_from) (run-id `s7z9p0ok`). Only ran **30 epochs** before timeout — ch=64@128³ is the slowest per-epoch combo.
