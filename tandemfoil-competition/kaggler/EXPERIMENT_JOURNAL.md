@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v7-scratch + ensemble attempt (DISCARDED)
+- **Hypothesis:** Warm-start is saturating (v5→v6 gain was only 0.09). A fresh-from-init v7 should produce decorrelated errors; averaging v6 + v7 predictions should beat v6 alone.
+- **Change:** Ran `train.py` from scratch (same config as v4 — hidden=256, layers=8, slice_num=64). Added `eval_ensemble.py` so we can score ensembles offline on val before committing.
+- **Result:** v7 alone `val/l2_error = 5.03`. Ensemble val scores (computed via `eval_ensemble.py`):
+  - v6 alone: 4.322
+  - v5 + v6 (correlated lineage): 4.349
+  - v6 + v7: 4.459
+  - All **worse than v6 alone**. v7 is too weak (~16% worse) to help v6 via simple averaging, and v5+v6 are too correlated.
+- **Verdict:** Discarded — submitted v6's predictions at HEAD commit `9245c2f` instead.
+- **Notes:** Key lesson for ensembling: the members have to be (a) individually close in quality, or (b) strongly decorrelated. v7-from-scratch is neither. If ensembling is to work, I should either warm-start v7 off v6 with more perturbation, or spend enough compute to bring a fresh-init model all the way to v6 quality. For now, another warm-start on v6 is the higher-EV move.
+
 ### 2026-04-23 — v6-resume-lr3e5
 - **Hypothesis:** v5 was still improving at its last epoch but very slowly (last-epoch gain ≈0.006). A third warm-start round with `lr=3e-5` should squeeze out another ~0.1 l2 before we hit diminishing returns and need to switch strategies (seed ensemble / TTA).
 - **Change:** `train.py --resume checkpoints/best.pt --lr 3e-5`; added `--checkpoints p1,p2,...` support to `predict.py` for eventual ensembling (not used yet here). Committed ensemble path first so future runs can use it.
