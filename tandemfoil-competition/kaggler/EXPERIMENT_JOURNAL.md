@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter3-bs8-vol20k
+- **Hypothesis:** bs=8 + 20K vol pts + 25 epochs + warmup LR beats iter2. More epochs should help since loss still decreasing.
+- **Change:** bs=4→8, n_vol=40K→20K, epochs=50→25, added LinearLR warmup 2ep + cosine.
+- **Result:** val/loss=2.1905 at epoch 21 (86s/epoch, 22.2GB VRAM). Down from iter2's 3.01.
+- **Verdict:** kept — commit b600021
+- **Notes:** Per-split @ epoch 21: single_in_dist=2.50, rc=3.07, cruise=1.08, re_rand=2.11. Still improving; LR near zero by end. rc is the biggest remaining loss.
+
 ### 2026-04-23 — iter2-subsample
 - **Hypothesis:** subsampling volume points (keep all surface, 40K vol/sample) speeds up training 3x with minimal loss in quality. More epochs → lower val/loss.
 - **Change:** train.py adds `subsample_volume` called per-batch; bs=4 (was 2); n_vol_train=40000
