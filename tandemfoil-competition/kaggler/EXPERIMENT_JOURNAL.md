@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter4: 192x6 + 3-ep warmup + 35 epochs
+- **Hypothesis:** iter3's 128x5 plateaued around 1.9 val/loss. A larger 192×6 model with proper warmup (iter2's failure was a cold start with aggressive cosine) should unlock more capacity without the convergence issues. Thorfinn uses 192x6 and is leading on test.
+- **Change:** `train.py` n_hidden=192, n_layers=6, n_head=6, slice_num=64 (matches thorfinn's rumored config). Added `SequentialLR(LinearLR warmup 3 epochs + CosineAnnealingLR)`. `epochs=35` (46s/ep budget, ~27 min). Reverted iter2's Fourier features in `model.py`. Commit `1509e10`, run `29qm6q2b`.
+- **Result:** best val/loss **1.9102** at epoch 31 (35/35 epochs, 26.7 min, 20.8 GB). Per-split at best: single_in_dist=2.05, geom_camber_rc=2.73, geom_camber_cruise=0.98, re_rand=1.88. Marginal ~0.6% improvement over iter3's 1.9212.
+- **Verdict:** kept. Predictions at `/mnt/new-pvc/predictions/apr23/frieren/1509e10/`. Marginal val gain — will watch test scoring to confirm it beats iter3 on the leaderboard metric.
+- **Notes:** Trained slower than iter3 per-epoch (46s vs 27s) so fewer epochs. Warmup worked as intended — epoch 1 val is high (20.7) because LR is still 0, then bounces back. Both iter3 and iter4 seem to hit ~1.9 wall; future gains likely need: (a) ensemble both checkpoints, (b) longer training (reduce val cadence), (c) different loss (L1/Huber), (d) residual prediction with AoA-derived prior.
+
 ### 2026-04-23 — iter3: iter1 arch + 50 epochs + grad_clip=1.0
 - **Hypothesis:** iter1 was clearly still improving at epoch 25 (val/loss still decreasing under cosine schedule). Doubling epochs with the same 128×5 arch + adding grad_clip should let cosine tail squeeze out another 1.0+ val/loss. No architectural change so risk is low.
 - **Change:** `train.py` `epochs=50`, added `cfg.grad_clip=1.0` + `clip_grad_norm_` call. Reverted iter2's Fourier+bigger-model changes (model.py back to original). Commit `2c929ae`, run `j6880sdl`.
