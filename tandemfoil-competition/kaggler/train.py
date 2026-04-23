@@ -43,6 +43,8 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 8
     surf_weight: float = 10.0
+    # Surface-only channel weight for pressure (1.0 = equal; >1 up-weights p vs Ux/Uy at surface).
+    p_weight: float = 1.0
     epochs: int = 35
     grad_clip: float = 1.0
     loss_type: str = "mse"  # mse | l1 | smoothl1
@@ -196,7 +198,9 @@ for epoch in range(MAX_EPOCHS):
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
             vol_loss = (err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            ch_w_surf = torch.tensor([1.0, 1.0, cfg.p_weight], device=err.device)
+            surf_err = err * ch_w_surf
+            surf_loss = (surf_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
