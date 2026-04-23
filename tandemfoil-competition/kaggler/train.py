@@ -39,7 +39,7 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 5.0
+    surf_weight: float = 3.0
     epochs: int = 12
     n_hidden: int = 160
     n_layers: int = 6
