@@ -44,10 +44,9 @@ class Config:
     surf_weight: float = 20.0
     surf_p_weight: float = 2.0  # extra multiplier on surface pressure (primary metric)
     epochs: int = 50
-    train_subsample: int = 30000
+    train_subsample: int = 20000
     warmup_steps: int = 1000
     grad_clip: float = 1.0
-    ema_decay: float = 0.999
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -84,10 +83,10 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=192,
+    n_hidden=256,
     n_layers=6,
     n_head=8,
-    slice_num=64,
+    slice_num=96,
     mlp_ratio=4,
 )
 
