@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter29/iter31: p_weight=5 + SWA of best 3 checkpoints
+- **Hypothesis:** iter27's p_weight=3 seemed to help val. Push further to p_weight=5 and continue warm-start chain. Also do SWA of only the top-3 checkpoints (iter21, iter23, iter27 at weights 1/1/2) since SWA of all 4 (iter25) was worse than iter21 alone.
+- **Change:** iter29: `train.py --warm_start /tmp/iter27_best.pt --lr 5e-6 --p_weight 5.0 --epochs 30`. Predictions at `apr23/frieren/3b76dc7/`. iter31: `swa.py --checkpoints iter21 iter23 iter27 --weights 1 1 2`. Run iter29 `543g9e1e`.
+- **Result:** iter29 val/loss **1.4171** at epoch 7 — marginal gain over iter27's 1.42. Per-split val (final): single=1.90, rc=2.06, cruise=0.38, re_rand=1.42. iter27/iter29 scoring stuck in queue.
+- **Verdict:** iter29 kept (slight val gain). SWA3 pending scoring.
+- **Notes:** Askeladd jumped to **52.90 (ffd8b04)** — they're ahead by 2.4 pts. Their weakness is single_in_dist (they're 57 vs my 45); my weakness is re_rand (76 vs their 53). Contemplating fresh slice_num=128 model to match their architecture, since my 64 can't capture their Re-generalization capacity. Also chain is plateauing (1.47→1.45→1.44→1.42 over 4 iterations).
+
 ### 2026-04-23 — iter25: SWA of 4 warm-start checkpoints
 - **Hypothesis:** Averaging state dicts from iter17/iter19/iter21/iter23 (all 192x6 L1 models on the same warm-start chain) smooths the loss landscape and should generalize better than any single checkpoint.
 - **Change:** Added `swa.py` that averages state dicts. Weights 1/1/2/2 (more weight on the better-converged iter21/iter23). Wrote to `models/model-swa4/`, then `predict.py` generated test predictions at `apr23/frieren/66b342c/`. No training.
