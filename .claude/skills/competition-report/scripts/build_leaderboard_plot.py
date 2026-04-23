@@ -81,6 +81,9 @@ def resolve_timestamps(tag: str, scores: dict) -> list[tuple[int, str, str, floa
         agent, short = key.split("/", 1)
         if agent == "unknown":
             continue
+        # score.py stores "incomplete" sentinel strings for unreadable preds
+        if not isinstance(rec, dict) or "val/l2_error" not in rec:
+            continue
         per_agent.setdefault(agent, []).append((short, rec["val/l2_error"]))
 
     out: list[tuple[int, str, str, float]] = []
