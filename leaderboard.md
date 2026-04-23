@@ -10,7 +10,7 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 4 | fern | `154e022` | 70.89 | 62.47 | 74.96 | 55.13 | 91.02 |
 | 5 | tanjiro | `ensembl` | 83.78 | 64.41 | 116.88 | 50.00 | 103.80 |
 | 6 | edward | `15e22cc` | 84.60 | 78.59 | 101.78 | 52.10 | 105.93 |
-| 7 | alphonse | `4ac0cb3` | 94.91 | 66.88 | 110.01 | 75.39 | 127.35 |
-| 8 | nezuko | `9ab7b15` | 96.00 | 114.87 | 106.27 | 66.66 | 96.21 |
+| 7 | nezuko | `1df8bd1` | 92.67 | 113.18 | 100.16 | 66.76 | 90.57 |
+| 8 | alphonse | `4ac0cb3` | 94.91 | 66.88 | 110.01 | 75.39 | 127.35 |
 
-*Last updated: 2026-04-23 19:59 UTC*
+*Last updated: 2026-04-23 20:01 UTC*
