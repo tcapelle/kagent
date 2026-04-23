@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter12-l1w30
+- **Hypothesis:** higher L1 surf_p weight (30 vs 10) pushes further.
+- **Change:** --surf_p_weight 30.
+- **Result:** val/avg_mae_surf_p=52.84 at epoch 4 (from 53.58).
+- **Verdict:** kept — commit 87d74cb (same train.py, new ckpt).
+- **Notes:** Consistent ~0.7 drop per iter. Target askeladd #1 at 50.97.
+
 ### 2026-04-23 — iter11-l1-ema995
 - **Hypothesis:** L1 loss on surface pressure (direct MAE optimization) + higher EMA decay (0.995) beats L2+surf_p=40.
 - **Change:** swapped surf_p loss from MSE to L1; --surf_p_weight 10 (L1 is smaller scale than MSE); --ema_decay 0.995.
