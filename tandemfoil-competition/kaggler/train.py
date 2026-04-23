@@ -240,7 +240,7 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 20.0
     epochs: int = 200
-    warmup_steps: int = 500
+    warmup_steps: int = 300
     grad_clip: float = 1.0
     train_subsample: int = 40000
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
