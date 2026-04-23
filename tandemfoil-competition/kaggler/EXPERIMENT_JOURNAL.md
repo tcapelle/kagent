@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter16-ft-iter15-lr2e5 (iter 16)
+- **Hypothesis:** Same chain-continuation recipe at `lr=2e-5`. Iter 15 still showed ~1 pt/10 epochs improvement; another 30 min might net another 1-2 points.
+- **Change:** `train.py --resume_from iter15_best.pt --lr 2e-5 --warmup_steps 100 --epochs 40`.
+- **Result:** 40 epochs in 30.5 min. Best epoch 15: `val/avg_surf_p=71.69` (single=53.9, geom_rc=106.2, geom_cruise=51.7, re_rand=74.9). Gain over iter 15: only 0.4 points of val.
+- **Verdict:** Keep — marginal but strictly better. Expecting test ~62 (+/- noise).
+- **Notes:**
+  - Auto-submit went to `71362e7`, overwriting iter 15's files. Need to commit + resubmit at fresh commit to get scored.
+  - Diminishing returns are clear: iter 14 → 74.20, iter 15 → 72.09, iter 16 → 71.69. ~0.4 point gain per 30-min fine-tune pass. The fine-tune chain is mostly squeezed out.
+  - Next ideas that could break the pattern:
+    1. Ensemble iter 15 + iter 16 + iter 12 at a fresh commit (hope scorer picks it up).
+    2. A proper larger-capacity retrain (256 → 320 hidden) — last attempt failed because I shrunk subsample too far.
+
 ### 2026-04-23 — iter15-ft-iter14-lr3e5 (iter 15)
 - **Hypothesis:** Iter 14 (val 74.20) was improving through the cosine tail; another 30 min of fine-tune at lr=3e-5 should squeeze a couple more points.
 - **Change:** `train.py --resume_from iter14_best.pt --lr 3e-5 --warmup_steps 100 --epochs 40`.
