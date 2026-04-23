@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v11-h144-e14 (MARGINAL, discarded)
+- **Hypothesis:** bracket the v8 (h=128, e=14) vs v10 (h=160, e=12) tie with the interpolated midpoint; maybe it captures both axes' wins.
+- **Change:** `train.py` — `n_hidden: 160 → 144`, `epochs: 12 → 14`.
+- **Result:** 12 of 14 epochs completed (timeout). Best val/loss=**2.456** (v10 2.510, -2.2%). **Avg val surf_p MAE 104.1 → 104.7 (+0.6%, marginally worse).** W&B `kagent-tandemfoil/1cbg4oz8`.
+- **Verdict:** discarded — tied avg MAE and the ranking metric says v10 is marginally better. Reset to v10.
+- **Notes:** h=128, h=144, h=160 all land at avg MAE ~104 with different split-tradeoffs. There's a genuine **plateau around avg 104** for this architecture/budget/seed. Val/loss keeps improving at h=144 but doesn't translate into avg-MAE gain. Next lever must be qualitatively different — bigger data (aug), different loss, or different optimiser — not another sweep of (h, epochs).
+
 ### 2026-04-23 — v10-h160-e12 (KEPT, MIXED)
 - **Hypothesis:** v8 (h=128) and v9 (h=96) bracketed the optimum from below; push the other side — larger capacity with fewer (but still fully-decayed) epochs.
 - **Change:** `train.py` — `n_hidden: 128 → 160`, `epochs: 14 → 12` (both chosen so T_max aligns with the wall-time that fits h=160 at ~158 s/epoch).
