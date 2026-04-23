@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v9 polish (lr=5e-6 surf=40 p=5)
+- **Hypothesis:** v8 val 59.25 / test 51.96. Halve LR to 5e-6 (same weights) — squeeze last val points with minimal parameter changes.
+- **Change:** `--warm_start v8 --lr 5e-6` (same surf=40, p=5).
+- **Result:** best ep7 `val/loss=4.37, avg_mae_surf_p=58.23` (val 60/74/40/59). Small but consistent descent.
+- **Verdict:** kept — every split improved vs v8. Projected test ≈ 51 at 88% ratio, maybe 0.5-1 better than v8.
+- **Notes:**
+  - Returns now sub-linear. v7 (val 60.58) → v8 (59.25) → v9 (58.23): −1.3 then −1.0 val-points. Expected diminishing.
+  - Lead over frieren (55.32) still >3 points. Likely margin sufficient.
+
 ### 2026-04-23 — v8 extreme pressure focus (surf=40, p=5)
 - **Hypothesis:** v7 (surf=30, p=3, lr=2e-5) dropped val to 60.58 / test 52.90. Push further: surf=40, p=5, lr=1e-5 (smaller step since loss magnitude grows).
 - **Change:** `--warm_start v7 --lr 1e-5 --surf_weight 40 --p_weight 5.0`.
