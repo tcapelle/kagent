@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v8 extreme pressure focus (surf=40, p=5)
+- **Hypothesis:** v7 (surf=30, p=3, lr=2e-5) dropped val to 60.58 / test 52.90. Push further: surf=40, p=5, lr=1e-5 (smaller step since loss magnitude grows).
+- **Change:** `--warm_start v7 --lr 1e-5 --surf_weight 40 --p_weight 5.0`.
+- **Result:** best ep7 `val/loss=4.50, avg_mae_surf_p=59.25`. Improvement over v7 (60.58) on val. Projected test ≈ 52 (similar to v7).
+- **Verdict:** kept — v8 marginally better on val on all 4 splits vs v7.
+- **Notes:**
+  - Pattern continues: each round of finetune with bigger weighting + smaller LR shaves 1-2 val points.
+  - Ensembles with earlier models (v5, v6) HURT because the newer model dominates — 6b9304b (v5+v6+v7) = 54.42, v7 alone 52.90.
+  - Frieren at 55.32. My solo v7 already leads by 2.4. Expect v8 to widen to ~3-4.
+
 ### 2026-04-23 — v7 even more pressure-focused (surf=30, p_weight=3)
 - **Hypothesis:** v6 (surf=20, p=2) reduced val to 64.24. Push further with surf=30, p_weight=3 — effectively 9× pressure-surface weighting. Use slightly lower LR (2e-5) to avoid overshooting.
 - **Change:** `--warm_start v6 --lr 2e-5 --surf_weight 30 --p_weight 3.0`.
