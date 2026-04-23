@@ -239,7 +239,7 @@ class Config:
     weight_decay: float = 1e-5
     batch_size: int = 4
     surf_weight: float = 25.0
-    epochs: int = 60
+    epochs: int = 200
     warmup_steps: int = 500
     grad_clip: float = 1.0
     train_subsample: int = 40000
