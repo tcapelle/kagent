@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter19: 2nd warm-start chain → 🥇 #1 on the leaderboard
+- **Hypothesis:** Continue the warm-start chain — fine-tune iter17's checkpoint at yet-lower LR (5e-5, half of iter17's 1e-4). Each chain link accumulates more training time on the same model, mimicking askeladd's v2→v5 chain.
+- **Change:** `train.py --warm_start /tmp/iter17_best.pt --loss_type l1 --lr 5e-5 --epochs 30`. Commit `bcbcb52` (journal commit that auto-triggered predictions). Run `ogycayte`.
+- **Result:** best val/loss **1.4741** at epoch 19 (30/30 epochs, 22.9 min, 20.8 GB). Per-split: single_in_dist=1.94, geom_rc=2.07, geom_cruise=0.42, re_rand=1.46. **Scored 56.35 avg_surf_p — rank 1** (askeladd 57.48, +1.13 ahead). Per-split test surf_p: single=47.42, rc=72.88, cruise=29.42, re_rand=75.69.
+- **Verdict:** kept. Took #1 spot.
+- **Notes:** Val loss converged around e19-21 and stayed flat. LR 5e-5 post-warmup hit the sweet spot. My weakness is still re_rand (75.69 vs askeladd's 58.04) — 17.6 pt gap. Iter21 started immediately (warm-start from iter19 at lr=2e-5). Also iter18 (4-way ensemble) underperformed at 65.92 vs iter17 single's 59.14 — weaker MSE models dilute iter17's good predictions. Lesson: only ensemble strong models.
+
 ### 2026-04-23 — iter18: 4-way ensemble substituting iter17 for iter15
 - **Hypothesis:** iter17 is a strictly better L1 model than iter15 (val/loss 1.59 vs 1.87). Replace iter15 with iter17 in the equal 4-way ensemble. iter9's predictions weren't saved as a separate dir so I recovered them via iter9 = 4*iter16 − iter3 − iter4 − iter15 (since iter16 = equal 4-way average).
 - **Change:** Added `recover_iter9.py` to extract iter9 preds from iter16. Commit `a0036e2`. Ensemble: `python ensemble.py --sources 2c929ae 1509e10 iter9_recovered f785f46 --weights 1 1 1 1`. No model training.
