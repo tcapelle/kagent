@@ -31,7 +31,7 @@ from viz import visualize
 # Training
 # ---------------------------------------------------------------------------
 
-MAX_TIMEOUT = 30.0  # minutes
+MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))  # minutes
 
 
 @dataclass
@@ -41,6 +41,12 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 10.0
     epochs: int = 50
+    n_hidden: int = 192
+    n_layers: int = 6
+    n_head: int = 6
+    slice_num: int = 96
+    mlp_ratio: int = 2
+    grad_clip: float = 1.0
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -51,6 +57,7 @@ class Config:
 cfg = sp.parse(Config)
 MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
 
+torch.backends.cudnn.benchmark = True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 
@@ -77,11 +84,11 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=128,
-    n_layers=5,
-    n_head=4,
-    slice_num=64,
-    mlp_ratio=2,
+    n_hidden=cfg.n_hidden,
+    n_layers=cfg.n_layers,
+    n_head=cfg.n_head,
+    slice_num=cfg.slice_num,
+    mlp_ratio=cfg.mlp_ratio,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
@@ -120,6 +127,19 @@ model_path = model_dir / "checkpoint.pt"
 with open(model_dir / "config.yaml", "w") as f:
     yaml.dump(model_config, f)
 
+# Mirror best ckpt to local git path and durable PVC location (contract).
+mirror_paths: list[Path] = []
+mirror_paths.append(Path("checkpoints/best.pt"))
+mirror_paths[-1].parent.mkdir(parents=True, exist_ok=True)
+research_tag = os.environ.get("RESEARCH_TAG")
+kaggler_name = os.environ.get("KAGGLER_NAME") or cfg.agent
+if research_tag and kaggler_name:
+    pvc_dir = Path(f"/mnt/new-pvc/kagent/{research_tag}/{kaggler_name}/checkpoints/model-{run.id}")
+    pvc_dir.mkdir(parents=True, exist_ok=True)
+    mirror_paths.append(pvc_dir / "checkpoint.pt")
+    with open(pvc_dir / "config.yaml", "w") as f:
+        yaml.dump(model_config, f)
+
 best_val = float("inf")
 best_metrics: dict = {}
 global_step = 0
@@ -143,17 +163,20 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            pred = model({"x": x})["preds"]
+            sq_err = (pred.float() - y_norm) ** 2
 
-        vol_mask = mask & ~is_surface
-        surf_mask = mask & is_surface
-        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-        loss = vol_loss + cfg.surf_weight * surf_loss
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
         loss.backward()
+        if cfg.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -186,7 +209,9 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    pred = model({"x": x})["preds"]
+                pred = pred.float()
                 sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
@@ -243,6 +268,8 @@ for epoch in range(MAX_EPOCHS):
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
         torch.save(model.state_dict(), model_path)
+        for p in mirror_paths:
+            torch.save(model.state_dict(), p)
         tag = " *"
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
