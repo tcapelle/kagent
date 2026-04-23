@@ -38,14 +38,49 @@ MAX_TIMEOUT = 30.0  # minutes
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 4
     surf_weight: float = 10.0
     epochs: int = 50
+    n_vol_train: int = 40000  # subsample volume points during training (0=keep all)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+
+
+def subsample_volume(x, y, is_surface, mask, n_vol):
+    """Keep all surface nodes, randomly subsample volume nodes to n_vol per sample.
+
+    Returns a padded batch with smaller N.
+    """
+    B, _, D = x.shape
+    kept_x, kept_y, kept_surf = [], [], []
+    for i in range(B):
+        m = mask[i]
+        s = is_surface[i] & m
+        v = m & ~is_surface[i]
+        surf_idx = s.nonzero(as_tuple=True)[0]
+        vol_idx = v.nonzero(as_tuple=True)[0]
+        if len(vol_idx) > n_vol:
+            perm = torch.randperm(len(vol_idx), device=vol_idx.device)[:n_vol]
+            vol_idx = vol_idx[perm]
+        keep = torch.cat([surf_idx, vol_idx])
+        kept_x.append(x[i, keep])
+        kept_y.append(y[i, keep])
+        kept_surf.append(is_surface[i, keep])
+    max_n = max(t.shape[0] for t in kept_x)
+    x_out = torch.zeros(B, max_n, D, device=x.device, dtype=x.dtype)
+    y_out = torch.zeros(B, max_n, y.shape[-1], device=y.device, dtype=y.dtype)
+    s_out = torch.zeros(B, max_n, device=x.device, dtype=torch.bool)
+    m_out = torch.zeros(B, max_n, device=x.device, dtype=torch.bool)
+    for i, (xi, yi, si) in enumerate(zip(kept_x, kept_y, kept_surf)):
+        n = xi.shape[0]
+        x_out[i, :n] = xi
+        y_out[i, :n] = yi
+        s_out[i, :n] = si
+        m_out[i, :n] = True
+    return x_out, y_out, s_out, m_out
 
 
 cfg = sp.parse(Config)
@@ -140,6 +175,9 @@ for epoch in range(MAX_EPOCHS):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
+
+        if cfg.n_vol_train > 0:
+            x, y, is_surface, mask = subsample_volume(x, y, is_surface, mask, cfg.n_vol_train)
 
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
