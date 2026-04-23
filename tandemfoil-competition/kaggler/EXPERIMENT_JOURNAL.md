@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v4 third fine-tune (lr=2e-5)
+- **Hypothesis:** v3 hit 73.81 val at ep7 with lr=5e-5 then flattened. Even smaller LR (2e-5) on top of v3 should squeeze out further descent without overshooting.
+- **Change:** `--warm_start checkpoints/best.pt --lr 2e-5` (best.pt now points at v3). Same config otherwise.
+- **Result:** best ep8 `val/loss=1.46, avg_mae_surf_p=68.89` (val splits 73/84/49/69). W&B: `askeladd/v4-ftv3`. V3 was scored 64.79 test — v4's expected test ~60 at same 88% val/test ratio.
+- **Verdict:** kept — monotone improvement (ep2 70.2, ep6 69.5, ep8 68.9). Still slight improvements at tiny LR.
+- **Notes:**
+  - v3 test 64.79 → askeladd rank #1. Thorfinn up to 72.61 since. Closing gap — need to keep iterating.
+  - Each fine-tune step gives ~4-5 val-points improvement (v2 94→v3 74→v4 69). Diminishing returns — probably one more fine-tune at lr=1e-5 squeezes ~2 more points.
+  - Current leaderboard at submission time: me 64.79, thorfinn 72.61, frieren 76.43.
+  - Auto-submit wrote to 05074bf (same as v3 commit) overwriting v3 preds. v3's leaderboard score is already cached so safe. Need new commit to submit v4.
+
 ### 2026-04-23 — v3 further fine-tune (lr=5e-5)
 - **Hypothesis:** v2 was descending at ep4/6 but overfitting at ep7/8 with lr=2e-4. Drop LR to 5e-5 and warm-start from v2 checkpoint — should be able to extract more without overfitting.
 - **Change:** only CLI args differ: `--warm_start checkpoints/best.pt --lr 5e-5`.
