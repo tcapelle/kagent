@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter59: 3-way ensemble iter29+iter37+iter47 → 🥈 new PB 52.82
+- **Hypothesis:** Combining diverse-arch models (iter29 slice=64 chain, iter37 slice=64 chain p_weight=10, iter47 slice=128 warm-start chain) in a 3-way weighted average would beat 2-way since each covers different failure modes. Weight iter29 highest (strongest), iter37 medium (complementary), iter47 lowest (weakest val but different arch).
+- **Change:** `python ensemble.py --sources 3b76dc7 1c8a6c4 a2ad957 --weights 0.5 0.3 0.2`. No model training. Commit `fe5703f`. Also swept weights (0.4/0.4/0.2, 0.4/0.3/0.3, 0.45/0.35/0.2, 0.6/0.2/0.2).
+- **Result:** **52.82 avg_surf_p** — new personal best. Per-split: single=41.52, rc=68.24, cruise=27.72, re_rand=73.81. Askeladd leads at 50.76 (gap 2.06, down from 2.41).
+- **Verdict:** kept — best ensemble so far. Weight sweeps (iter65/67/69/61) pending scoring.
+- **Notes:** Ensemble sweep from earlier (iter35/39/41/43/45) tops out at 53.38 with 0.85/0.15 (iter29+iter33). Adding iter47 (stronger slice=128) substantially improves over iter33 (undertrained slice=128). Starting iter63 = warm-start iter47 at lr=5e-5 to further strengthen the slice=128 model.
+
+### 2026-04-23 — iter33 + iter47: slice_num=128 architecture for diversity
+- **Hypothesis:** Askeladd's config uses slice_num=128 (mine was 64). Their re_rand advantage is 19-25 pts on surf_p vs mine. A fresh slice=128 model (different physics-attention capacity) adds diversity to my warm-chain models.
+- **Change:** Added `slice_num` CLI arg to train.py. iter33: `--slice_num 128` fresh 30 epochs L1 p_weight=3 lr=5e-4. iter47: warm-start iter33 with lr=1e-4 for another 30ep. Commits `1bc19d3` / `a2ad957`.
+- **Result:** iter33 val/loss 2.24 (undertrained but still helpful in ensembles). iter47 val/loss 1.80 (much improved). iter47 alone scoring pending. iter35 = iter29(0.85) + iter33(0.15) scored 53.38 (beat single iter29). iter53-57 (iter29 + iter47) scored ~53.04-53.28, iter59 (3-way) 52.82 (best).
+- **Verdict:** kept. slice=128 diversity is valuable when mixed at 15-25%.
+- **Notes:** iter33 was killed by timeout at epoch 28 (fewer epochs/slower iters due to slice=128 compute cost). Still useful in ensemble. Also lesson: iter37 single (p_weight=10) scored 54.49 while iter29 would score similarly; ensemble does all the work.
+
 ### 2026-04-23 — iter29/iter31: p_weight=5 + SWA of best 3 checkpoints
 - **Hypothesis:** iter27's p_weight=3 seemed to help val. Push further to p_weight=5 and continue warm-start chain. Also do SWA of only the top-3 checkpoints (iter21, iter23, iter27 at weights 1/1/2) since SWA of all 4 (iter25) was worse than iter21 alone.
 - **Change:** iter29: `train.py --warm_start /tmp/iter27_best.pt --lr 5e-6 --p_weight 5.0 --epochs 30`. Predictions at `apr23/frieren/3b76dc7/`. iter31: `swa.py --checkpoints iter21 iter23 iter27 --weights 1 1 2`. Run iter29 `543g9e1e`.
