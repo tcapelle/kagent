@@ -274,6 +274,7 @@ class Config:
     train_subsample_n: int = 30000
     ema_decay: float = 0.999
     warm_start: str = ""  # path to .pt checkpoint to warm-start from
+    loss_kind: str = "mse"  # "mse" or "l1" — L1 gives different error prior for ensembling
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -415,13 +416,16 @@ def main():
 
             with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=use_amp):
                 pred = model({"x": x})["preds"]
-                sq_err = (pred.float() - y_norm) ** 2
+                if cfg.loss_kind == "l1":
+                    err = (pred.float() - y_norm).abs()
+                else:
+                    err = (pred.float() - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+                vol_loss = (err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
                 # Channel-weighted surface loss, then average over 3 channels for comparable scale.
-                surf_err_weighted = sq_err * surf_ch_w.view(1, 1, 3)
+                surf_err_weighted = err * surf_ch_w.view(1, 1, 3)
                 surf_loss = (surf_err_weighted * surf_mask.unsqueeze(-1)).sum() / (surf_mask.sum().clamp(min=1) * surf_ch_w.mean())
                 loss = vol_loss + cfg.surf_weight * surf_loss
 
