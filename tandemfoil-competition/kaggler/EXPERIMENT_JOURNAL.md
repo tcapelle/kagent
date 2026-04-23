@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v5 fourth fine-tune (lr=1e-5)
+- **Hypothesis:** v4 got to val=68.89 (test 60.06) with lr=2e-5 over 8 epochs. Drop LR by 2x again — v3→v4 gave ~5 val-points, v4→v5 should give ~2-3.
+- **Change:** `--warm_start checkpoints/best.pt --lr 1e-5` (best.pt = v4).
+- **Result:** best ep8 `val/loss=1.37, avg_mae_surf_p=65.38` (val splits 69/80/47/66). W&B: `askeladd/v5-ftv4`.
+- **Verdict:** kept — clean monotone descent ep1(68.1)→ep2(67.5)→ep4(66.6)→ep7(66.1)→ep8(65.4). v4 test (60.06) was val 68.89×0.87; v5 should be ~57.
+- **Notes:**
+  - frieren jumped to 68.22 since last check — they may be using similar warm-start recipe. Need to maintain lead.
+  - v3/v4/v5 are all in the same warm-start lineage so error correlation is high; ensembling them alone likely won't give decorrelation gains.
+
 ### 2026-04-23 — v4 third fine-tune (lr=2e-5)
 - **Hypothesis:** v3 hit 73.81 val at ep7 with lr=5e-5 then flattened. Even smaller LR (2e-5) on top of v3 should squeeze out further descent without overshooting.
 - **Change:** `--warm_start checkpoints/best.pt --lr 2e-5` (best.pt now points at v3). Same config otherwise.
