@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v8-resume-lr1e5 (current best)
+- **Hypothesis:** Since ensembling is stuck (v7 too weak, v5 too correlated with v6), try one more very-slow warm-start from v6 with `lr=1e-5`. The aim is to exploit what little low-LR refinement is left. If it gains more than ~0.02 it's worth keeping.
+- **Change:** `train.py --resume .../model-x58etsc6/checkpoint.pt --lr 1e-5` from the v6 PVC checkpoint. Same arch, same loss.
+- **Result:** Best `val/l2_error = 4.29` at epoch 14 (val/loss=2.32). 14+ monotonic epochs; gain of 0.03 l2 over v6. Also tried offline ensembles on val:
+  - v6 + v8 (eval): 4.304 — slightly worse than v8 alone (4.29).
+  - v8 alone is the single best of the 9 runs; ensembling its lineage partners doesn't help.
+  W&B `alphonse/v8-resume-lr1e5` (`j93i4dy0`). Submitted at commit `4ac0cb3`. **0.7% over v6 (4.32→4.29), 38.4% over v2.**
+- **Verdict:** Kept — clear best single model.
+- **Notes:** Warm-start chain is now fully exhausted — v6 → v8 gave 0.03, next iteration would likely give <0.02. Going forward the only real ways to beat this are (a) a fundamentally different architecture that decorrelates, then real ensembling, (b) proper y-flip TTA (requires careful feature semantics work), or (c) hyperparameter changes (e.g. different slice_num) to hopefully reach a different local minimum.
+
 ### 2026-04-23 — v7-scratch + ensemble attempt (DISCARDED)
 - **Hypothesis:** Warm-start is saturating (v5→v6 gain was only 0.09). A fresh-from-init v7 should produce decorrelated errors; averaging v6 + v7 predictions should beat v6 alone.
 - **Change:** Ran `train.py` from scratch (same config as v4 — hidden=256, layers=8, slice_num=64). Added `eval_ensemble.py` so we can score ensembles offline on val before committing.
