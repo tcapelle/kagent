@@ -53,6 +53,9 @@ class Config:
     # large cruise samples (~240K → 80K). Val/predict use full mesh.
     train_max_points: int = 80_000
     ema_decay: float = 0.999
+    # Warm-start: load weights from this checkpoint before training.
+    # Useful for extending effective training time past the 30-min limit.
+    resume: str | None = None
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -143,6 +146,10 @@ model_config = dict(
 )
 
 model = Transolver(**model_config).to(device)
+if cfg.resume:
+    print(f"Resuming from: {cfg.resume}")
+    state = torch.load(cfg.resume, map_location=device, weights_only=True)
+    model.load_state_dict(state)
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 # Effective epochs bounded by timeout; T_max≥budget so LR decays cleanly
