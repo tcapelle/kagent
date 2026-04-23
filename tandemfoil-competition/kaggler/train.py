@@ -47,6 +47,7 @@ class Config:
     resume_from: str | None = None  # path to checkpoint to initialize weights from
     select_by_surf_p: bool = False  # use avg mae_surf_p for best-ckpt selection
     ema_decay: float = 0.0  # >0 enables EMA with this decay
+    l1_vol: bool = False  # use L1 for volume loss instead of MSE
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -221,16 +222,20 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.amp.autocast("cuda", dtype=torch.bfloat16):
             pred = model({"x": x})["preds"].float()
-            sq_err = (pred - y_norm) ** 2
+            err = pred - y_norm
+            sq_err = err ** 2
+            abs_err = err.abs()
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
-            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            if cfg.l1_vol:
+                vol_loss = (abs_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            else:
+                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
             surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
             if cfg.surf_p_weight > 0:
-                # L1 on surface pressure directly optimizes for MAE (scored metric)
-                surf_p_l1 = ((pred[..., 2] - y_norm[..., 2]).abs() * surf_mask).sum() / surf_mask.sum().clamp(min=1)
+                surf_p_l1 = (abs_err[..., 2] * surf_mask).sum() / surf_mask.sum().clamp(min=1)
                 loss = loss + cfg.surf_p_weight * surf_p_l1
 
         optimizer.zero_grad()
