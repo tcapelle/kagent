@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v3-cosine-match (KEPT)
+- **Hypothesis:** baseline's cosine LR schedule (`T_max=50`) was 82% unused when we hit the 30-min budget at epoch 9. Shrinking `epochs` to 10 (same wall-time, same LR init, same loss) lets the schedule actually decay to near-zero by the end, giving a fine-tuning phase that the baseline never got.
+- **Change:** `train.py` one-liner — `epochs: 50 → 10`. Nothing else touched. Same MSE loss (reverted the Huber experiment first).
+- **Result:** **best val/loss=2.634 at epoch 9/10** (baseline 2.984). Wall 31.1 min, 9 epochs completed (epoch 10 pre-empted by timeout at the top of the loop).
+  - Per-split surface-p MAE:
+    - `val_single_in_dist`: 139.1 → 130.0 (-6.6%)
+    - `val_geom_camber_rc`: 137.5 → 122.4 (-11.0%)
+    - `val_geom_camber_cruise`: 93.7 → 80.0 (-14.7%)
+    - `val_re_rand`: 111.3 → 99.2 (-10.9%)
+  - **Avg val surf_p MAE: 120.4 → 107.9 (-10.4%)**
+  - W&B: `kagent-tandemfoil/1e53ehji` (name `nezuko/v3-cosine-match`).
+- **Verdict:** kept. Ckpt committed at `22d262b`.
+- **Notes:** Every split improved. The biggest jump (`cruise -14.7%`) is the easiest split, suggesting the model still benefits from extra fine-tuning even on in-distribution cases. Since the baseline epoch-9 LR was still ~83% of init, the iter-3 model effectively gets to spend ~3-4 epochs near minimum LR where gradient steps are small and refining. Cheapest possible improvement so far.
+
 ### 2026-04-23 — v2-huber-sp3 (FAILED, discarded)
 - **Hypothesis:** surface loss as SmoothL1 (Huber, beta=1) is MAE-aligned and should improve surface-pressure MAE; per-channel weight `[1, 1, 3]` on surface emphasizes pressure.
 - **Change:** `train.py` only — swap MSE→Huber on surface, add channel weights, keep volume MSE. surf_weight=10 unchanged.
