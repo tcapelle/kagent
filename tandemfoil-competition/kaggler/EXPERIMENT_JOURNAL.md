@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter12-fromscratch-seed3 (iter 12)
+- **Hypothesis:** Another independent seed gives a second from-scratch run for an iter 7 + iter 10 + iter 12 ensemble. The iter 4 config (256x6, slice 96, sub20K) is known to run in ~40 epochs per 30 min.
+- **Change:** No code change. Ran `train.py --agent thorfinn --wandb_name "thorfinn/iter12-fromscratch-seed3"`.
+- **Result:** 40 epochs in 30.5 min. Best epoch 39: `val/avg_surf_p=77.92` (single=63.8, geom_rc=110.6, geom_cruise=57.0, re_rand=80.3). Submission `thorfinn/8484974` (journal commit from iter 11).
+- **Verdict:** Kept — val 77.92 is the best single-model val yet, **below iter 7's 78.95**.
+- **Notes:**
+  - Fascinating: from-scratch seed 3 with the full cosine decay beat the iter 4→6→7 fine-tune chain on val. The chain accumulated rounding from LR restarts and lost some of the cosine-tail signal.
+  - This checkpoint + iter 7 are the two best ensemble members.
+
 ### 2026-04-23 — iter11-ensemble-7+10+6 (iter 11)
 - **Hypothesis:** Average iter 7 (strongest), iter 6 (mid fine-tune point), and iter 10 (diverse from-scratch seed). Even with iter 10 being weak individually, its different errors should pull the ensemble down on samples where iter 7 gets it wrong.
 - **Change:** `python predict_ensemble.py --checkpoints <iter7> <iter10> <iter6>`.
