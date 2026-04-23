@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v10–v14 + ensembles (breakthrough: remove surf_p_weight → 74.52)
+- **Hypothesis:** nezuko flagged that `surf_p_weight` hurt them. Try L1 loss + drop surf_p_weight → better balanced model, better generalization to OOD.
+- **V10 (warm-start V9 lr 1e-4 L1, 30 ep):** val=slight improvement; predictions lost when V11 overwrote commit dir.
+- **V11 (128h/5L L1 surf_p_weight=1.0, 40 ep from scratch):** val=91.16 — better balanced than V9 (camber_rc 7.28 vs 8.69); smaller-model version of baseline with L1.
+- **V12 (192h/6L L1 surf_p_weight=1.0, 45 ep from scratch):** val=**78.05** — huge jump, best single by ~14 points. Dropping surf_p_weight was the key.
+- **V13 (warm-start V12 lr 5e-5 L1 25 ep):** val=76.49, test=77.64 — slight further improvement.
+- **V14 (independent seed of V12 config, 45 ep):** val=87.85 — unlucky seed, but adds ensemble diversity.
+- **Best test scores (single):** V13=77.64, V12=78.49, V14=86.93, V11=89.49.
+- **Best ensemble:** **V13(0.8) + baseline(0.2) = 74.52** (ensemble-0c89cb34) — now #6 with gap to #5 fern (70.89) = 3.6.
+- **Key lessons:**
+  - surf_p_weight>1 was hurting me all along (confirmed nezuko's finding). V12 (no-spw) crushed V7/V9 (surf_p_weight=3).
+  - L1 loss > MSE for this task (at least for ensembling diversity + a tad better on its own).
+  - Warm-start at lr 5e-5 gives only marginal gains over already-converged model (different from askeladd's story where iter2→iter3 jumped 25%).
+  - The baseline (early 128h/5L MSE) remains highly ensemble-valuable because it's diverse.
+  - val_geom_camber_rc and val_re_rand are still my weak splits; ensemble reduces them from ~130 to ~100 but top competitors still have 70-90 there.
+
 ### 2026-04-23 — v6–v9 + ensembles (pushed to #5 at 83.97)
 - **Hypothesis:** stack warm-starts (askeladd recipe), add diverse-loss model (frieren's L1 iter15), ensemble with baseline for OOD-robustness.
 - **Changes & individual scores:**
