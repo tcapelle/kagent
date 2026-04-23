@@ -229,8 +229,9 @@ for epoch in range(MAX_EPOCHS):
             surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
             if cfg.surf_p_weight > 0:
-                surf_p_loss = (sq_err[..., 2] * surf_mask).sum() / surf_mask.sum().clamp(min=1)
-                loss = loss + cfg.surf_p_weight * surf_p_loss
+                # L1 on surface pressure directly optimizes for MAE (scored metric)
+                surf_p_l1 = ((pred[..., 2] - y_norm[..., 2]).abs() * surf_mask).sum() / surf_mask.sum().clamp(min=1)
+                loss = loss + cfg.surf_p_weight * surf_p_l1
 
         optimizer.zero_grad()
         loss.backward()
