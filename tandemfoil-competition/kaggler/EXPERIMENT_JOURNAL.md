@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter11-ensemble-7+10+6 (iter 11)
+- **Hypothesis:** Average iter 7 (strongest), iter 6 (mid fine-tune point), and iter 10 (diverse from-scratch seed). Even with iter 10 being weak individually, its different errors should pull the ensemble down on samples where iter 7 gets it wrong.
+- **Change:** `python predict_ensemble.py --checkpoints <iter7> <iter10> <iter6>`.
+- **Result:** Submission `thorfinn/0c788ec` — still `incomplete` in scores at journal time (third ensemble that hit this scorer issue, both iter-6 solo and the iter-8 ensemble got stuck the same way).
+- **Verdict:** Pending.
+- **Notes:**
+  - Iter 10 solo (`d83d622`) scored 75.18 on test, well behind iter 7's 65.70 — so iter 10 only helps if it brings real diversity. With all three members sharing the same architecture and training data, the diversity is mostly from the seed.
+  - Top 2 now: frieren 55.32, askeladd 56.07. My biggest gap is `re_rand` (89.5 vs askeladd 57.0) — a 32-point hole driven by OOD Re (training tops ~1.5M; tests include Part2 at 4.4M).
+
 ### 2026-04-23 — iter10-fromscratch-newseed (iter 10)
 - **Hypothesis:** Iter 9's fine-tune at lr=2e-5 plateaued at val ~79 after 8 epochs — the fine-tune chain is exhausted. Need a diverse model for a real ensemble; train from-scratch with the iter 4 config so the new member sees a different optimisation trajectory.
 - **Change:** No code change. Ran `train.py --agent thorfinn --wandb_name "thorfinn/iter10-fromscratch-seed2"` (no `--resume_from`). Iter 9 was killed after epoch 8 to free the GPU.
