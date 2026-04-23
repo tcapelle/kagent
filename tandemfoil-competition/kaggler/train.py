@@ -25,6 +25,28 @@ from torch.utils.data import Dataset
 from viz import visualize
 
 
+class EMA:
+    """Exponential moving average of model parameters. Apply before validation and inference."""
+
+    def __init__(self, model: nn.Module, decay: float = 0.999):
+        self.decay = decay
+        self.shadow = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
+    @torch.no_grad()
+    def update(self, model: nn.Module):
+        for k, v in model.state_dict().items():
+            if v.dtype.is_floating_point:
+                self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1 - self.decay)
+            else:
+                self.shadow[k].copy_(v)
+
+    def swap_into(self, model: nn.Module) -> dict:
+        """Load EMA weights into model, returning the previous live state dict."""
+        live = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        model.load_state_dict(self.shadow)
+        return live
+
+
 class SubsampledDataset(Dataset):
     """Training-time wrapper that subsamples volume nodes, keeping all surface nodes.
 
@@ -231,7 +253,7 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 
 @dataclass
 class Config:
-    lr: float = 7e-4
+    lr: float = 5e-4
     weight_decay: float = 1e-5
     beta1: float = 0.9
     beta2: float = 0.95
@@ -240,16 +262,17 @@ class Config:
     # Per-channel weights applied on top of surf_weight (Ux, Uy, p). The competition
     # leaderboard ranks by avg_surf_p — boost pressure so the model focuses there.
     surf_p_weight: float = 3.0
-    epochs: int = 100  # effectively bounded by MAX_TIMEOUT
+    epochs: int = 60  # effectively bounded by MAX_TIMEOUT
     n_hidden: int = 192
     n_layers: int = 6
     n_head: int = 8
     slice_num: int = 64
     mlp_ratio: int = 4
-    warmup_steps: int = 500
+    warmup_steps: int = 1000
     grad_clip: float = 1.0
     use_amp: bool = True
-    train_subsample_n: int = 40000
+    train_subsample_n: int = 30000
+    ema_decay: float = 0.999
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -327,6 +350,9 @@ def main():
     amp_dtype = torch.bfloat16 if use_amp else torch.float32
     print(f"AMP: {use_amp} ({amp_dtype})")
 
+    ema = EMA(model, decay=cfg.ema_decay) if cfg.ema_decay > 0 else None
+    print(f"EMA: {cfg.ema_decay if ema else 'off'}")
+
     run = wandb.init(
         entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
         project=os.environ.get("WANDB_PROJECT", "kagent-v2"),
@@ -400,6 +426,8 @@ def main():
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
             scheduler.step()
+            if ema is not None:
+                ema.update(model)
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step,
                        "lr": scheduler.get_last_lr()[0]})
@@ -411,8 +439,9 @@ def main():
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
-        # --- Validate ---
+        # --- Validate (using EMA weights if enabled) ---
         model.eval()
+        live_state = ema.swap_into(model) if ema is not None else None
         val_loss_sum = 0.0
         split_metrics: dict[str, dict] = {}
 
@@ -492,8 +521,13 @@ def main():
             best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "avg_surf_p": avg_surf_p}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+            # Save the EMA-weighted model (current state is EMA because we swapped before validate).
             torch.save(model.state_dict(), model_path)
             tag = " *"
+
+        # Restore live weights for next training epoch.
+        if live_state is not None:
+            model.load_state_dict(live_state)
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
         split_summary = "  ".join(
