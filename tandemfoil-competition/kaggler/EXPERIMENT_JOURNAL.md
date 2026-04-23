@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v12 continued polish (p_weight=8, lr=2e-6)
+- **Hypothesis:** Continue careful descent from v11. Slight shift in p_weight (10→8) for new gradient direction; halve LR again to 2e-6.
+- **Change:** `--warm_start v11 --lr 2e-6 --surf_weight 40 --p_weight 8.0`.
+- **Result:** best ep4 `val/loss=4.35, avg_mae_surf_p=57.61` (val 59/73/39.6/58.3) — small improvement over v11 (57.77). But val oscillates (ep2 58.0, ep4 57.6, ep6 58.0, ep7 57.7, ep8 57.7); noise dominates signal now.
+- **Verdict:** kept — marginal but monotone total improvement. Projected test ~50.6.
+- **Notes:**
+  - Fine-tuning has reached its asymptote. Further iters at lower LR ≈ noise.
+  - Will need architectural or data diversity to keep improving meaningfully.
+
 ### 2026-04-23 — v11 sweet-spot polish (p_weight=10, lr=3e-6)
 - **Hypothesis:** v10's aggressive p=20 over-specialized; v9's p=5 under-weights pressure. Try middle (p=10) with smaller LR (3e-6) from v9 for fresh step direction.
 - **Change:** `--warm_start v9 --lr 3e-6 --surf_weight 40 --p_weight 10.0`.
