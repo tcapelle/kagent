@@ -21,7 +21,38 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
 from data import X_DIM, VAL_SPLIT_NAMES, pad_collate, load_data
+from torch.utils.data import Dataset
 from viz import visualize
+
+
+class SubsampledDataset(Dataset):
+    """Training-time wrapper that subsamples volume nodes, keeping all surface nodes.
+
+    Caps total nodes per sample at `n_target`. If sample already has fewer, passes through.
+    """
+
+    def __init__(self, base, n_target: int):
+        self.base = base
+        self.n_target = n_target
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        x, y, is_surface = self.base[idx]
+        n = x.shape[0]
+        if n <= self.n_target:
+            return x, y, is_surface
+        surf_idx = is_surface.nonzero(as_tuple=True)[0]
+        vol_idx = (~is_surface).nonzero(as_tuple=True)[0]
+        n_vol_keep = max(self.n_target - len(surf_idx), 0)
+        if n_vol_keep < len(vol_idx):
+            perm = torch.randperm(len(vol_idx))[:n_vol_keep]
+            vol_idx = vol_idx[perm]
+        sel = torch.cat([surf_idx, vol_idx])
+        # Shuffle so surface nodes aren't clustered — helps Transolver's slice attention mix them
+        sel = sel[torch.randperm(len(sel))]
+        return x[sel], y[sel], is_surface[sel]
 
 
 # ---------------------------------------------------------------------------
@@ -204,12 +235,13 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 10.0
-    epochs: int = 50
+    epochs: int = 18
     n_hidden: int = 128
     n_layers: int = 5
     n_head: int = 4
     slice_num: int = 64
     mlp_ratio: int = 2
+    train_subsample_n: int = 50000  # cap nodes per training sample (keeps all surface)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -246,12 +278,15 @@ def main():
     loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                          persistent_workers=True, prefetch_factor=2)
 
+    train_ds_sub = (
+        SubsampledDataset(train_ds, cfg.train_subsample_n) if cfg.train_subsample_n > 0 else train_ds
+    )
     if cfg.debug:
-        train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+        train_loader = DataLoader(train_ds_sub, batch_size=cfg.batch_size,
                                   shuffle=True, **loader_kwargs)
     else:
         sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
-        train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+        train_loader = DataLoader(train_ds_sub, batch_size=cfg.batch_size,
                                   sampler=sampler, **loader_kwargs)
 
     val_loaders = {
