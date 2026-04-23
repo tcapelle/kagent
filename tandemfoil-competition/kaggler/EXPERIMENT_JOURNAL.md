@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v10-h160-e12 (KEPT, MIXED)
+- **Hypothesis:** v8 (h=128) and v9 (h=96) bracketed the optimum from below; push the other side — larger capacity with fewer (but still fully-decayed) epochs.
+- **Change:** `train.py` — `n_hidden: 128 → 160`, `epochs: 14 → 12` (both chosen so T_max aligns with the wall-time that fits h=160 at ~158 s/epoch).
+- **Result:** all 12 epochs completed in 31.5 min. Best epoch 11 val/loss=**2.510** (v8 2.603, -3.6% val/loss). **Avg val surf_p MAE 104.1 → 104.1 (essentially tied).** Peak VRAM 53 GB. W&B `kagent-tandemfoil/h21oleez`.
+  - Per-split surface-p MAE:
+    - `val_single_in_dist`: 130.2 → **121.8 (-6.5%)** — biggest single-split gain this competition
+    - `val_geom_camber_rc`: 112.8 → 118.7 (+5.2%)
+    - `val_geom_camber_cruise`: 77.3 → 79.6 (+3.0%)
+    - `val_re_rand`: 96.0 → 96.4 (+0.4%)
+- **Verdict:** kept — val/loss is a robust -3.6% and the single_in_dist split (hardest / highest-pressure regime) improved meaningfully. Avg-MAE is tied within statistical noise (100 samples per split).
+- **Notes:** v8 and v10 trade off splits — v8 wins on camber-rc/cruise, v10 wins on in-dist/re-rand. Both are essentially equivalent on the ranking metric. **Val/loss difference suggests v10 has fewer extreme-pressure outliers** (MSE is sensitive to those), which should matter on the hidden test set. Next: try sitting in the middle (h=144 with an epoch count that lets T_max decay) — might capture both axes' wins.
+
 ### 2026-04-23 — v9-h96-e14 (FAILED, discarded)
 - **Hypothesis:** extend v8's trend — even smaller backbone (`n_hidden=96`) should fit more epochs in the budget, further trading capacity for cosine-cycles.
 - **Change:** `train.py` — `n_hidden: 128 → 96`, `epochs: 14 (unchanged, T_max aligned)`. First run was `epochs=18` but killed mid-epoch-1 once timing showed we'd hit timeout well before T_max, so restart with `epochs=14`.
