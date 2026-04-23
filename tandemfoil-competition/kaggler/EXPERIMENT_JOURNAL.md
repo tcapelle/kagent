@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter8-surfp20
+- **Hypothesis:** leaderboard ranks by avg surface pressure MAE; rebalance loss to weight surface pressure more (extra 20x) and select best ckpt by avg mae_surf_p instead of val/loss.
+- **Change:** added `surf_p_weight=20` term to loss; added `select_by_surf_p=True` flag for ckpt selection. Resumed from iter7 best.
+- **Result:** val/avg_mae_surf_p=55.44 at epoch 4 (val/loss=0.99). vs iter4 leaderboard 70.89 and askeladd #1 at 57.48.
+- **Verdict:** kept — commit c263408
+- **Notes:** Investigated no-slip BC first — found surface velocity NOT zero in this dataset (median 5.98 m/s on surface), so reverted that experiment. Surface here = all boundary nodes incl walls, not just airfoil with no-slip. Per-split mae_surf_p drops big on cruise (from baseline ~55 to 39).
+
 ### 2026-04-23 — iter7-lowlr-fullmesh
 - **Hypothesis:** full-mesh fine-tune with even lower LR (2e-5, no warmup) avoids overfit of iter6 and pushes further.
 - **Change:** --lr 2e-5 --warmup_epochs 0 --epochs 5 (resumed from iter6 1.02).
