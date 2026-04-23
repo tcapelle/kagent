@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v5-resume-lr1e4
+- **Hypothesis:** v4 was still improving monotonically at epoch 15 when the 30-min timeout hit (train loss ~0.11, val/l2 still falling). A warm-start from v4's best checkpoint with a fresh cosine schedule and a lower peak LR (`1e-4` vs `5e-4`) should squeeze out more gains without overshooting from the already-good weights.
+- **Change:** `train.py` — added `--resume <ckpt>` flag (loads `state_dict` into the model; EMA re-initialises to current weights, so its shadow is correct from step 0). Ran with `--resume checkpoints/best.pt --lr 1e-4`.
+- **Result:** 15 more epochs in 30 min, all monotonic. Best `val/l2_error = 4.4079` at epoch 15 (val/loss=2.306). W&B `alphonse/v5-resume-lr1e4` (`axbjpfac`). Submitted at commit `ed4d82c`. **7.8% over v4 (4.78→4.41), 37% over v2.**
+- **Verdict:** Kept — warm-start with lower LR is a cheap, reliable win whenever the previous run was still improving.
+- **Notes:** `val_single_in_dist` is still the split that improves most (2.57→2.21 in 15 epochs), while `val_re_rand` is flattening (2.51→2.58 — actually slightly worse). The gap suggests we're starting to memorise in-dist at the expense of OOD generalisation. For v6 either (a) do another warm-start round to see if OOD holds, or (b) do TTA / seed-ensemble which is our one free win left.
+
 ### 2026-04-23 — v4-ema-cosine16
 - **Hypothesis:** Two fixes on top of v3: (1) set cosine `T_max=effective_epochs=16` and `eta_min=lr*0.02` so LR anneals cleanly across the 30-min budget without warm-restart oscillation (v3 oscillated from epoch 12+); (2) add EMA of weights (`decay=0.999`) so the validated/saved weights are smoother than any single step — this usually gains ~5-10% on regression problems.
 - **Change:** `train.py` — introduced `EMA` class, swap EMA weights into model during validation and restore after, updated checkpoint save to use EMA-validated weights. Set `effective_epochs=16`, `CosineAnnealingLR(T_max=16, eta_min=lr*0.02)`.
