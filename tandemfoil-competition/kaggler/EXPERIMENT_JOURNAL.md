@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v6-ema (FAILED, discarded)
+- **Hypothesis:** EMA of model weights (decay=0.998) used for validation + as the saved checkpoint should give ~1-3% free improvement by averaging out late-training noise (researcher's suggestion).
+- **Change:** `train.py` — create `ema_model = deepcopy(model)`; update after every optimizer step; validate and save using EMA.
+- **Result:** best epoch 9, val/loss=3.042 (v3 2.634). **Avg val surf_p MAE 107.9 → 114.5 (+6.2%, WORSE).** Wall 31.2 min (9 epochs). W&B `kagent-tandemfoil/tck9u1e2`.
+- **Verdict:** discarded, reset code.
+- **Notes:** EMA averages over a 500-step window (~1.33 epochs with decay=0.998). On our 9-epoch training the current model is still mid-convergence — EMA weights lag ~1.3 epochs behind, and an older model in this regime is a worse model (val/loss still dropping each epoch, not oscillating around a minimum). EMA needs long training where weights oscillate near a minimum. Don't re-try EMA until base training is saturating.
+
 ### 2026-04-23 — v5-slice128 (FAILED, discarded)
 - **Hypothesis:** doubling-ish slice token count (96 → 128) gives finer spatial slicing without much compute cost.
 - **Change:** `train.py` — `slice_num: 96 → 128`.
