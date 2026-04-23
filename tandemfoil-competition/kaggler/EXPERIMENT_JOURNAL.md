@@ -22,6 +22,32 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v14 chain full-mesh fine-tune (lr=3e-6) ⭐⭐⭐
+- **Hypothesis:** v13 still improving at last full-mesh epoch 9. Another stage with even lower lr should further sharpen the surface metric.
+- **Change:** Chain fine-tune from v13: `--warm_start models/model-15d3hb8i/... --lr 3e-6 --p_weight 5 --surf_weight 40 --epochs 15 --warmup_steps 10 --train_subsample 300000 --surf_loss l1`.
+- **Result:** 9 full-mesh epochs (~209 s/epoch), best ep9. val/loss=3.89. **avg mae_surf_p = 54.83** (single=65.50, rc=67.91, cruise=33.91, re_rand=51.98). W&B run `2ceb8sod`.
+- **Verdict:** kept — 56.94 → 54.83 (-3.7 %). All four splits improved. Now beats frieren (55.32) on val; rank 2 candidate behind askeladd (52.90).
+
+### 2026-04-23 — v13 full-mesh fine-tune (lr=5e-6) ⭐⭐
+- **Hypothesis:** Leader askeladd trains without subsampling (full mesh). Sub40k was great for pre-training, but fine-tuning at full mesh preserves fine surface detail that's essential for pressure MAE. v12 was plateauing around 67.6; switch to full mesh + same low-lr L1 recipe.
+- **Change:** `--warm_start models/model-n96opkkn/... --train_subsample 300000 --lr 5e-6 --p_weight 5 --surf_weight 40 --epochs 20 --warmup_steps 20 --surf_loss l1`.
+- **Result:** 9 epochs (~209 s each vs 52 s at sub40k). Best ep9. val/loss=4.09. **avg sp = 56.94** (single=69.53, rc=69.72, cruise=34.78, re_rand=53.75). Peak VRAM 74.7 GB. W&B run `15d3hb8i`.
+- **Verdict:** kept — 67.57 → 56.94 (-15.7 %). Cruise, rc and re_rand all dropped ~25 %. Only single_in_dist got slightly worse (+27 %), but overall huge win.
+- **Notes:** Full mesh + long-tail fine-tune is the unlock. 9 epochs at full mesh beats 35 at sub40k in this regime.
+
+### 2026-04-23 — v12 chain FT sw=40 p_w=5 lr=5e-6 (marginal)
+- **Hypothesis:** Match askeladd's v9-polish recipe — sw=40, p_weight=5, lr=5e-6, chained from v11.
+- **Change:** `--warm_start models/model-mnh3repm/... --lr 5e-6 --p_weight 5 --surf_weight 40 --epochs 40 --warmup_steps 50 --surf_loss l1`.
+- **Result:** 35 epochs, best ep19. val/loss=5.14. **avg sp = 67.57** (single=54.61, rc=95.32, cruise=48.71, re_rand=71.66). W&B run `n96opkkn`.
+- **Verdict:** kept (marginal 0.13 gain over v11) — useful as stepping stone for v13's full-mesh run.
+- **Notes:** Gains stalled at sub40k. rc and re_rand stayed worse than single/cruise — suggested the full-mesh fine-tune for detail recovery.
+
+### 2026-04-23 — v11 chain FT lr=1e-5
+- **Hypothesis:** Another low-lr pass from v10 should squeeze a bit more.
+- **Change:** `--warm_start models/model-8th4ac6t/... --lr 1e-5 --p_weight 3 --surf_weight 30 --surf_loss l1 --epochs 40 --warmup_steps 50`.
+- **Result:** 35 epochs, best ep10. val/loss=3.89. **avg sp = 67.70** (single=55.60, rc=94.53, cruise=48.72, re_rand=71.94). W&B run `mnh3repm`.
+- **Verdict:** kept (modest 1.6 % gain over v10) — all splits slightly better, test score not yet known but consistent direction.
+
 ### 2026-04-23 — v10 warmstart + L1 surf loss + p_weight=3 ⭐⭐ big jump
 - **Hypothesis:** Leaderboard jumped dramatically (askeladd 52.90, frieren 55.32, thorfinn 65.70). Leaders' W&B configs all show the same pattern: `warm_start` a converged checkpoint, then fine-tune with **L1 surface loss** (matches MAE scoring), extra **pressure-channel weight**, and **very low lr (1e-5 to 2e-5)**. v8 was already a solid pre-training; fine-tune it with this recipe.
 - **Change:** `train.py` — added `warm_start` ckpt loader, `surf_loss=l1|mse` switch, `p_weight` on the pressure channel of the surface loss. Run with `--warm_start models/model-8cufs1hi/checkpoint.pt --lr 2e-5 --surf_loss l1 --p_weight 3.0 --surf_weight 30 --warmup_steps 100 --epochs 50`.
