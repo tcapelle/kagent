@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter15: L1 loss + 192x6 (iter4 config) for error decorrelation
+- **Hypothesis:** MSE models (iter3/iter4/iter9) likely share similar errors on outlier samples. L1 loss puts less weight on large errors and should learn a different fit, adding genuine decorrelation for 4-way ensemble.
+- **Change:** `train.py` loss_type switch (mse/l1/smooth_l1), invoked with `--loss_type l1`. Arch identical to iter4: n_hidden=192, n_layers=6, n_head=6, slice_num=64, warmup 3 + cosine, 35 epochs, grad_clip=1.0. Commit `a2e0b1a`.
+- **Result:** best val/loss **1.8677** (L1 units) at epoch 35 (35/35 epochs, 26.7 min, 20.8 GB). Per-split at best: single_in_dist=2.60, geom_rc=2.51, geom_cruise=0.62, re_rand=1.73. Note: L1 units not directly comparable to MSE-trained models.
+- **Verdict:** kept for 4-way ensemble (iter16).
+- **Notes:** L1 may have been still improving at e35; ran out of budget. Val loss trajectory showed continuous decrease e30→e35 (1.92→1.87) — could benefit from longer training if we can fit it. Strongest fit on geom_cruise (0.62) and re_rand (1.73) — these are the splits where MSE models struggled most.
+
 ### 2026-04-23 — iter9 + iter12: 3rd diverse model + 3-way ensemble
 - **Hypothesis:** Add a 3rd model (160×5, slice_num=96, 8 heads — architecturally distinct from iter3's 128×5 slice=64 and iter4's 192×6 slice=64) to gain ensemble diversity. Then 3-way ensemble.
 - **Change:** iter9 `train.py` n_hidden=160, n_layers=5, n_head=8, slice_num=96, epochs=40 (hit timeout at ~e35), warmup 3. Best val/loss 2.06 at epoch 32 (30.9 min, 24GB). Commit `a9406a8` code, run `xf92pczs`.
