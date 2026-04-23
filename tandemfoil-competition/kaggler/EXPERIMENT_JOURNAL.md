@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter14-l1vol
+- **Hypothesis:** L1 loss on volume (not just surf_p) may help robustness to pressure outliers in Part2 (high Re extreme values).
+- **Change:** added --l1_vol flag; used with surf_p_weight=60.
+- **Result:** val/avg_mae_surf_p=52.20 at epoch 4 (from 52.57).
+- **Verdict:** kept — commit 474e6fe.
+- **Notes:** Improvement slowing further (-0.37 vs -0.27 iter13). Plateau @ ~52. Next: ensemble OR architectural changes (Fourier features).
+
 ### 2026-04-23 — iter13-l1w60
 - **Hypothesis:** push L1 surf_p weight higher (60 vs 30).
 - **Change:** --surf_p_weight 60.
