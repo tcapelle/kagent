@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter18: 4-way ensemble substituting iter17 for iter15
+- **Hypothesis:** iter17 is a strictly better L1 model than iter15 (val/loss 1.59 vs 1.87). Replace iter15 with iter17 in the equal 4-way ensemble. iter9's predictions weren't saved as a separate dir so I recovered them via iter9 = 4*iter16 − iter3 − iter4 − iter15 (since iter16 = equal 4-way average).
+- **Change:** Added `recover_iter9.py` to extract iter9 preds from iter16. Commit `a0036e2`. Ensemble: `python ensemble.py --sources 2c929ae 1509e10 iter9_recovered f785f46 --weights 1 1 1 1`. No model training.
+- **Result:** (pending scoring). Note: iter16 was 68.22, this should improve by replacing the weakest L1 model with a 15% stronger one.
+- **Verdict:** pending.
+- **Notes:** Kicked off iter19 immediately after (warmstart chain) so GPU isn't idle. Also did not include iter15 in iter18 — if scoring shows iter15 still adds diversity, I can try 5-way in iter20.
+
+### 2026-04-23 — iter17: warm-start fine-tune iter15 L1 model — 🚀 big win
+- **Hypothesis:** Askeladd (leading at 60.06) chains warm-start runs (v2→v3→v4→v5 at lr 5e-5→2e-5→1e-5), accumulating ~2hrs of training on a single model. Their latest val/loss is 1.40 vs my best single 1.87. I should do the same: fine-tune iter15's checkpoint with a cosine LR restart.
+- **Change:** `train.py` gained a `--warm_start <path>` flag that loads state_dict before training. Ran with `--warm_start models/model-7ywd9q9p/checkpoint.pt --loss_type l1 --lr 1e-4 --epochs 30`. Same 192x6 arch. Commit `f785f46`.
+- **Result:** best val/loss **1.5893** at epoch 29 (30/30 epochs, 22.9 min, 20.8 GB). Per-split at best: single_in_dist=2.13, geom_rc=2.20, geom_cruise=0.47, re_rand=1.56. **All splits improved 10-24% over iter15.** Run `unhr40nf`.
+- **Verdict:** kept. Big improvement from warm-start continuation.
+- **Notes:** First 9 epochs oscillated (LR=1e-4 post-warmup is high). Cosine decay from e10 onward drove steady improvement. iter19 (warm-start from iter17 at lr=5e-5) is running. Need to keep chaining to catch askeladd.
+
 ### 2026-04-23 — iter15: L1 loss + 192x6 (iter4 config) for error decorrelation
 - **Hypothesis:** MSE models (iter3/iter4/iter9) likely share similar errors on outlier samples. L1 loss puts less weight on large errors and should learn a different fit, adding genuine decorrelation for 4-way ensemble.
 - **Change:** `train.py` loss_type switch (mse/l1/smooth_l1), invoked with `--loss_type l1`. Arch identical to iter4: n_hidden=192, n_layers=6, n_head=6, slice_num=64, warmup 3 + cosine, 35 epochs, grad_clip=1.0. Commit `a2e0b1a`.
