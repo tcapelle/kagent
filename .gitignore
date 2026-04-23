@@ -16,6 +16,9 @@ checkpoints/
 # Exception: commit best-checkpoint mirror so submissions carry weights
 !gram-competition/kaggler/checkpoints/
 !gram-competition/kaggler/checkpoints/best.pt
+!tandemfoil-competition/kaggler/checkpoints/
+!tandemfoil-competition/kaggler/checkpoints/best.pt
+!tandemfoil-competition/kaggler/checkpoints/best_config.yaml
 
 # Logs
 *.log
