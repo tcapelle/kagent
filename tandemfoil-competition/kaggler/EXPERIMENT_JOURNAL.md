@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter25: SWA of 4 warm-start checkpoints
+- **Hypothesis:** Averaging state dicts from iter17/iter19/iter21/iter23 (all 192x6 L1 models on the same warm-start chain) smooths the loss landscape and should generalize better than any single checkpoint.
+- **Change:** Added `swa.py` that averages state dicts. Weights 1/1/2/2 (more weight on the better-converged iter21/iter23). Wrote to `models/model-swa4/`, then `predict.py` generated test predictions at `apr23/frieren/66b342c/`. No training.
+- **Result:** **55.68 avg_surf_p** — worse than iter21's 55.32 (best single). Per-split: single=45.70, rc=72.48, cruise=28.15, re_rand=76.38.
+- **Verdict:** discarded — simple SWA averaging all 4 didn't help. Earlier (weaker) checkpoints pulled the mean toward their inferior region.
+- **Notes:** Could try SWA of only the best 2 (iter21+iter23) or just skip — chain is plateauing anyway. iter27 (p_weight=3 warm-start) is running next.
+
+### 2026-04-23 — iter21/iter23: continuing warm-start chain (lr=2e-5, lr=1e-5)
+- **Hypothesis:** Askeladd chains 4 warm-starts at decreasing LRs. Continue my chain: iter21 = warm iter19 at 2e-5, iter23 = warm iter21 at 1e-5 (matching askeladd's endpoint).
+- **Change:** `train.py --warm_start <path> --loss_type l1 --lr 2e-5|1e-5 --epochs 30`. iter21 commit `e7bea18`, run `yxj4y1an`. iter23 reused the same commit (no intervening git commit) → its predictions overwrote iter21's at `apr23/frieren/e7bea18/`; run `xrkzylm8`.
+- **Result:** iter21 val/loss 1.4461 at e19 → scored **55.32 avg_surf_p, 🥇 #1** (askeladd 56.07). iter23 val/loss 1.4351 at e12, predictions overwrote iter21 at `e7bea18`. Per-split iter21 test surf_p: single=44.81, rc=72.42, cruise=27.66, re_rand=76.40.
+- **Verdict:** kept both for SWA downstream. iter21 currently sits at #1.
+- **Notes:** Diminishing returns — val/loss went 1.47→1.45→1.44 across iter19/21/23. Chain has largely plateaued. Weakness vs askeladd is **re_rand** (76 vs 57, 19-point gap) — their architecture (slice_num=128 vs my 64) or more training must generalize better in Re. Should have used separate commits per run to keep iter21 and iter23 predictions distinct.
+
 ### 2026-04-23 — iter19: 2nd warm-start chain → 🥇 #1 on the leaderboard
 - **Hypothesis:** Continue the warm-start chain — fine-tune iter17's checkpoint at yet-lower LR (5e-5, half of iter17's 1e-4). Each chain link accumulates more training time on the same model, mimicking askeladd's v2→v5 chain.
 - **Change:** `train.py --warm_start /tmp/iter17_best.pt --loss_type l1 --lr 5e-5 --epochs 30`. Commit `bcbcb52` (journal commit that auto-triggered predictions). Run `ogycayte`.
