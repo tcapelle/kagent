@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter6-fullmesh
+- **Hypothesis:** fine-tune subsample-trained model on full mesh (no subsampling) — match eval conditions, learn high-density-region dynamics.
+- **Change:** --n_vol_train 0 --batch_size 2 --lr 5e-5 --epochs 10.
+- **Result:** val/loss=1.0208 at epoch 1 (459s/epoch, 17.6GB VRAM). Overfit after epoch 1 (val climbed, train kept falling).
+- **Verdict:** kept — commit 6a27e83
+- **Notes:** Per-split @ epoch 1: single_in_dist=1.48, rc=1.23, cruise=0.39, re_rand=0.98. Big cruise drop (0.73→0.39). Next: even lower LR + 2-3 epochs to push further without overfit.
+
 ### 2026-04-23 — iter5-resume-lr1e4
 - **Hypothesis:** iter4 still improving at end. Another resume cycle with lower LR=1e-4 should continue the descent.
 - **Change:** same as iter4 but --lr 1e-4.
