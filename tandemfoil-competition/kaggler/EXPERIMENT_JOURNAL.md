@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v7 even more pressure-focused (surf=30, p_weight=3)
+- **Hypothesis:** v6 (surf=20, p=2) reduced val to 64.24. Push further with surf=30, p_weight=3 — effectively 9× pressure-surface weighting. Use slightly lower LR (2e-5) to avoid overshooting.
+- **Change:** `--warm_start v6 --lr 2e-5 --surf_weight 30 --p_weight 3.0`.
+- **Result:** best ep8 `val/loss=3.46, avg_mae_surf_p=60.58` (val splits 63.5/75.3/42.1/61.4). Big jump from v6's 64.24 ⇒ **6% val improvement**. W&B: `askeladd/v7-highsurf`.
+- **Verdict:** kept — pushing pressure weighting further works. Every split improved vs v6. Projected test ~53 at 88% ratio.
+- **Notes:**
+  - Pattern: heavier surface+pressure weighting moves metric further, so training loss structure matters more than architecture at this stage.
+  - Leaderboard at start of v7: askeladd 56.07 (ens v5+v6) vs frieren 56.35. Gap razor-thin.
+  - Next: submit v7 alone, ensemble v5+v6+v7, maybe v7+v6 (most diverse pair).
+
 ### 2026-04-23 — v6 pressure-focused fine-tune (surf=20, p_weight=2)
 - **Hypothesis:** v5 scored 57.48 test. Ensemble v3+v4+v5 regressed to 57.91 (too correlated — all same warm-start lineage). Need a model with genuinely different error characteristics. Bias v6 toward *pressure on surface* specifically: `surf_weight 10→20, p_weight 1→2` effectively makes pressure-surface loss 4× more important during finetune. Use slightly higher LR (3e-5) than v5's 1e-5 since the loss landscape shifts.
 - **Change:** warm-start from v5. `--surf_weight 20 --p_weight 2.0 --lr 3e-5`.
