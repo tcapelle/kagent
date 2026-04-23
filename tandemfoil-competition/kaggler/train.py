@@ -55,6 +55,8 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    # Optional: warm-start model weights from a checkpoint for fine-tuning.
+    warm_start: str | None = None
 
 
 cfg = sp.parse(Config)
@@ -117,6 +119,10 @@ model_config = dict(
 )
 
 model = Transolver(**model_config).to(device)
+if cfg.warm_start:
+    sd = torch.load(cfg.warm_start, map_location=device, weights_only=True)
+    model.load_state_dict(sd)
+    print(f"Loaded warm-start weights from {cfg.warm_start}")
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 # 3-epoch linear warmup (0 -> lr) then cosine to 0.
