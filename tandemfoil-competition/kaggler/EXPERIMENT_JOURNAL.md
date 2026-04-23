@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v4-eidetic (FAILED, discarded)
+- **Hypothesis:** Transolver++ Eidetic attention (Ada-Temp per-point temperature + Rep-Slice Gumbel-Softmax slice weights) gives +12.6% surface-p on DrivAerNet++ in the paper. Swap the default `PhysicsAttention` for `PhysicsAttentionEidetic` behind a `use_eidetic` flag (default True).
+- **Change:** `model.py` — added `PhysicsAttentionEidetic` class; `TransolverBlock`/`Transolver` accept `use_eidetic`. `train.py` — config flag `use_eidetic=True`, wire through `model_config`.
+- **Result:** best epoch 8, val/loss=3.058 vs iter-3 2.634. **Avg val surf_p MAE 107.9 → 115.4 (+7.0%, WORSE).** Wall 33.4 min (8 epochs completed). W&B `kagent-tandemfoil/qsjr11qa` (name `nezuko/v4-eidetic`).
+- **Verdict:** discarded. Reset code commit. Model.py restored to stock `PhysicsAttention`.
+- **Notes:** Per-epoch Eidetic was actually BETTER than stock (at epoch 7: v4 val/loss=3.50 vs v3 4.24). The failure is pure compute overhead: Gumbel noise + softplus temperature projection + extra Linear pushed per-epoch from 210 s to 251 s (+20%), dropping us from 9 → 8 epochs. That's fewer cosine-annealing steps, incomplete LR decay. Next time try Eidetic with `epochs=8` so `T_max` matches the new wall-time budget — that's likely a true win.
+
 ### 2026-04-23 — v3-cosine-match (KEPT)
 - **Hypothesis:** baseline's cosine LR schedule (`T_max=50`) was 82% unused when we hit the 30-min budget at epoch 9. Shrinking `epochs` to 10 (same wall-time, same LR init, same loss) lets the schedule actually decay to near-zero by the end, giving a fine-tuning phase that the baseline never got.
 - **Change:** `train.py` one-liner — `epochs: 50 → 10`. Nothing else touched. Same MSE loss (reverted the Huber experiment first).
