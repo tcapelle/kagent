@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter7-lowlr-fullmesh
+- **Hypothesis:** full-mesh fine-tune with even lower LR (2e-5, no warmup) avoids overfit of iter6 and pushes further.
+- **Change:** --lr 2e-5 --warmup_epochs 0 --epochs 5 (resumed from iter6 1.02).
+- **Result:** val/loss=0.9586 at epoch 2 (460s/epoch).
+- **Verdict:** kept — commit 61474fd.
+- **Notes:** Per-split @ epoch 2: single_in_dist=1.41, rc=1.12, cruise=0.35, re_rand=0.95. Slow improvements remaining; resume chain has diminishing returns. Time to try something new architecturally.
+
 ### 2026-04-23 — iter6-fullmesh
 - **Hypothesis:** fine-tune subsample-trained model on full mesh (no subsampling) — match eval conditions, learn high-density-region dynamics.
 - **Change:** --n_vol_train 0 --batch_size 2 --lr 5e-5 --epochs 10.
