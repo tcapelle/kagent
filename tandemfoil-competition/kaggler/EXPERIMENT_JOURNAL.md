@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter63/iter73-77: slice=128 chain-2 + 4-way ensemble experiments
+- **Hypothesis:** Further warm-start iter47 at lr=5e-5 gets slice=128 model past val/loss 1.8. Then replace iter47 with iter63 in the best 3-way, or add iter63 as 4th model.
+- **Change:** iter63 warm-start iter47 slice=128 L1 p_weight=3 lr=5e-5 30ep. Run `y3i6aw3f` killed at ep27 by timeout (slice=128 takes 66s/ep). Ran predict manually. Ensembles iter73 (3-way 0.5/0.3/0.2 with iter63 swapped for iter47), iter75/77 (4-way variants).
+- **Result:** iter63 val/loss **1.72** (down from iter47's 1.80). Per-split val: single=2.09, rc=2.54, cruise=0.64, re_rand=1.60. Ensemble scores pending.
+- **Verdict:** pending. iter63 is a better slice=128 model; ensemble should improve.
+- **Notes:** Askeladd pushed to 50.52 (ad132a5). Gap now 2.30. Also noticed: slice=128 training exceeds 30-min Linux-timeout; internal MAX_TIMEOUT=30 min is supposed to stop cleanly but apparently epoch 28 passes the check before being reached. Workaround is to manually cp the checkpoint and run predict.py separately.
+
 ### 2026-04-23 — iter59: 3-way ensemble iter29+iter37+iter47 → 🥈 new PB 52.82
 - **Hypothesis:** Combining diverse-arch models (iter29 slice=64 chain, iter37 slice=64 chain p_weight=10, iter47 slice=128 warm-start chain) in a 3-way weighted average would beat 2-way since each covers different failure modes. Weight iter29 highest (strongest), iter37 medium (complementary), iter47 lowest (weakest val but different arch).
 - **Change:** `python ensemble.py --sources 3b76dc7 1c8a6c4 a2ad957 --weights 0.5 0.3 0.2`. No model training. Commit `fe5703f`. Also swept weights (0.4/0.4/0.2, 0.4/0.3/0.3, 0.45/0.35/0.2, 0.6/0.2/0.2).
