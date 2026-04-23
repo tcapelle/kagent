@@ -43,8 +43,9 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 8
     surf_weight: float = 10.0
-    epochs: int = 40
+    epochs: int = 35
     grad_clip: float = 1.0
+    loss_type: str = "mse"  # mse | l1 | smoothl1
     # Training-only: subsample to at most this many non-surface nodes per sample.
     # All surface nodes are always kept. 0 = no subsampling.
     train_subsample: int = 40000
@@ -106,10 +107,10 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=160,
-    n_layers=5,
-    n_head=8,
-    slice_num=96,
+    n_hidden=192,
+    n_layers=6,
+    n_head=6,
+    slice_num=64,
     mlp_ratio=2,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
@@ -178,12 +179,18 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=cfg.bf16):
             pred = model({"x": x})["preds"]
-            sq_err = (pred.float() - y_norm) ** 2
+            diff = pred.float() - y_norm
+            if cfg.loss_type == "l1":
+                err = diff.abs()
+            elif cfg.loss_type == "smoothl1":
+                err = torch.where(diff.abs() < 1.0, 0.5 * diff**2, diff.abs() - 0.5)
+            else:
+                err = diff ** 2
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
-            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            vol_loss = (err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
