@@ -1,5 +1,8 @@
 """Generate predictions on the hidden test splits.
 
+Supports single-checkpoint and multi-checkpoint (ensemble) inference.
+Ensemble predictions are averaged in normalised space.
+
 Output layout:
   /mnt/new-pvc/predictions/<tag>/<agent>/<commit>/
   ├── test_single_in_dist.pt
@@ -11,7 +14,7 @@ Output layout:
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import simple_parsing as sp
@@ -36,8 +39,9 @@ TEST_SPLITS = [
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str
+    """Generate test predictions from one or more trained checkpoints."""
+    checkpoint: str | None = None  # single checkpoint path
+    checkpoints: str | None = None  # comma-separated paths for ensemble
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 2
@@ -47,16 +51,29 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-ckpt_path = Path(cfg.checkpoint)
-config_path = ckpt_path.parent / "config.yaml"
-with open(config_path) as f:
-    model_config = yaml.safe_load(f)
+if cfg.checkpoints:
+    ckpt_paths = [Path(p.strip()) for p in cfg.checkpoints.split(",") if p.strip()]
+elif cfg.checkpoint:
+    ckpt_paths = [Path(cfg.checkpoint)]
+else:
+    raise SystemExit("Must provide --checkpoint <path> or --checkpoints <p1,p2,...>")
 
-model = Transolver(**model_config).to(device)
-state = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
-model.load_state_dict(state)
-model.eval()
-print(f"Loaded model from {cfg.checkpoint}")
+
+def load_model(ckpt_path: Path) -> Transolver:
+    config_path = ckpt_path.parent / "config.yaml"
+    with open(config_path) as f:
+        model_config = yaml.safe_load(f)
+    m = Transolver(**model_config).to(device)
+    state = torch.load(ckpt_path, map_location=device, weights_only=True)
+    m.load_state_dict(state)
+    m.eval()
+    return m
+
+
+models = [load_model(p) for p in ckpt_paths]
+for p in ckpt_paths:
+    print(f"Loaded: {p}")
+print(f"Ensemble size: {len(models)}")
 
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
@@ -91,7 +108,9 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            x_norm = (x_pad - x_mean) / x_std
+            # Average predictions across ensemble members in normalised space
+            pred_norm = sum(m({"x": x_norm})["preds"] for m in models) / len(models)
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
