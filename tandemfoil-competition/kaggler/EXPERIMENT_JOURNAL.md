@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v11 sweet-spot polish (p_weight=10, lr=3e-6)
+- **Hypothesis:** v10's aggressive p=20 over-specialized; v9's p=5 under-weights pressure. Try middle (p=10) with smaller LR (3e-6) from v9 for fresh step direction.
+- **Change:** `--warm_start v9 --lr 3e-6 --surf_weight 40 --p_weight 10.0`.
+- **Result:** best ep8 `val/loss=4.34, avg_mae_surf_p=57.77` (val 59/73/40/59). New best val — small but consistent improvement across all splits vs v9/v10.
+- **Verdict:** kept. Expected test ≈ 50 at 88% ratio — likely beats v9 (50.97) and v10 (50.76).
+- **Notes:**
+  - p=10 really was a sweet spot vs v9 (p=5) and v10 (p=20).
+  - After v11: 11 consecutive commits, score improved 120.49 → ~50. Leaderboard lead still > 2 points.
+
 ### 2026-04-23 — v10 pressure-only loss (p_weight=20)
 - **Hypothesis:** Scoring is *only* on pressure. Push p_weight from 5 → 20 so velocity loss becomes negligible. Model can specialize on pressure without distraction.
 - **Change:** `--warm_start v9 --lr 1e-5 --surf_weight 40 --p_weight 20.0`.
