@@ -22,6 +22,9 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter16-solo-resubmit (iter 16 resubmit)
+- **Followup to iter 16:** Submitted iter 16 solo predictions at a fresh commit because the auto-submit and ensemble attempt both landed at already-cached commit hashes that the scorer refuses to re-score.
+
 ### 2026-04-23 — iter16-ft-iter15-lr2e5 (iter 16)
 - **Hypothesis:** Same chain-continuation recipe at `lr=2e-5`. Iter 15 still showed ~1 pt/10 epochs improvement; another 30 min might net another 1-2 points.
 - **Change:** `train.py --resume_from iter15_best.pt --lr 2e-5 --warmup_steps 100 --epochs 40`.
