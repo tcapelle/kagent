@@ -40,10 +40,12 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 8
     surf_weight: float = 10.0
+    surf_p_weight: float = 0.0  # extra weight on surface pressure (scored metric)
     epochs: int = 25
     warmup_epochs: int = 2
     n_vol_train: int = 20000  # subsample volume points during training (0=keep all)
     resume_from: str | None = None  # path to checkpoint to initialize weights from
+    select_by_surf_p: bool = False  # use avg mae_surf_p for best-ckpt selection
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -190,14 +192,17 @@ for epoch in range(MAX_EPOCHS):
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
         with torch.amp.autocast("cuda", dtype=torch.bfloat16):
-            pred = model({"x": x})["preds"]
-            sq_err = (pred.float() - y_norm) ** 2
+            pred = model({"x": x})["preds"].float()
+            sq_err = (pred - y_norm) ** 2
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
             vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
             surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
+            if cfg.surf_p_weight > 0:
+                surf_p_loss = (sq_err[..., 2] * surf_mask).sum() / surf_mask.sum().clamp(min=1)
+                loss = loss + cfg.surf_p_weight * surf_p_loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -270,12 +275,14 @@ for epoch in range(MAX_EPOCHS):
         val_loss_sum += split_loss
 
     mean_val_loss = val_loss_sum / len(val_loaders)
+    avg_mae_surf_p = sum(sm[f"{n}/mae_surf_p"] for n, sm in split_metrics.items()) / len(split_metrics)
     dt = time.time() - t0
 
     metrics = {
         "train/vol_loss": epoch_vol,
         "train/surf_loss": epoch_surf,
         "val/loss": mean_val_loss,
+        "val/avg_mae_surf_p": avg_mae_surf_p,
         "lr": scheduler.get_last_lr()[0],
         "epoch_time_s": dt,
         "global_step": global_step,
@@ -284,10 +291,11 @@ for epoch in range(MAX_EPOCHS):
         metrics.update(sm)
     wandb.log(metrics)
 
+    selection_metric = avg_mae_surf_p if cfg.select_by_surf_p else mean_val_loss
     tag = ""
-    if mean_val_loss < best_val:
-        best_val = mean_val_loss
-        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
+    if selection_metric < best_val:
+        best_val = selection_metric
+        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "avg_mae_surf_p": avg_mae_surf_p}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
         torch.save(model.state_dict(), model_path)
