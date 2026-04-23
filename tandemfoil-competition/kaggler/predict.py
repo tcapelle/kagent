@@ -70,8 +70,14 @@ commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
     capture_output=True, text=True,
 ).stdout.strip() or "unknown"
-output_dir = PREDICTIONS_DIR / agent_name / commit
-output_dir.mkdir(parents=True, exist_ok=True)
+final_dir = PREDICTIONS_DIR / agent_name / commit
+# Write to a staging dir so the scorer never sees a partial submission
+staging_dir = PREDICTIONS_DIR / agent_name / f".{commit}.staging"
+if staging_dir.exists():
+    import shutil
+    shutil.rmtree(staging_dir)
+staging_dir.mkdir(parents=True, exist_ok=True)
+output_dir = staging_dir
 
 for split in TEST_SPLITS:
     test_dir = splits_dir / split
@@ -106,4 +112,9 @@ for split in TEST_SPLITS:
     torch.save(predictions, output_path)
     print(f"  → {output_path} ({len(predictions)} samples)")
 
-print(f"\nAll predictions saved to {output_dir}")
+# Atomic publish: rename staging → final
+import shutil
+if final_dir.exists():
+    shutil.rmtree(final_dir)
+staging_dir.rename(final_dir)
+print(f"\nAll predictions saved to {final_dir}")
