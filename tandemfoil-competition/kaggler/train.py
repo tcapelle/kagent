@@ -253,8 +253,8 @@ def main():
         out_dim=3,
         n_hidden=192,
         n_layers=6,
-        n_head=6,
-        slice_num=96,
+        n_head=4,
+        slice_num=64,
         mlp_ratio=2,
         output_fields=["Ux", "Uy", "p"],
         output_dims=[1, 1, 1],
@@ -317,8 +317,9 @@ def main():
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-            pred = model({"x": x})["preds"]
-            sq_err = (pred - y_norm) ** 2
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                pred = model({"x": x})["preds"]
+                sq_err = (pred.float() - y_norm) ** 2
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
@@ -360,7 +361,8 @@ def main():
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                    pred = model({"x": x})["preds"]
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                        pred = model({"x": x})["preds"].float()
                     sq_err = (pred - y_norm) ** 2
 
                     vol_mask = mask & ~is_surface
