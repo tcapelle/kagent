@@ -46,11 +46,38 @@ class Config:
     n_vol_train: int = 20000  # subsample volume points during training (0=keep all)
     resume_from: str | None = None  # path to checkpoint to initialize weights from
     select_by_surf_p: bool = False  # use avg mae_surf_p for best-ckpt selection
+    ema_decay: float = 0.0  # >0 enables EMA with this decay
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+
+
+class EMA:
+    """Exponential moving average of model parameters."""
+    def __init__(self, model, decay=0.999):
+        self.decay = decay
+        self.shadow = {n: p.data.clone() for n, p in model.named_parameters() if p.requires_grad}
+
+    def update(self, model):
+        for n, p in model.named_parameters():
+            if n in self.shadow:
+                self.shadow[n].mul_(self.decay).add_(p.data, alpha=1 - self.decay)
+
+    def swap(self, model):
+        """Swap model params with EMA params; returns the original params for restore."""
+        backup = {}
+        for n, p in model.named_parameters():
+            if n in self.shadow:
+                backup[n] = p.data.clone()
+                p.data.copy_(self.shadow[n])
+        return backup
+
+    def restore(self, model, backup):
+        for n, p in model.named_parameters():
+            if n in backup:
+                p.data.copy_(backup[n])
 
 
 def subsample_volume(x, y, is_surface, mask, n_vol):
@@ -132,6 +159,7 @@ if cfg.resume_from:
     print(f"Resumed weights from {cfg.resume_from}")
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+ema = EMA(model, decay=cfg.ema_decay) if cfg.ema_decay > 0 else None
 warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=max(1, cfg.warmup_epochs))
 cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, MAX_EPOCHS - cfg.warmup_epochs))
 scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmup, cosine], milestones=[cfg.warmup_epochs])
@@ -208,6 +236,8 @@ for epoch in range(MAX_EPOCHS):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
+        if ema is not None:
+            ema.update(model)
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -219,8 +249,9 @@ for epoch in range(MAX_EPOCHS):
     epoch_vol /= n_batches
     epoch_surf /= n_batches
 
-    # --- Validate ---
+    # --- Validate (with EMA weights if enabled) ---
     model.eval()
+    ema_backup = ema.swap(model) if ema is not None else None
     val_loss_sum = 0.0
     split_metrics: dict[str, dict] = {}
 
@@ -298,6 +329,7 @@ for epoch in range(MAX_EPOCHS):
         best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "avg_mae_surf_p": avg_mae_surf_p}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+        # Save EMA weights if EMA enabled (model currently has EMA weights swapped in)
         torch.save(model.state_dict(), model_path)
         # Mirror to local checkpoints/ and PVC durable storage
         ckpt_dir = Path("checkpoints")
@@ -311,6 +343,10 @@ for epoch in range(MAX_EPOCHS):
         with open(pvc_dir / "config.yaml", "w") as f:
             yaml.dump(model_config, f)
         tag = " *"
+
+    # Restore non-EMA weights for next training epoch
+    if ema is not None and ema_backup is not None:
+        ema.restore(model, ema_backup)
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     split_summary = "  ".join(
