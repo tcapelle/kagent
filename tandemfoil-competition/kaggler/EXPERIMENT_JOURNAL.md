@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter9-surfp40
+- **Hypothesis:** push surf_p_weight higher (40, was 20) for even more pressure focus.
+- **Change:** --surf_p_weight 40 --lr 1e-5; resumed from iter8.
+- **Result:** val/avg_mae_surf_p=54.91 at epoch 4 (down from 55.44).
+- **Verdict:** kept — commit 3f7f4ce
+- **Notes:** Marginal improvement (0.5). Train loss vol~0.13-0.22 vs val ~1+ — overfitting. Next: EMA for smoother weights.
+
 ### 2026-04-23 — iter8-surfp20
 - **Hypothesis:** leaderboard ranks by avg surface pressure MAE; rebalance loss to weight surface pressure more (extra 20x) and select best ckpt by avg mae_surf_p instead of val/loss.
 - **Change:** added `surf_p_weight=20` term to loss; added `select_by_surf_p=True` flag for ckpt selection. Resumed from iter7 best.
