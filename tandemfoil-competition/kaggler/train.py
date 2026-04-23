@@ -213,6 +213,7 @@ class Config:
     surf_weight: float = 10.0
     p_weight: float = 1.0          # extra multiplier on pressure channel loss
     no_slip_bc: bool = True        # zero out Ux,Uy on surface post-model
+    amp: bool = True               # bfloat16 autocast
     n_hidden: int = 192
     n_layers: int = 6
     n_head: int = 6
@@ -343,17 +344,17 @@ def main():
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-            pred = model({"x": x})["preds"]
-            if cfg.no_slip_bc:
-                pred = apply_no_slip(pred, is_surface, stats["y_mean"], stats["y_std"])
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.amp):
+                pred = model({"x": x})["preds"]
+                if cfg.no_slip_bc:
+                    pred = apply_no_slip(pred, is_surface, stats["y_mean"], stats["y_std"])
+                sq_err = ((pred - y_norm) ** 2) * ch_w  # [B,N,3]
 
-            sq_err = ((pred - y_norm) ** 2) * ch_w  # [B,N,3]
-
-            vol_mask = mask & ~is_surface
-            surf_mask = mask & is_surface
-            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1) / ch_w.sum() * 3
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1) / ch_w.sum() * 3
-            loss = vol_loss + cfg.surf_weight * surf_loss
+                vol_mask = mask & ~is_surface
+                surf_mask = mask & is_surface
+                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1) / ch_w.sum() * 3
+                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1) / ch_w.sum() * 3
+                loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
             loss.backward()
