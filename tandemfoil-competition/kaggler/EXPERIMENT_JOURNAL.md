@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter19-fromscratch-seed4 (iter 19)
+- **Hypothesis:** A third from-scratch seed for more ensemble diversity. Iter 10 (val 90.7) and iter 12 (val 77.9) were the previous two — big seed variance, so another run could land anywhere in that range.
+- **Change:** No code change. `train.py --agent thorfinn --wandb_name "thorfinn/iter19-fromscratch-seed4"`.
+- **Result:** 40 epochs in 30.5 min. Best epoch 40: `val/avg_surf_p=85.65` — very close to iter 4 (85.63) and iter 10 (90.7), so another typical seed outcome. Ensemble candidate.
+- **Verdict:** Keep as ensemble member. Auto-submit overwrote `92b4c33` — will re-submit ensemble to fresh commit.
+- **Notes:** geom_rc plateau across seeds: iter 4 e38 got 124.9; iter 19 e40 got 120.9. Seed variance doesn't break the OOD raceCar-camber ceiling.
+
 ### 2026-04-23 — iter18-ft-iter16-lr1e5 (iter 18)
 - **Hypothesis:** At lr=1e-5 (half of iter 16's 2e-5), iter 18 should nudge val a few tenths lower on the same iter 16 starting point.
 - **Change:** `train.py --resume_from iter16_best.pt --lr 1e-5 --warmup_steps 50 --epochs 40`.
