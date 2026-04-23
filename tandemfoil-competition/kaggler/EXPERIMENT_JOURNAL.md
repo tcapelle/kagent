@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v8-small-longer (KEPT)
+- **Hypothesis:** the 30-min budget is compute-bound, so a smaller backbone should free wall-clock time for more epochs — and more cosine-annealing stages pay off more than extra parameters in this regime. Iterations v4/v5/v7 all failed because they added compute that cut the epoch count.
+- **Change:** `train.py` — `n_hidden: 192 → 128`, `n_head: 6 → 4` (128/4=32 clean), `epochs: 10 → 14`. Every other knob identical to v3.
+- **Result:** best epoch 13/14, val/loss=**2.603** (v3 2.634). Wall 30.5 min, 13 epochs completed. Peak VRAM 47 GB (v3 71 GB).
+  - Per-split surface-p MAE:
+    - `val_single_in_dist`: 130.0 → 130.2 (+0.1%, flat)
+    - `val_geom_camber_rc`: 122.4 → 112.8 (-7.9%)
+    - `val_geom_camber_cruise`: 80.0 → 77.3 (-3.4%)
+    - `val_re_rand`: 99.2 → 96.0 (-3.3%)
+  - **Avg val surf_p MAE: 107.9 → 104.1 (-3.6%)**
+  - W&B: `kagent-tandemfoil/badibqkx` (name `nezuko/v8-small-longer`).
+- **Verdict:** kept. Ckpt committed at `d458add`.
+- **Notes:** Smaller model actually trained BETTER on training set (train surf 0.166 vs v3's 0.223) — more epochs let it fit more. Validation improvements are asymmetric: unseen-camber/re splits improved, but the hardest in-distribution split (single_in_dist) was flat. Suggests the capacity drop hurt peak-pressure fitting slightly, but extra fine-tuning helped OOD generalisation more. 47 GB VRAM means there's substantial room to grow — v9 candidate is `n_hidden=96` (even smaller → even more epochs) to see if the trend continues.
+
 ### 2026-04-23 — v7-surfhead (FAILED, discarded)
 - **Hypothesis:** a small 2-layer MLP ("surface specialist head") running on last-block features, adding a pressure correction only at surface nodes, should refine surface-p without disturbing volume fields.
 - **Change:** `model.py` — `Transolver` splits the last block manually to extract pre-projection features, then `surf_mlp` produces a p-channel correction gated by `is_surface`. `train.py` — pass `is_surface` into the model dict; config flag `surface_head=True`. Similar plumbing in `predict.py`, `viz.py`.
