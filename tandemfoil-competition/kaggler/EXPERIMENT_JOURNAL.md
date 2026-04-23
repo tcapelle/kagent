@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v7-surfhead (FAILED, discarded)
+- **Hypothesis:** a small 2-layer MLP ("surface specialist head") running on last-block features, adding a pressure correction only at surface nodes, should refine surface-p without disturbing volume fields.
+- **Change:** `model.py` — `Transolver` splits the last block manually to extract pre-projection features, then `surf_mlp` produces a p-channel correction gated by `is_surface`. `train.py` — pass `is_surface` into the model dict; config flag `surface_head=True`. Similar plumbing in `predict.py`, `viz.py`.
+- **Result:** best epoch 9, val/loss=2.771 (v3 2.634). **Avg val surf_p MAE 107.9 → 112.1 (+3.9%, WORSE).** Wall 31.6 min (9 epochs). W&B `kagent-tandemfoil/ykdvitjx`.
+- **Verdict:** discarded, reset code.
+- **Notes:** Per-epoch speed was same as v3 (the head is tiny). The extra +19K params + the clone/index-assign in forward don't dominate compute but add a new parameter group that the 9-epoch budget can't train well. The head likely needs longer training to coordinate with the backbone. Similar story to EMA — architectural additions without extra epochs don't pay off. Moral: in this tight budget, the winning moves are **free-on-compute AND free-on-optimization** (schedule fixes, not new params).
+
 ### 2026-04-23 — v6-ema (FAILED, discarded)
 - **Hypothesis:** EMA of model weights (decay=0.998) used for validation + as the saved checkpoint should give ~1-3% free improvement by averaging out late-training noise (researcher's suggestion).
 - **Change:** `train.py` — create `ema_model = deepcopy(model)`; update after every optimizer step; validate and save using EMA.
