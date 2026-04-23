@@ -48,6 +48,7 @@ class Config:
     select_by_surf_p: bool = False  # use avg mae_surf_p for best-ckpt selection
     ema_decay: float = 0.0  # >0 enables EMA with this decay
     l1_vol: bool = False  # use L1 for volume loss instead of MSE
+    dropout: float = 0.0  # dropout in Transolver (regularization)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -149,6 +150,7 @@ model_config = dict(
     n_head=8,
     slice_num=128,
     mlp_ratio=2,
+    dropout=cfg.dropout,
     use_checkpoint=True,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
