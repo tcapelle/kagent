@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v3-cw-subsample80k
+- **Hypothesis:** Three compounding levers should beat v2: (1) channel weights [Ux=1.0, Uy=0.2, p=0.1] align training MSE with the leaderboard's physical velocity L2; (2) random point-subsampling to 80K per training sample halves per-batch compute so we can run `batch_size=4` and fit more epochs; (3) `T_max=8` in the cosine schedule actually anneals LR (in v2 we used T_max=50 so LR barely decayed).
+- **Change:** `train.py` — added channel_weight_{Ux,Uy,p}, `train_max_points=80000` with a custom `train_collate` that subsamples before `pad_collate`, bumped `batch_size=4`, `effective_epochs=8` for cosine T_max, selection now by `val/l2_error` (not val/loss). `predict.py` + `model.py` refactor to avoid train-import side effects.
+- **Result:** 15 epochs in 30 min (2.1 min/epoch, vs v2's 4 min). Best `val/l2_error = 5.39` at epoch 11, val/loss=3.33. Peak VRAM 33.5 GB. W&B `alphonse/v3-cw-subsample80k` (`reie1td7`). Submitted at commit `5dd72f0`. **23% improvement over v2 (6.96→5.39).**
+- **Verdict:** Kept — clear win from all three axes.
+- **Notes:** LR schedule is slightly mistuned: T_max=8 means LR re-warms after epoch 8 and caused oscillation from epoch 12 onward (best at epoch 11 was right at the restart). For v4, set T_max to match full 15-epoch budget and remove the warm-restart behaviour. Volume MAE on `val_single_in_dist` is still the dominant error — could investigate whether the inlet/free-stream region is the problem.
+
 ### 2026-04-23 — v2-hidden256-l8-amp (baseline submission)
 - **Hypothesis:** Scaling the starter Transolver from hidden=128/layers=5 to hidden=256/layers=8 with bf16 AMP should materially reduce `val/l2_error` while still fitting in 96GB VRAM. AMP also gives more training steps in 30 min.
 - **Change:** `train.py` — `n_hidden=256`, `n_layers=8`, `n_head=8`, `slice_num=64`, `mlp_ratio=2`; enabled bf16 autocast + gradient clip 1.0; added `val/l2_error` logging (mean sqrt(Ux² + Uy²) over all masked nodes). Filled in `predict.py` to load Transolver from saved checkpoint + config.yaml. Bumped `val/loss` to include the new l2 metric.
