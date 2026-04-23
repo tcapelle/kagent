@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter10-fromscratch-newseed (iter 10)
+- **Hypothesis:** Iter 9's fine-tune at lr=2e-5 plateaued at val ~79 after 8 epochs — the fine-tune chain is exhausted. Need a diverse model for a real ensemble; train from-scratch with the iter 4 config so the new member sees a different optimisation trajectory.
+- **Change:** No code change. Ran `train.py --agent thorfinn --wandb_name "thorfinn/iter10-fromscratch-seed2"` (no `--resume_from`). Iter 9 was killed after epoch 8 to free the GPU.
+- **Result:** 40 epochs in 30.5 min. Best epoch 35: `val/avg_surf_p=90.66` (single=70.4, geom_rc=132.5, geom_cruise=65.4, re_rand=94.4). Submission `thorfinn/d83d622` (this is the iter-7 journal commit, since iter 10 didn't touch code).
+- **Verdict:** Kept as an ensemble member — val alone is worse than iter 7 (79 vs 91), but different starting seed should decorrelate errors in the next ensemble.
+- **Notes:** Same 42-epoch cap/curve as iter 4 from-scratch; the from-scratch run basically recovers iter 4 performance. One thing that stands out: iter 10 val split break-downs (single 70, cruise 65) are close to iter 4 (single 65, cruise 64), but geom_rc=133 is worse than iter 4's 125 — seed variance bites hardest on the OOD raceCar camber split.
+
 ### 2026-04-23 — iter7-ft-from-iter6-lr5e5 (iter 7)
 - **Hypothesis:** Iter 6 hit its val ceiling at 80.38 with peak LR 2e-4 that oscillated. A much lower peak LR (5e-5) with a tiny warmup should squeeze out the last bit of signal from continued fine-tuning.
 - **Change:** Ran `train.py --resume_from iter6_best.pt --lr 5e-5 --warmup_steps 100 --epochs 40`; no code change from iter 6.
