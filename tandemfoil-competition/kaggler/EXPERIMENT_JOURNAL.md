@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter5-resume-lr1e4
+- **Hypothesis:** iter4 still improving at end. Another resume cycle with lower LR=1e-4 should continue the descent.
+- **Change:** same as iter4 but --lr 1e-4.
+- **Result:** val/loss=1.2522 at epoch 20 (86s/epoch, 22.2GB).
+- **Verdict:** kept — commit 9a8189e (same commit as iter4, new ckpt replaces).
+- **Notes:** Per-split @ epoch 20: single_in_dist=1.30, rc=1.68, cruise=0.73, re_rand=1.30. Diminishing returns (1.55→1.25, gain 0.30 vs iter4's 0.64).
+
 ### 2026-04-23 — iter4-resume
 - **Hypothesis:** iter3 was still improving at end. Resume from best.pt with lower LR (2e-4) for another 30 min → effectively 60 min of training, continues the descent.
 - **Change:** added --resume_from flag; lr 5e-4→2e-4; warmup 2→1.
