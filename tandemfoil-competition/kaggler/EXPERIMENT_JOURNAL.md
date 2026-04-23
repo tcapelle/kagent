@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v10 pressure-only loss (p_weight=20)
+- **Hypothesis:** Scoring is *only* on pressure. Push p_weight from 5 → 20 so velocity loss becomes negligible. Model can specialize on pressure without distraction.
+- **Change:** `--warm_start v9 --lr 1e-5 --surf_weight 40 --p_weight 20.0`.
+- **Result:** best ep8 `val/loss=4.40, avg_mae_surf_p=58.22` — virtually tied with v9 (58.23). W&B: `askeladd/v10-ponly`.
+- **Verdict:** marginal. v10 does NOT substantially beat v9. Dropping velocity loss too aggressively loses useful signal; pressure has physical coupling to velocity, so softer bias (p=5) was already near-optimum.
+- **Notes:**
+  - Ensemble experiments (v7+v8+v9, v8+v9, weighted) all tied or slightly regressed vs v9 alone (50.97) — warm-start lineage is too correlated.
+  - Ensembling works when models have *different* errors; all my lineage has ~same errors.
+
 ### 2026-04-23 — v9 polish (lr=5e-6 surf=40 p=5)
 - **Hypothesis:** v8 val 59.25 / test 51.96. Halve LR to 5e-6 (same weights) — squeeze last val points with minimal parameter changes.
 - **Change:** `--warm_start v8 --lr 5e-6` (same surf=40, p=5).
