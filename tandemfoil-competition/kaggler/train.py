@@ -47,6 +47,7 @@ class Config:
     train_subsample: int = 20000
     warmup_steps: int = 1000
     grad_clip: float = 1.0
+    resume_from: str | None = None  # path to a checkpoint to warm-start from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -93,6 +94,11 @@ model_config = dict(
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 print(f"Model: {n_params/1e6:.2f}M params")
+
+if cfg.resume_from:
+    state = torch.load(cfg.resume_from, map_location=device, weights_only=True)
+    model.load_state_dict(state)
+    print(f"Resumed from {cfg.resume_from}")
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay,
                               betas=(0.9, 0.95))
