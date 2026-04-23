@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v4 thorfinn-style (192h/6L bf16 + p-weighted surf loss)
+- **Hypothesis:** match thorfinn iter1 config (bf16 + warmup-cosine-by-steps + grad_clip + bigger model + subsample 40k) and add a 3× channel weight on surface pressure since the leaderboard metric is avg_surf_p.
+- **Change:** n_hidden 128→192, n_layers 5→6, n_head 4→8, mlp_ratio 2→4, lr 5e-4→7e-4, wd 1e-4→1e-5, betas=(0.9,0.95), surf_weight 10→20, added `surf_p_weight=3`, warmup 500 + cosine by global step, grad_clip=1.0, bf16 autocast, subsample 40k, checkpoint selection by avg mae_surf_p across splits.
+- **Result:** 2.59M params, 52s/epoch at 9.4 it/s, reached epoch 35 in 30.4 min. Best (EMA off) avg_surf_p=112.71 on val. val/loss=6.46 (worse than baseline 3.10 because scale of weighted loss changed — not directly comparable). Commit e4beb2d.
+- **Verdict:** kept on leaderboard (supersedes v3, matches baseline at ~112). Not enough improvement to catch thorfinn (77.98).
+- **Notes:**
+  - val_geom_camber_rc is the hardest split (loss ~10 vs ~3-7 for others). Geometry-interpolation hardness.
+  - Thorfinn iter1→iter2 improved 97→78 (on val) largely thanks to **EMA + smaller subsample (30k) + lower lr + longer warmup + surf_p_weight=2**. Adding EMA is the biggest known win; it's next.
+
 ### 2026-04-23 — v3 node-subsampled baseline
 - **Hypothesis:** cap nodes per training sample at 50k (keep all surface) to speed each step so we can run more epochs in the 30-min budget.
 - **Change:** added `SubsampledDataset` wrapper; cfg `train_subsample_n=50000`; `epochs=18` so cosine LR finishes inside budget. Same 128h/5L architecture.
