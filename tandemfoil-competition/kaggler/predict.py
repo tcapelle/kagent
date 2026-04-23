@@ -20,7 +20,7 @@ import yaml
 from tqdm import tqdm
 
 from data import X_DIM
-from train import Transolver
+from model import Transolver
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
