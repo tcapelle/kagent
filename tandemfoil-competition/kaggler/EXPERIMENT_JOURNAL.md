@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v6 pressure-focused fine-tune (surf=20, p_weight=2)
+- **Hypothesis:** v5 scored 57.48 test. Ensemble v3+v4+v5 regressed to 57.91 (too correlated — all same warm-start lineage). Need a model with genuinely different error characteristics. Bias v6 toward *pressure on surface* specifically: `surf_weight 10→20, p_weight 1→2` effectively makes pressure-surface loss 4× more important during finetune. Use slightly higher LR (3e-5) than v5's 1e-5 since the loss landscape shifts.
+- **Change:** warm-start from v5. `--surf_weight 20 --p_weight 2.0 --lr 3e-5`.
+- **Result:** best ep7 `val/loss=2.54, avg_mae_surf_p=64.24` (val splits 66.5/79.1/46.1/65.3). Beats v5's best val (65.38) by ~1 point. W&B: `askeladd/v6-ftpress`.
+- **Verdict:** kept — v6 single model better than v5 single on 3/4 splits. Critically, v6 improves *single_in_dist* from 69.25 → 66.54 which was my weakest axis vs thorfinn.
+- **Notes:**
+  - Learned from ensemble v3+v4+v5 experiment: correlated lineage doesn't help. Must change loss or arch.
+  - val_loss is 2× higher than v5 because surf_weight now scales the loss differently — avg_surf_p is the consistent metric.
+  - Next: submit v6 solo and a fresh ensemble v5+v6. v6 has different loss → different errors → should finally decorrelate and boost.
+
 ### 2026-04-23 — v5 fourth fine-tune (lr=1e-5)
 - **Hypothesis:** v4 got to val=68.89 (test 60.06) with lr=2e-5 over 8 epochs. Drop LR by 2x again — v3→v4 gave ~5 val-points, v4→v5 should give ~2-3.
 - **Change:** `--warm_start checkpoints/best.pt --lr 1e-5` (best.pt = v4).
