@@ -202,14 +202,14 @@ class Transolver(nn.Module):
 # Training
 # ---------------------------------------------------------------------------
 
-MAX_TIMEOUT = 30.0  # minutes
+MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 
 
 @dataclass
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 2
     surf_weight: float = 10.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
@@ -248,9 +248,9 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=128,
-    n_layers=5,
-    n_head=4,
+    n_hidden=256,
+    n_layers=8,
+    n_head=8,
     slice_num=64,
     mlp_ratio=2,
     output_fields=["Ux", "Uy", "p"],
@@ -346,7 +346,8 @@ for epoch in range(MAX_EPOCHS):
         val_vol = val_surf = 0.0
         mae_surf = torch.zeros(3, device=device)
         mae_vol = torch.zeros(3, device=device)
-        n_surf = n_vol = n_vb = 0
+        l2_vel_all = 0.0
+        n_surf = n_vol = n_vb = n_all = 0
 
         with torch.no_grad():
             for x, y, is_surface, mask in vloader:
@@ -373,16 +374,24 @@ for epoch in range(MAX_EPOCHS):
                 n_surf += surf_mask.sum().item()
                 n_vol += vol_mask.sum().item()
 
+                # L2 velocity error (Ux, Uy) in physical units, averaged over all real nodes
+                vel_diff_sq = (pred_orig[..., :2] - y[..., :2]) ** 2
+                l2_vel = vel_diff_sq.sum(-1).sqrt()
+                l2_vel_all += (l2_vel * mask).sum().item()
+                n_all += mask.sum().item()
+
         val_vol /= max(n_vb, 1)
         val_surf /= max(n_vb, 1)
         split_loss = val_vol + cfg.surf_weight * val_surf
         mae_surf /= max(n_surf, 1)
         mae_vol /= max(n_vol, 1)
+        l2_error = l2_vel_all / max(n_all, 1)
 
         split_metrics[split_name] = {
             f"{split_name}/vol_loss": val_vol,
             f"{split_name}/surf_loss": val_surf,
             f"{split_name}/loss": split_loss,
+            f"{split_name}/l2_error": l2_error,
             f"{split_name}/mae_vol_Ux": mae_vol[0].item(),
             f"{split_name}/mae_vol_Uy": mae_vol[1].item(),
             f"{split_name}/mae_vol_p": mae_vol[2].item(),
@@ -393,12 +402,16 @@ for epoch in range(MAX_EPOCHS):
         val_loss_sum += split_loss
 
     mean_val_loss = val_loss_sum / len(val_loaders)
+    mean_l2_error = sum(
+        sm[f"{name}/l2_error"] for name, sm in split_metrics.items()
+    ) / len(val_loaders)
     dt = time.time() - t0
 
     metrics = {
         "train/vol_loss": epoch_vol,
         "train/surf_loss": epoch_surf,
         "val/loss": mean_val_loss,
+        "val/l2_error": mean_l2_error,
         "lr": scheduler.get_last_lr()[0],
         "epoch_time_s": dt,
         "global_step": global_step,
@@ -423,7 +436,7 @@ for epoch in range(MAX_EPOCHS):
     print(
         f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
         f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  "
-        f"val[{split_summary}]{tag}"
+        f"val[{split_summary}] l2={mean_l2_error:.4f}{tag}"
     )
 
 # --- Final ---
