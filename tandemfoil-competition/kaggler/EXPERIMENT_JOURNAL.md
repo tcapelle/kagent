@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v9-h96-e14 (FAILED, discarded)
+- **Hypothesis:** extend v8's trend — even smaller backbone (`n_hidden=96`) should fit more epochs in the budget, further trading capacity for cosine-cycles.
+- **Change:** `train.py` — `n_hidden: 128 → 96`, `epochs: 14 (unchanged, T_max aligned)`. First run was `epochs=18` but killed mid-epoch-1 once timing showed we'd hit timeout well before T_max, so restart with `epochs=14`.
+- **Result:** all 14 epochs completed in 29.8 min (epoch time ~128 s). Best val/loss=**2.694** (v8 2.603). **Avg val surf_p MAE 104.1 → 108.3 (+4.0%, WORSE).** W&B `kagent-tandemfoil/28dgj6w7`.
+- **Verdict:** discarded, reset code.
+- **Notes:** Capacity reduction dominated the extra-epoch gain this time. v8's 128h already sat at the knee of the capacity/epoch tradeoff — going smaller regresses every split (worst: single_in_dist +5.3%). Useful signal: the optimum is not at the smallest viable model; there is a real capacity floor. Next: test the *other* side (144h or 160h) to check whether v8 is itself at the knee, or whether slightly larger still wins.
+
 ### 2026-04-23 — v8-small-longer (KEPT)
 - **Hypothesis:** the 30-min budget is compute-bound, so a smaller backbone should free wall-clock time for more epochs — and more cosine-annealing stages pay off more than extra parameters in this regime. Iterations v4/v5/v7 all failed because they added compute that cut the epoch count.
 - **Change:** `train.py` — `n_hidden: 192 → 128`, `n_head: 6 → 4` (128/4=32 clean), `epochs: 10 → 14`. Every other knob identical to v3.
