@@ -240,7 +240,7 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 20.0
     epochs: int = 200
-    warmup_steps: int = 300
+    warmup_steps: int = 500
     grad_clip: float = 1.0
     train_subsample: int = 40000
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
@@ -248,6 +248,9 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    warm_start: str | None = None  # path to checkpoint to fine-tune from
+    surf_loss: str = "mse"           # "mse" or "l1"
+    p_weight: float = 1.0            # extra weight on pressure channel in surface loss
 
 
 
@@ -294,6 +297,10 @@ def main():
     )
 
     model = Transolver(**model_config).to(device)
+    if cfg.warm_start:
+        state = torch.load(cfg.warm_start, map_location=device, weights_only=True)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        print(f"Warm-start from {cfg.warm_start} | missing={len(missing)} unexpected={len(unexpected)}")
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
@@ -362,12 +369,15 @@ def main():
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 pred = model({"x": x})["preds"]
-                sq_err = (pred.float() - y_norm) ** 2
+                diff = pred.float() - y_norm
+                sq_err = diff ** 2
+                surf_err = diff.abs() if cfg.surf_loss == "l1" else sq_err
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
             vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            ch_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=device)
+            surf_loss = (surf_err * surf_mask.unsqueeze(-1) * ch_w).sum() / (surf_mask.sum().clamp(min=1) * ch_w.sum())
             loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
