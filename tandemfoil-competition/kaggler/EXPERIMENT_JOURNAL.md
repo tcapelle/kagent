@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v12-fullmesh-cont
+- **Hypothesis:** v11 was still improving at epoch 8 when it timed out. Continue warm-start on full mesh with `lr=5e-6` — similar to the v10 tail-of-chain recipe but with the now-fixed training regime.
+- **Change:** `train.py --resume .../model-wsxkhla1/checkpoint.pt --lr 5e-6 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `val/l2_error = 3.2544` at epoch 7 (val/loss=1.37). Gain 0.05 over v11, monotonic. W&B `alphonse/v12-fullmesh-cont` (`2xc78fxp`). **1.4% over v11 (3.30→3.25), 53.2% over v2.**
+- **Verdict:** Kept — another small but real gain; full-mesh warm-start still has juice.
+- **Notes:** At 4.3 min/epoch for full mesh we only get ~7 epochs per run but each one moves the needle. Each `re_rand` and `camber_cruise` split continues to improve, showing the OOD generalisation is still getting better.
+
 ### 2026-04-23 — v11-fullmesh-breakthrough (MAJOR WIN)
 - **Hypothesis:** Training has been using `train_max_points=80_000` random subsample while val/predict use the full mesh (up to ~240K nodes). That's a distribution mismatch — the PhysicsAttention slice weights are computed on a different density of nodes between train and val. Warm-start from v10 with `train_max_points=0` (no subsample, full mesh) and `batch_size=2` should close this gap.
 - **Change:** `train.py --resume .../model-csvexb95/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2` — otherwise identical recipe. Epoch time ~4.3 min instead of 2.1 min, so only 8 epochs in 30 min.
