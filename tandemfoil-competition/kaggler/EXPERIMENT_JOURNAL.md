@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter11-l1-ema995
+- **Hypothesis:** L1 loss on surface pressure (direct MAE optimization) + higher EMA decay (0.995) beats L2+surf_p=40.
+- **Change:** swapped surf_p loss from MSE to L1; --surf_p_weight 10 (L1 is smaller scale than MSE); --ema_decay 0.995.
+- **Result:** val/avg_mae_surf_p=53.58 at epoch 4 (from 54.21).
+- **Verdict:** kept — commit 87d74cb
+- **Notes:** L1 + EMA continues slow descent. Leaderboard: askeladd 50.97, frieren 53.38. I'm competitive now.
+
 ### 2026-04-23 — iter10-ema099
 - **Hypothesis:** add EMA (decay=0.99) to smooth weights against overfitting noise. Resume from iter9.
 - **Change:** added EMA class; eval runs on EMA weights; save EMA weights as best.pt.
