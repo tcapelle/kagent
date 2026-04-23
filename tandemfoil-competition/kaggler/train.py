@@ -226,22 +226,30 @@ class Transolver(nn.Module):
 # Training
 # ---------------------------------------------------------------------------
 
-MAX_TIMEOUT = 30.0  # minutes
+MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 
 
 @dataclass
 class Config:
-    lr: float = 5e-4
-    weight_decay: float = 1e-4
+    lr: float = 7e-4
+    weight_decay: float = 1e-5
+    beta1: float = 0.9
+    beta2: float = 0.95
     batch_size: int = 4
-    surf_weight: float = 10.0
-    epochs: int = 18
-    n_hidden: int = 128
-    n_layers: int = 5
-    n_head: int = 4
+    surf_weight: float = 20.0
+    # Per-channel weights applied on top of surf_weight (Ux, Uy, p). The competition
+    # leaderboard ranks by avg_surf_p — boost pressure so the model focuses there.
+    surf_p_weight: float = 3.0
+    epochs: int = 100  # effectively bounded by MAX_TIMEOUT
+    n_hidden: int = 192
+    n_layers: int = 6
+    n_head: int = 8
     slice_num: int = 64
-    mlp_ratio: int = 2
-    train_subsample_n: int = 50000  # cap nodes per training sample (keeps all surface)
+    mlp_ratio: int = 4
+    warmup_steps: int = 500
+    grad_clip: float = 1.0
+    use_amp: bool = True
+    train_subsample_n: int = 40000
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -297,8 +305,27 @@ def main():
     model, model_config = build_model(cfg)
     model = model.to(device)
     n_params = sum(p.numel() for p in model.parameters())
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    print(f"Model: {n_params/1e6:.2f}M params")
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay,
+        betas=(cfg.beta1, cfg.beta2),
+    )
+    steps_per_epoch = max(1, len(train_loader))
+    total_steps = steps_per_epoch * MAX_EPOCHS
+
+    def lr_lambda(step):
+        if step < cfg.warmup_steps:
+            return (step + 1) / max(1, cfg.warmup_steps)
+        progress = (step - cfg.warmup_steps) / max(1, total_steps - cfg.warmup_steps)
+        import math
+        return 0.5 * (1.0 + math.cos(progress * math.pi))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+
+    use_amp = cfg.use_amp and torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    amp_dtype = torch.bfloat16 if use_amp else torch.float32
+    print(f"AMP: {use_amp} ({amp_dtype})")
 
     run = wandb.init(
         entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -324,7 +351,7 @@ def main():
     wandb.define_metric("lr", step_metric="global_step")
 
     model_dir = Path(f"models/model-{run.id}")
-    model_dir.mkdir(parents=True)
+    model_dir.mkdir(parents=True, exist_ok=True)
     model_path = model_dir / "checkpoint.pt"
     with open(model_dir / "config.yaml", "w") as f:
         yaml.dump(model_config, f)
@@ -344,6 +371,9 @@ def main():
         epoch_vol = epoch_surf = 0.0
         n_batches = 0
 
+        # Channel weights for surface loss (Ux, Uy, p) — bias toward pressure.
+        surf_ch_w = torch.tensor([1.0, 1.0, cfg.surf_p_weight], device=device)
+
         for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             is_surface = is_surface.to(device, non_blocking=True)
@@ -352,26 +382,32 @@ def main():
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-            pred = model({"x": x})["preds"]
-            sq_err = (pred - y_norm) ** 2
+            with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=use_amp):
+                pred = model({"x": x})["preds"]
+                sq_err = (pred.float() - y_norm) ** 2
 
-            vol_mask = mask & ~is_surface
-            surf_mask = mask & is_surface
-            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-            loss = vol_loss + cfg.surf_weight * surf_loss
+                vol_mask = mask & ~is_surface
+                surf_mask = mask & is_surface
+                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+                # Channel-weighted surface loss, then average over 3 channels for comparable scale.
+                surf_err_weighted = sq_err * surf_ch_w.view(1, 1, 3)
+                surf_loss = (surf_err_weighted * surf_mask.unsqueeze(-1)).sum() / (surf_mask.sum().clamp(min=1) * surf_ch_w.mean())
+                loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
             loss.backward()
+            if cfg.grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
+            scheduler.step()
             global_step += 1
-            wandb.log({"train/loss": loss.item(), "global_step": global_step})
+            wandb.log({"train/loss": loss.item(), "global_step": global_step,
+                       "lr": scheduler.get_last_lr()[0]})
 
             epoch_vol += vol_loss.item()
             epoch_surf += surf_loss.item()
             n_batches += 1
 
-        scheduler.step()
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
@@ -395,7 +431,9 @@ def main():
                     x = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                    pred = model({"x": x})["preds"]
+                    with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=use_amp):
+                        pred = model({"x": x})["preds"]
+                    pred = pred.float()
                     sq_err = (pred - y_norm) ** 2
 
                     vol_mask = mask & ~is_surface
@@ -431,12 +469,15 @@ def main():
             val_loss_sum += split_loss
 
         mean_val_loss = val_loss_sum / len(val_loaders)
+        # Checkpoint by avg surface-p MAE across splits — matches leaderboard metric.
+        avg_surf_p = sum(sm[f"{n}/mae_surf_p"] for n, sm in split_metrics.items()) / len(split_metrics)
         dt = time.time() - t0
 
         metrics = {
             "train/vol_loss": epoch_vol,
             "train/surf_loss": epoch_surf,
             "val/loss": mean_val_loss,
+            "val/avg_surf_p": avg_surf_p,
             "lr": scheduler.get_last_lr()[0],
             "epoch_time_s": dt,
             "global_step": global_step,
@@ -446,9 +487,9 @@ def main():
         wandb.log(metrics)
 
         tag = ""
-        if mean_val_loss < best_val:
-            best_val = mean_val_loss
-            best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
+        if avg_surf_p < best_val:
+            best_val = avg_surf_p
+            best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "avg_surf_p": avg_surf_p}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
             torch.save(model.state_dict(), model_path)
