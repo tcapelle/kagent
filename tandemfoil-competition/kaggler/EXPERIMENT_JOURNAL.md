@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter13-l1w60
+- **Hypothesis:** push L1 surf_p weight higher (60 vs 30).
+- **Change:** --surf_p_weight 60.
+- **Result:** val/avg_mae_surf_p=52.57 at epoch 4 (from 52.84).
+- **Verdict:** kept — diminishing returns (-0.27 vs prev -0.74).
+- **Notes:** Plateau approaching. Next: try dropout for regularization or L1 on volume too.
+
 ### 2026-04-23 — iter12-l1w30
 - **Hypothesis:** higher L1 surf_p weight (30 vs 10) pushes further.
 - **Change:** --surf_p_weight 30.
