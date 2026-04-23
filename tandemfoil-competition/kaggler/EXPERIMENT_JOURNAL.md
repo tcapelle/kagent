@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v5 add EMA + sub30k + warmup1000
+- **Hypothesis:** EMA of weights is thorfinn iter2's big win (97→78 on val). Add it + thorfinn iter2 tweaks (sub30k, warmup 1000, lr 5e-4).
+- **Change:** `EMA(decay=0.999)` class; swap to EMA weights before validation and save EMA state; restore live weights for next epoch. train_subsample_n 40k→30k, warmup 500→1000, lr 7e-4→5e-4. Everything else from v4.
+- **Result:** best val avg_surf_p=96.13 at epoch 43, val/loss=4.95 (improvement from v4's 112.71 / 6.46). Reached 43 epochs in 30 min. Commit e2f2217.
+- **Verdict:** kept — biggest single-run win so far, saves predictions automatically.
+- **Notes:**
+  - Early epochs (1-5) look terrible because EMA weights start from random init, so shadow ≈ random. By epoch 20+ EMA is well-calibrated and starts winning over live weights.
+  - `val_geom_camber_rc` remains the hardest split (8.66 vs 2.4-5.8 others). Geometry-interpolation hard.
+  - Next: ensemble v5 with a diverse-architecture run (128h/5L) — frieren did exactly this and won #1.
+
 ### 2026-04-23 — v4 thorfinn-style (192h/6L bf16 + p-weighted surf loss)
 - **Hypothesis:** match thorfinn iter1 config (bf16 + warmup-cosine-by-steps + grad_clip + bigger model + subsample 40k) and add a 3× channel weight on surface pressure since the leaderboard metric is avg_surf_p.
 - **Change:** n_hidden 128→192, n_layers 5→6, n_head 4→8, mlp_ratio 2→4, lr 5e-4→7e-4, wd 1e-4→1e-5, betas=(0.9,0.95), surf_weight 10→20, added `surf_p_weight=3`, warmup 500 + cosine by global step, grad_clip=1.0, bf16 autocast, subsample 40k, checkpoint selection by avg mae_surf_p across splits.
