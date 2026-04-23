@@ -41,9 +41,13 @@ MAX_TIMEOUT = 30.0  # minutes
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 8
     surf_weight: float = 10.0
-    epochs: int = 50
+    epochs: int = 25
+    # Training-only: subsample to at most this many non-surface nodes per sample.
+    # All surface nodes are always kept. 0 = no subsampling.
+    train_subsample: int = 40000
+    bf16: bool = True
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -60,19 +64,40 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
 
-loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
+def subsample_collate(batch):
+    """Per-sample random subsampling: keep every surface node, randomly
+    pick up to `cfg.train_subsample` non-surface nodes, then pad via pad_collate.
+    Cuts per-batch tokens from ~500k to ~150k for big meshes with minimal
+    information loss (surface retained; interior is still densely sampled)."""
+    if cfg.train_subsample <= 0:
+        return pad_collate(batch)
+    keep_n = cfg.train_subsample
+    out = []
+    for x, y, is_surf in batch:
+        surf_idx = torch.nonzero(is_surf, as_tuple=False).squeeze(-1)
+        vol_idx = torch.nonzero(~is_surf, as_tuple=False).squeeze(-1)
+        if vol_idx.numel() > keep_n:
+            perm = torch.randperm(vol_idx.numel())[:keep_n]
+            vol_idx = vol_idx[perm]
+        idx = torch.cat([surf_idx, vol_idx])
+        out.append((x[idx], y[idx], is_surf[idx]))
+    return pad_collate(out)
+
+
+loader_kwargs = dict(num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
 
 if cfg.debug:
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              shuffle=True, **loader_kwargs)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True,
+                              collate_fn=subsample_collate, **loader_kwargs)
 else:
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              sampler=sampler, **loader_kwargs)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, sampler=sampler,
+                              collate_fn=subsample_collate, **loader_kwargs)
 
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False,
+                     collate_fn=pad_collate, **loader_kwargs)
     for name, ds in val_splits.items()
 }
 
@@ -146,14 +171,15 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2
+        with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=cfg.bf16):
+            pred = model({"x": x})["preds"]
+            sq_err = (pred.float() - y_norm) ** 2
 
-        vol_mask = mask & ~is_surface
-        surf_mask = mask & is_surface
-        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-        loss = vol_loss + cfg.surf_weight * surf_loss
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -189,7 +215,9 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
+                with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=cfg.bf16):
+                    pred = model({"x": x})["preds"]
+                pred = pred.float()
                 sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
