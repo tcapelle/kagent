@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v13-fullmesh-lr3e6
+- **Hypothesis:** Standard warm-start tail; drop LR to 3e-6. At this point gains are tiny but each extra pass on full mesh has been worth it.
+- **Change:** `train.py --resume .../model-2xc78fxp/checkpoint.pt --lr 3e-6 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `val/l2_error = 3.2257` at epoch 8. Gain 0.03 over v12. W&B `alphonse/v13-fullmesh-lr3e6` (`2f3iycuq`). **0.9% over v12, 53.6% over v2.**
+- **Verdict:** Kept — another small, monotonic gain.
+- **Notes:** Full-mesh gains per iteration: v11 3.30, v12 3.25 (-0.05), v13 3.23 (-0.03). Curve is flattening. Considering switching to test-time ensembles (multiple seeds of full-mesh fine-tune) next.
+
 ### 2026-04-23 — v12-fullmesh-cont
 - **Hypothesis:** v11 was still improving at epoch 8 when it timed out. Continue warm-start on full mesh with `lr=5e-6` — similar to the v10 tail-of-chain recipe but with the now-fixed training regime.
 - **Change:** `train.py --resume .../model-wsxkhla1/checkpoint.pt --lr 5e-6 --train_max_points 0 --batch_size 2`.
