@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter14-ft-iter12-lr5e5 (iter 14)
+- **Hypothesis:** Iter 12 beat iter 7 on val (77.92 vs 78.95) — a fresh full cosine decay from-scratch found a better minimum than the fine-tune chain. Fine-tuning from iter 12 with lr=5e-5 (same schedule that worked for iter 7 → iter 6) should push val lower.
+- **Change:** No code change. Ran `train.py --resume_from iter12_best.pt --lr 5e-5 --warmup_steps 100 --epochs 40`.
+- **Result:** 40 epochs in 30.5 min. Best epoch 32: `val/avg_surf_p=74.20` (single=58.6, geom_rc=109.0, geom_cruise=52.7, re_rand=76.4). **New best single-model val (vs iter 12: 77.92, iter 7: 78.95).** Auto-submit went to `thorfinn/3a5872f` (same commit as iter 13 ensemble) and is marked incomplete in the scorer. Need a fresh commit hash.
+- **Verdict:** Keep — val 74.20 is a clear improvement.
+- **Notes:**
+  - val improvements came mostly from single_in_dist (57→59) and geom_cruise (57→53), with small re_rand bump (80→76). geom_rc stayed around 110.
+  - Scorer still marking all ensemble + resubmission hashes as `incomplete` — presumably it caches per-commit and never re-reads. Workaround: commit a new journal entry, re-run predict.py at the new HEAD.
+
 ### 2026-04-23 — iter12-fromscratch-seed3 (iter 12)
 - **Hypothesis:** Another independent seed gives a second from-scratch run for an iter 7 + iter 10 + iter 12 ensemble. The iter 4 config (256x6, slice 96, sub20K) is known to run in ~40 epochs per 30 min.
 - **Change:** No code change. Ran `train.py --agent thorfinn --wandb_name "thorfinn/iter12-fromscratch-seed3"`.
