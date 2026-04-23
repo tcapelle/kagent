@@ -48,6 +48,8 @@ class Config:
     epochs: int = 35
     grad_clip: float = 1.0
     loss_type: str = "mse"  # mse | l1 | smoothl1
+    # Transolver physics-attention slice count (architecture).
+    slice_num: int = 64
     # Training-only: subsample to at most this many non-surface nodes per sample.
     # All surface nodes are always kept. 0 = no subsampling.
     train_subsample: int = 40000
@@ -114,7 +116,7 @@ model_config = dict(
     n_hidden=192,
     n_layers=6,
     n_head=6,
-    slice_num=64,
+    slice_num=cfg.slice_num,
     mlp_ratio=2,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
