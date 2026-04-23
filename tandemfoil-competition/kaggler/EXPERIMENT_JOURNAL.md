@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v13-sw5 (BIG WIN — KEPT)
+- **Hypothesis:** v2 and v12 both pushed `surf_weight` UP and both failed. Maybe the arrow points the OTHER way: letting the volume loss dominate training could give volume features enough capacity to contextualise the surface prediction (wake-aware pressure).
+- **Change:** `train.py` — `surf_weight: 10 → 5`. All other knobs identical to v10 (h=160, epochs=12).
+- **Result:** all 12 epochs completed in 31.3 min. **Avg val surf_p MAE 104.1 → 99.7 (-4.2%) — broke the plateau, crossed under 100 for the first time.** All 4 splits improved:
+    - `val_single_in_dist`: 121.8 → 117.9 (-3.2%)
+    - `val_geom_camber_rc`: 118.7 → **108.6 (-8.5%)**
+    - `val_geom_camber_cruise`: 79.6 → 77.7 (-2.4%)
+    - `val_re_rand`: 96.4 → 94.8 (-1.7%)
+  W&B `kagent-tandemfoil/a7x2spsc`.
+- **Verdict:** kept. Ckpt committed.
+- **Notes:** Cumulative gain from baseline is now **120.4 → 99.7 (-17.2%)**. The lesson inverts what v2/v12 suggested: the **stock `surf_weight=10` was already too high**, drowning out volume gradient signal. v2's earlier failure combined Huber + p-weight with over-weighted surface, so it couldn't see the volume-starvation effect in isolation. Plateau-breaker. Try `surf_weight=2` or `3` next — if the trend continues, even less surface emphasis wins.
+
 ### 2026-04-23 — v12-sw15 (FAILED, discarded)
 - **Hypothesis:** push past the avg=104 plateau by up-weighting the surface loss (surf_weight 10→15) since the ranking metric is surface-p MAE.
 - **Change:** `train.py` — `surf_weight: 10 → 15`, everything else v10-identical.
