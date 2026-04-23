@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter5: ensemble iter3+iter4 (equal weights)
+- **Hypothesis:** Simple average of iter3 (82.24 surf_p) and iter4 (78.73) predictions. Typically ensembling two decorrelated strong models improves by 1-3%. iter3 is 128×5 and iter4 is 192×6 so architectural diversity is real.
+- **Change:** Added `ensemble.py` that averages per-sample predictions from given commits, writes to a new dir keyed on current HEAD. Commit `25ebb0c`, no training.
+- **Result:** scorer still marking "incomplete" at time of writing; will update.
+- **Verdict:** pending.
+
 ### 2026-04-23 — iter4: 192x6 + 3-ep warmup + 35 epochs
 - **Hypothesis:** iter3's 128x5 plateaued around 1.9 val/loss. A larger 192×6 model with proper warmup (iter2's failure was a cold start with aggressive cosine) should unlock more capacity without the convergence issues. Thorfinn uses 192x6 and is leading on test.
 - **Change:** `train.py` n_hidden=192, n_layers=6, n_head=6, slice_num=64 (matches thorfinn's rumored config). Added `SequentialLR(LinearLR warmup 3 epochs + CosineAnnealingLR)`. `epochs=35` (46s/ep budget, ~27 min). Reverted iter2's Fourier features in `model.py`. Commit `1509e10`, run `29qm6q2b`.
