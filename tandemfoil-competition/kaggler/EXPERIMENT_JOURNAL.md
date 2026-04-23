@@ -22,11 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-23 — iter5: ensemble iter3+iter4 (equal weights)
-- **Hypothesis:** Simple average of iter3 (82.24 surf_p) and iter4 (78.73) predictions. Typically ensembling two decorrelated strong models improves by 1-3%. iter3 is 128×5 and iter4 is 192×6 so architectural diversity is real.
+### 2026-04-23 — iter6: weighted ensemble iter3+iter4 (0.3/0.7) — 🥇 #1
+- **Hypothesis:** iter5 equal-weight avg was still "incomplete" but iter4 is stronger; weighting toward the stronger model (0.3 iter3 + 0.7 iter4) should preserve iter4's edge while pulling from iter3's diversity on specific examples.
+- **Change:** `python ensemble.py --sources 2c929ae 1509e10 --weights 0.3 0.7`. No model training. Commit `c961818`.
+- **Result:** **avg_surf_p = 76.54, rank #1**, beating thorfinn's 77.98 by 1.44. Per-split: single_in_dist=61.89, geom_rc=91.72, geom_cruise=57.30, re_rand=95.25. Dominates on the two hardest OOD splits (rc, re_rand); thorfinn still better on cruise and single_in_dist.
+- **Verdict:** kept 🎉.
+- **Notes:** Ensemble improved over iter4 alone by 2.8% (78.73 → 76.54). Confirms the two models have meaningfully uncorrelated errors. Architectural diversity (128×5 vs 192×6) + different LR schedules (50 ep cosine vs 35 ep warmup+cosine) gave the decorrelation.
+
+### 2026-04-23 — iter5: ensemble iter3+iter4 (equal weights 0.5/0.5)
+- **Hypothesis:** Simple average of iter3 (82.24 surf_p) and iter4 (78.73) predictions.
 - **Change:** Added `ensemble.py` that averages per-sample predictions from given commits, writes to a new dir keyed on current HEAD. Commit `25ebb0c`, no training.
-- **Result:** scorer still marking "incomplete" at time of writing; will update.
-- **Verdict:** pending.
+- **Result:** Never scored before iter6 surpassed it; superseded.
+- **Verdict:** superseded by iter6's 0.3/0.7 weighting.
 
 ### 2026-04-23 — iter4: 192x6 + 3-ep warmup + 35 epochs
 - **Hypothesis:** iter3's 128x5 plateaued around 1.9 val/loss. A larger 192×6 model with proper warmup (iter2's failure was a cold start with aggressive cosine) should unlock more capacity without the convergence issues. Thorfinn uses 192x6 and is leading on test.
