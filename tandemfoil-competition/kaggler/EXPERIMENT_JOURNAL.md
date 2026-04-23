@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v2 warm-start fine-tune
+- **Hypothesis:** v1 was still descending at the 30min cap. Warm-starting from v1's epoch-8 checkpoint with lower LR (2e-4) and skipping validation on odd epochs (val_every=2) should effectively extend training by ~8 epochs.
+- **Change:** `train.py` adds `--warm_start` to load checkpoint before optimizer init, `--val_every` to skip validations, and auto-val near timeout.
+- **Result:** best ep6 `val/loss=2.00, avg_mae_surf_p=94.07` (val splits 109/111/66/89). Down from v1's 136.16 ⇒ **31% improvement**. val on ep7 (95.05) and ep8 (100.76) regressed slightly — starting to overfit with warm lr. W&B: `askeladd/v2-warmstart`. Commit `6a1d52b`.
+- **Verdict:** kept — huge win; beats v1 across all splits. But auto-submit raced the scorer again (marked "incomplete"). Re-submitting at new commit.
+- **Notes:**
+  - v1 tests vs v2 tests: geom_cruise was 86.75 → 66.68 (-23%), re_rand 114.60 → 89.24 (-22%). single_in_dist val dropped 186→109 (-41%).
+  - Train loss actually *increased* on ep4/7 while val dropped — likely WeightedRandomSampler variance across epochs.
+  - Next: ensemble v1+v2 (sure gain), then v3 bigger model from scratch for diversity.
+
 ### 2026-04-23 — v1 baseline Transolver + AMP
 - **Hypothesis:** Transolver with pressure-aware attention plus bf16 AMP should fit 6-8 epochs in 30min budget and beat the naive copy-baseline. Scoring metric is `avg/mae_surf_p` (surface pressure MAE across 4 test splits).
 - **Change:** refactored `train.py` into a `main()` guard, added `apply_no_slip`, bf16 AMP, checkpoint selection by `avg_mae_surf_p` (was `val/loss`). `predict.py` implemented end-to-end with Transolver loading + config.yaml. `n_hidden=192, n_layers=6, slice_num=128, bs=2, 1.73M params`.
