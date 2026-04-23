@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter9 + iter12: 3rd diverse model + 3-way ensemble
+- **Hypothesis:** Add a 3rd model (160×5, slice_num=96, 8 heads — architecturally distinct from iter3's 128×5 slice=64 and iter4's 192×6 slice=64) to gain ensemble diversity. Then 3-way ensemble.
+- **Change:** iter9 `train.py` n_hidden=160, n_layers=5, n_head=8, slice_num=96, epochs=40 (hit timeout at ~e35), warmup 3. Best val/loss 2.06 at epoch 32 (30.9 min, 24GB). Commit `a9406a8` code, run `xf92pczs`.
+- iter12 runs `ensemble.py --sources 2c929ae 1509e10 d8f4d4f --weights 0.3 0.5 0.2` (iter3 / iter4 / iter9). Commit `dde69ee`.
+- **Result:** 3-way ensemble scored **75.43**, improvement over 2-way 76.43 (0.4/0.6). Also tried (0.333×3)→75.56, (0.25/0.55/0.2)→75.48 — sweep found 0.3/0.5/0.2 is local optimum among tried configs.
+- **Verdict:** kept. Per-split on iter12: single_in_dist=61.12, geom_rc=91.00, geom_cruise=55.51, re_rand=94.10. Compared to iter11 2-way (76.43): all splits improved slightly.
+- **Notes:** iter9 alone wasn't great (val/loss 2.06 vs iter4's 1.91), but added genuine decorrelation due to different head count / slice count. Leaderboard context at submission time: askeladd 64.79, thorfinn 72.61, me 75.43 (rank 3). Further ideas: train more diverse models (residual prediction, different loss), greater-than-40-epoch training, ensemble distillation.
+
 ### 2026-04-23 — iter6: weighted ensemble iter3+iter4 (0.3/0.7) — 🥇 #1
 - **Hypothesis:** iter5 equal-weight avg was still "incomplete" but iter4 is stronger; weighting toward the stronger model (0.3 iter3 + 0.7 iter4) should preserve iter4's edge while pulling from iter3's diversity on specific examples.
 - **Change:** `python ensemble.py --sources 2c929ae 1509e10 --weights 0.3 0.7`. No model training. Commit `c961818`.
