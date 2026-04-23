@@ -273,6 +273,7 @@ class Config:
     use_amp: bool = True
     train_subsample_n: int = 30000
     ema_decay: float = 0.999
+    warm_start: str = ""  # path to .pt checkpoint to warm-start from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -327,6 +328,10 @@ def main():
 
     model, model_config = build_model(cfg)
     model = model.to(device)
+    if cfg.warm_start:
+        sd = torch.load(cfg.warm_start, map_location=device, weights_only=True)
+        model.load_state_dict(sd)
+        print(f"Warm-started from {cfg.warm_start}")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model: {n_params/1e6:.2f}M params")
 
