@@ -38,10 +38,11 @@ MAX_TIMEOUT = 30.0  # minutes
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 8
     surf_weight: float = 10.0
-    epochs: int = 50
-    n_vol_train: int = 40000  # subsample volume points during training (0=keep all)
+    epochs: int = 25
+    warmup_epochs: int = 2
+    n_vol_train: int = 20000  # subsample volume points during training (0=keep all)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -125,7 +126,9 @@ model_config = dict(
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=max(1, cfg.warmup_epochs))
+cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, MAX_EPOCHS - cfg.warmup_epochs))
+scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmup, cosine], milestones=[cfg.warmup_epochs])
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
