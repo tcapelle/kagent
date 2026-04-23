@@ -43,7 +43,8 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 8
     surf_weight: float = 10.0
-    epochs: int = 25
+    epochs: int = 50
+    grad_clip: float = 1.0
     # Training-only: subsample to at most this many non-surface nodes per sample.
     # All surface nodes are always kept. 0 = no subsampling.
     train_subsample: int = 40000
@@ -183,6 +184,8 @@ for epoch in range(MAX_EPOCHS):
 
         optimizer.zero_grad()
         loss.backward()
+        if cfg.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
