@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v5-slice128 (FAILED, discarded)
+- **Hypothesis:** doubling-ish slice token count (96 → 128) gives finer spatial slicing without much compute cost.
+- **Change:** `train.py` — `slice_num: 96 → 128`.
+- **Result:** best epoch 8, val/loss=3.070 (v3 2.634). **Avg val surf_p MAE 107.9 → 123.2 (+14.2%, WORSE).** Wall 33.1 min (8 epochs). Peak VRAM 85 GB (v3 was 71 GB). W&B `kagent-tandemfoil/1ifpng5a`.
+- **Verdict:** discarded, reset code.
+- **Notes:** Same failure mode as v4 — the extra compute from larger slice-weight tensor (`[B,H,N,G]` doubled) slowed each epoch by ~20% (251 s vs 210 s), dropping us from 9 → 8 epochs. Net: fewer cosine-schedule steps, incomplete LR decay. **Rule for this codebase: compute-per-epoch is the binding constraint — any change that slows each batch needs a matching `epochs` adjustment, and usually nets negative.** Next iteration should be a compute-neutral tweak (hparam, optimizer, EMA, data aug done off-device).
+
 ### 2026-04-23 — v4-eidetic (FAILED, discarded)
 - **Hypothesis:** Transolver++ Eidetic attention (Ada-Temp per-point temperature + Rep-Slice Gumbel-Softmax slice weights) gives +12.6% surface-p on DrivAerNet++ in the paper. Swap the default `PhysicsAttention` for `PhysicsAttentionEidetic` behind a `use_eidetic` flag (default True).
 - **Change:** `model.py` — added `PhysicsAttentionEidetic` class; `TransolverBlock`/`Transolver` accept `use_eidetic`. `train.py` — config flag `use_eidetic=True`, wire through `model_config`.
