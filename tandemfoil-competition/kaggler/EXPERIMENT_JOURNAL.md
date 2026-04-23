@@ -22,6 +22,24 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter6-ft-from-iter4 (iter 6)
+- **Hypothesis:** Iter 4 best was at epoch 38/40 and still trending down — more training steps at a lower LR on the same architecture should unlock another few points.
+- **Change:** `train.py` — added a `resume_from` CLI flag that `torch.load`s the provided checkpoint after model init. Ran with `--resume_from iter4_best.pt --lr 2e-4 --warmup_steps 200 --epochs 40` (same model_config as iter 4).
+- **Result:** 40 epochs in 30.5 min. Best epoch 29: `val/avg_surf_p=80.38` (single=62.0, geom_rc=117.5, geom_cruise=60.4, re_rand=81.6). Submission `thorfinn/5ea7606` (score pending at journal time; val clearly beats iter 4's 85.63).
+- **Verdict:** Keep (pending test score) — val is 5.25 points better than iter 4 val; historical val/test gap is ~20 points so this should land ~67-68 on test.
+- **Notes:**
+  - Peak LR 2e-4 is still too high for true fine-tuning — epochs 1-10 bounced between 85 and 96 before cosine pulled it down. Next time start at 1e-4 or 5e-5 to stabilise the resume.
+  - Train loss collapsed fast (surf MSE 0.02→0.01, vol 0.05→0.04). The model is memorising training; val ceiling is now the bottleneck.
+  - `geom_camber_rc` ceiling is ~117 val — same wall as iter 5 hit from scratch. This is genuine OOD generalisation difficulty, not capacity.
+  - Askeladd `re_rand=60.86` on test is still unbeaten — that's the key gap.
+
+### 2026-04-23 — iter5-320x6-slice128-sub16k (iter 5, discarded)
+- **Hypothesis:** Scale up further (n_hidden 320, slice_num 128) on a 16K subsample. Peak VRAM was only 9.3 GB on iter 4, so plenty of headroom.
+- **Change:** `train.py` — `n_hidden=320, slice_num=128, train_subsample=16000, epochs=40`.
+- **Result:** 34 epochs in 30.4 min. Best epoch 32: `val/avg_surf_p=114.12`. **Test `avg_surf_p=94.01`** — much worse than iter 4.
+- **Verdict:** Discarded via `git reset --hard HEAD~1`. Bigger model + smaller subsample + fewer epochs → the capacity never had enough signal to use.
+- **Notes:** Lesson — scale either model or step count, not both together, when the 30-min cap fights you.
+
 ### 2026-04-23 — iter4-256x6-slice96-sub20k (iter 4)
 - **Hypothesis:** Scale the model to attack the `geom_camber_rc` and `re_rand` plateaus. Move to n_hidden=256, slice_num=96 and compensate with a 20K subsample so ~40 epochs still fit.
 - **Change:** `train.py` — model_config `n_hidden=256, slice_num=96` (n_layers=6, mlp_ratio=4, n_head=8 unchanged); `train_subsample=20000`. All else matches iter 2 (lr 5e-4, warmup 1000, surf_weight 20, surf_p_weight 2).
