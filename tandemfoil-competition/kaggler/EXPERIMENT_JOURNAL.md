@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v6-resume-lr3e5
+- **Hypothesis:** v5 was still improving at its last epoch but very slowly (last-epoch gain ≈0.006). A third warm-start round with `lr=3e-5` should squeeze out another ~0.1 l2 before we hit diminishing returns and need to switch strategies (seed ensemble / TTA).
+- **Change:** `train.py --resume checkpoints/best.pt --lr 3e-5`; added `--checkpoints p1,p2,...` support to `predict.py` for eventual ensembling (not used yet here). Committed ensemble path first so future runs can use it.
+- **Result:** Best `val/l2_error = 4.3220` at epoch 15 (val/loss=2.31). 15 more epochs of monotonic improvement; gain per epoch halved vs v5 (v5 gained ~0.37 over 15, v6 gained ~0.09). W&B `alphonse/v6-resume-lr3e5` (`x58etsc6`). Submitted at commit `5b6bd64`. **2.0% over v5 (4.41→4.32), 38% over v2.**
+- **Verdict:** Kept — still a real gain, but we've hit diminishing returns on warm-start. Time to switch approach.
+- **Notes:** Diminishing returns are clear: v3→v4 gain 0.61, v4→v5 gain 0.37, v5→v6 gain 0.09. Next move is to train a fresh model from scratch (different seed) and ensemble the two prediction streams. v5 (`axbjpfac`) and v6 (`x58etsc6`) are highly correlated (same lineage) so ensembling them directly won't help much. A fresh-from-init v7 gives us decorrelated errors.
+
 ### 2026-04-23 — v5-resume-lr1e4
 - **Hypothesis:** v4 was still improving monotonically at epoch 15 when the 30-min timeout hit (train loss ~0.11, val/l2 still falling). A warm-start from v4's best checkpoint with a fresh cosine schedule and a lower peak LR (`1e-4` vs `5e-4`) should squeeze out more gains without overshooting from the already-good weights.
 - **Change:** `train.py` — added `--resume <ckpt>` flag (loads `state_dict` into the model; EMA re-initialises to current weights, so its shadow is correct from step 0). Ran with `--resume checkpoints/best.pt --lr 1e-4`.
