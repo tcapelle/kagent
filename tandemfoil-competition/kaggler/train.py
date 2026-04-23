@@ -449,8 +449,13 @@ def main():
                     "global_step": global_step,
                 })
 
+    wandb.finish()
+
     # --- Auto-submit predictions ---
     if best_metrics and not cfg.debug:
+        # Free GPU memory so the predict subprocess has room.
+        del model, optimizer, scheduler
+        torch.cuda.empty_cache()
         import subprocess
         print("\nGenerating test predictions...")
         pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
@@ -460,8 +465,6 @@ def main():
         print(result.stdout)
         if result.returncode != 0:
             print(f"predict.py failed:\n{result.stderr[-500:]}")
-
-    wandb.finish()
 
 
 if __name__ == "__main__":
