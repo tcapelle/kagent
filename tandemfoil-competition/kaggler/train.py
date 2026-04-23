@@ -43,6 +43,7 @@ class Config:
     epochs: int = 25
     warmup_epochs: int = 2
     n_vol_train: int = 20000  # subsample volume points during training (0=keep all)
+    resume_from: str | None = None  # path to checkpoint to initialize weights from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -124,6 +125,9 @@ model_config = dict(
 )
 
 model = Transolver(**model_config).to(device)
+if cfg.resume_from:
+    model.load_state_dict(torch.load(cfg.resume_from, map_location=device, weights_only=True))
+    print(f"Resumed weights from {cfg.resume_from}")
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=max(1, cfg.warmup_epochs))
