@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter15-ft-iter14-lr3e5 (iter 15)
+- **Hypothesis:** Iter 14 (val 74.20) was improving through the cosine tail; another 30 min of fine-tune at lr=3e-5 should squeeze a couple more points.
+- **Change:** `train.py --resume_from iter14_best.pt --lr 3e-5 --warmup_steps 100 --epochs 40`.
+- **Result:** 40 epochs in 30.5 min. Best epoch 23: `val/avg_surf_p=72.09` (single=54.6, geom_rc=106.7, geom_cruise=51.7, re_rand=75.4). New best single-model val.
+- **Verdict:** Keep.
+- **Notes:**
+  - Iter 15 auto-submit wrote to `thorfinn/67e6393` — the same hash iter 14 used (HEAD hadn't moved). Scorer had already scored that hash at 64.39 from iter 14 predictions and now has stale cached results. Need a fresh commit + resubmit.
+  - Main gain still on single-in-dist and geom-cruise. geom_rc nudged to 107 (from iter 14's 109). re_rand moved only slightly (76→75).
+  - Close-cycle chain iter 4 → 12 → 14 → 15: val 85.63 → 77.92 → 74.20 → 72.09 (each a ~2-point step at progressively lower LR).
+
 ### 2026-04-23 — iter14-ft-iter12-lr5e5 (iter 14)
 - **Hypothesis:** Iter 12 beat iter 7 on val (77.92 vs 78.95) — a fresh full cosine decay from-scratch found a better minimum than the fine-tune chain. Fine-tuning from iter 12 with lr=5e-5 (same schedule that worked for iter 7 → iter 6) should push val lower.
 - **Change:** No code change. Ran `train.py --resume_from iter12_best.pt --lr 5e-5 --warmup_steps 100 --epochs 40`.
