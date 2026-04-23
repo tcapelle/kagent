@@ -25,7 +25,7 @@ KAGGLER_NAMES = [
 class Args:
     """Launch kagent kaggler pods on Kubernetes."""
     tag: str  # research tag (e.g. mar18)
-    competition: str = "cfd-competition"  # repo-relative competition directory
+    competition: str = "tandemfoil-competition"  # repo-relative competition directory
     agent_model: str = ""  # defaults to DEFAULT_AGENT_MODEL
     names: str = ""  # comma-separated kaggler names (e.g. "frieren,fern")
     n_kagglers: int = 4  # number of kagglers (ignored if --names provided)
@@ -33,7 +33,7 @@ class Args:
     repo_branch: str = "main"
     image: str = "ghcr.io/tcapelle/dev_box:477a81a"
     wandb_entity: str = "wandb-applied-ai-team"
-    wandb_project: str = "kagent-v1"
+    wandb_project: str = "kagent-tandemfoil"
     max_timeout_min: int = 30  # training timeout in minutes
     organizer: bool = False  # deploy the organizer (scoring loop)
     prepare: bool = False  # run prepare_splits.py one-shot job
