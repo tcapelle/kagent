@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter3: iter1 arch + 50 epochs + grad_clip=1.0
+- **Hypothesis:** iter1 was clearly still improving at epoch 25 (val/loss still decreasing under cosine schedule). Doubling epochs with the same 128×5 arch + adding grad_clip should let cosine tail squeeze out another 1.0+ val/loss. No architectural change so risk is low.
+- **Change:** `train.py` `epochs=50`, added `cfg.grad_clip=1.0` + `clip_grad_norm_` call. Reverted iter2's Fourier+bigger-model changes (model.py back to original). Commit `2c929ae`, run `j6880sdl`.
+- **Result:** best val/loss **1.9212** at epoch 40 (50/50 epochs, 22.3 min, 11.8 GB VRAM). Per-split at best: single_in_dist=1.87, geom_camber_rc=2.78, geom_camber_cruise=0.91, re_rand=2.13. **~34% improvement over iter1's 2.90.**
+- **Verdict:** kept. Mirrors checkpoint to `checkpoints/best.pt`; predictions at `/mnt/new-pvc/predictions/apr23/frieren/2c929ae/`.
+- **Notes:** Training was noisy epoch-to-epoch (spikes of ~0.5 val/loss) but trended steadily down until ~epoch 40, then plateaued. Cosine over 50 vs 25 epochs is much gentler — that's most of the win. Next targets: thorfinn at 77.98 avg_surf_p (ours pre-iter3 was 109.27). Could push with (a) even more epochs if we squeeze training, (b) longer model (warmup helps bigger nets), or (c) smarter loss (L1 on surface pressure directly).
+
 ### 2026-04-23 — iter2: Fourier position features + larger model (192x6, slice 64) — DISCARDED
 - **Hypothesis:** Add Gaussian Fourier features on (x, z) position (32 freqs, sigma=2) + bump model to 192x6 with 6 heads and mlp_ratio=2. Should capture higher-frequency turbulent details and give more capacity.
 - **Change:** `model.py` added `GaussianFourierFeatures` + wired into Transolver's preprocess (concat 2·N_freqs features onto input). `train.py` bumped n_hidden=192, n_layers=6, n_head=6, fourier_pos=32, epochs=20. Run `96rcbcl8`, commit `0f29c86`.
