@@ -38,14 +38,16 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 
 @dataclass
 class Config:
-    lr: float = 7e-4
+    lr: float = 5e-4
     weight_decay: float = 1e-5
     batch_size: int = 4
     surf_weight: float = 20.0
-    epochs: int = 200
-    train_subsample: int = 40000  # points per sample during training (0 = no subsample)
-    warmup_steps: int = 500
+    surf_p_weight: float = 2.0  # extra multiplier on surface pressure (primary metric)
+    epochs: int = 50
+    train_subsample: int = 30000
+    warmup_steps: int = 1000
     grad_clip: float = 1.0
+    ema_decay: float = 0.999
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -215,12 +217,14 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=use_amp):
             pred = model({"x": x_n})["preds"]
-            sq_err = (pred.float() - y_norm) ** 2
+            sq_err = (pred.float() - y_norm) ** 2  # [B,N,3]
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
-            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            # Channel weights: upweight surface pressure (primary metric)
+            ch_w = torch.tensor([1.0, 1.0, cfg.surf_p_weight], device=device)
+            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1) / 3.0
+            surf_loss = (sq_err * surf_mask.unsqueeze(-1) * ch_w).sum() / (surf_mask.sum().clamp(min=1) * ch_w.sum())
             loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
