@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter18-ft-iter16-lr1e5 (iter 18)
+- **Hypothesis:** At lr=1e-5 (half of iter 16's 2e-5), iter 18 should nudge val a few tenths lower on the same iter 16 starting point.
+- **Change:** `train.py --resume_from iter16_best.pt --lr 1e-5 --warmup_steps 50 --epochs 40`.
+- **Result:** 40 epochs. Best epoch 9: `val/avg_surf_p=71.83` — tied with iter 16. Val plateau confirmed: 71.7–72.0 range no matter the LR this low.
+- **Verdict:** Discard (same as iter 16, no meaningful gain).
+- **Notes:** Full fine-tune chain val trajectory — 85.63 (iter 4) → 80.38 (iter 6) → 78.95 (iter 7) → 77.92 (iter 12) → 74.20 (iter 14) → 72.09 (iter 15) → 71.69 (iter 16) → 71.83 (iter 18). Clean logarithmic decay; we hit the architecture's capacity floor.
+
+### 2026-04-23 — iter17-warmrestart-lr2e4 (iter 17, killed)
+- **Hypothesis:** A warm restart at lr=2e-4 (4x iter 16's peak) might knock the model out of the current basin into a better one.
+- **Change:** `--resume_from iter16_best --lr 2e-4 --warmup_steps 500 --epochs 40`.
+- **Result:** Val exploded to 97 by epoch 7 (vs 72 baseline). Disrupting a converged model with a warm LR this high is clearly wrong at this stage.
+- **Verdict:** Killed at epoch 7 to free the GPU for iter 18.
+- **Notes:** For future warm restarts, peak LR should be ≤ 5e-5.
+
 ### 2026-04-23 — iter16-solo-resubmit (iter 16 resubmit)
 - **Followup to iter 16:** Submitted iter 16 solo predictions at a fresh commit because the auto-submit and ensemble attempt both landed at already-cached commit hashes that the scorer refuses to re-score.
 
