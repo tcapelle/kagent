@@ -43,7 +43,7 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 8
     surf_weight: float = 10.0
-    epochs: int = 50
+    epochs: int = 35
     grad_clip: float = 1.0
     # Training-only: subsample to at most this many non-surface nodes per sample.
     # All surface nodes are always kept. 0 = no subsampling.
@@ -106,9 +106,9 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=128,
-    n_layers=5,
-    n_head=4,
+    n_hidden=192,
+    n_layers=6,
+    n_head=6,
     slice_num=64,
     mlp_ratio=2,
     output_fields=["Ux", "Uy", "p"],
@@ -118,7 +118,11 @@ model_config = dict(
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+# 3-epoch linear warmup (0 -> lr) then cosine to 0.
+warmup_epochs = min(3, MAX_EPOCHS // 4)
+warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1e-2, total_iters=max(warmup_epochs, 1))
+cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(MAX_EPOCHS - warmup_epochs, 1))
+scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmup, cosine], milestones=[warmup_epochs])
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
