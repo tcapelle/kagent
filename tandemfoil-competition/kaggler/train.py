@@ -24,11 +24,39 @@ import wandb
 import yaml
 from einops import rearrange
 from timm.layers import trunc_normal_
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from tqdm import tqdm
 
 from data import X_DIM, VAL_SPLIT_NAMES, pad_collate, load_data
 from viz import visualize
+
+
+class SubsampleDataset(Dataset):
+    """Keep all surface points, uniformly sample volume points to reach `target` total."""
+
+    def __init__(self, base: Dataset, target: int, generator: torch.Generator | None = None):
+        self.base = base
+        self.target = target
+        self.generator = generator
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        x, y, is_surface = self.base[idx]
+        n = x.shape[0]
+        if n <= self.target:
+            return x, y, is_surface
+        surf_idx = torch.nonzero(is_surface, as_tuple=False).squeeze(-1)
+        vol_idx = torch.nonzero(~is_surface, as_tuple=False).squeeze(-1)
+        n_surf = surf_idx.numel()
+        n_vol_keep = max(self.target - n_surf, 0)
+        if n_vol_keep >= vol_idx.numel():
+            return x, y, is_surface
+        perm = torch.randperm(vol_idx.numel(), generator=self.generator)[:n_vol_keep]
+        keep = torch.cat([surf_idx, vol_idx[perm]])
+        keep, _ = torch.sort(keep)
+        return x[keep], y[keep], is_surface[keep]
 
 
 # ---------------------------------------------------------------------------
@@ -207,11 +235,14 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
-    weight_decay: float = 1e-4
+    lr: float = 7e-4
+    weight_decay: float = 1e-5
     batch_size: int = 4
-    surf_weight: float = 10.0
-    epochs: int = 50
+    surf_weight: float = 25.0
+    epochs: int = 60
+    warmup_steps: int = 500
+    grad_clip: float = 1.0
+    train_subsample: int = 40000
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -234,12 +265,14 @@ def main():
     loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                          persistent_workers=True, prefetch_factor=2)
 
+    train_ds_sub = SubsampleDataset(train_ds, target=cfg.train_subsample)
+
     if cfg.debug:
-        train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+        train_loader = DataLoader(train_ds_sub, batch_size=cfg.batch_size,
                                   shuffle=True, **loader_kwargs)
     else:
         sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
-        train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+        train_loader = DataLoader(train_ds_sub, batch_size=cfg.batch_size,
                                   sampler=sampler, **loader_kwargs)
 
     val_loaders = {
@@ -253,9 +286,9 @@ def main():
         out_dim=3,
         n_hidden=192,
         n_layers=6,
-        n_head=4,
+        n_head=8,
         slice_num=64,
-        mlp_ratio=2,
+        mlp_ratio=4,
         output_fields=["Ux", "Uy", "p"],
         output_dims=[1, 1, 1],
     )
@@ -263,7 +296,17 @@ def main():
     model = Transolver(**model_config).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+    total_steps = max(MAX_EPOCHS * max(len(train_loader), 1), 1)
+    warmup = min(cfg.warmup_steps, max(total_steps // 20, 1))
+
+    def lr_lambda(step: int) -> float:
+        if step < warmup:
+            return (step + 1) / max(warmup, 1)
+        progress = (step - warmup) / max(total_steps - warmup, 1)
+        return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.141592653589793)).item())
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     run = wandb.init(
         entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -329,7 +372,10 @@ def main():
 
             optimizer.zero_grad()
             loss.backward()
+            if cfg.grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
+            scheduler.step()
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -337,7 +383,6 @@ def main():
             epoch_surf += surf_loss.item()
             n_batches += 1
 
-        scheduler.step()
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
