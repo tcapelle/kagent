@@ -22,6 +22,23 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v3 further fine-tune (lr=5e-5)
+- **Hypothesis:** v2 was descending at ep4/6 but overfitting at ep7/8 with lr=2e-4. Drop LR to 5e-5 and warm-start from v2 checkpoint — should be able to extract more without overfitting.
+- **Change:** only CLI args differ: `--warm_start checkpoints/best.pt --lr 5e-5`.
+- **Result:** best ep7 `val/loss=1.56, avg_mae_surf_p=73.81` (val splits 81/88/53/73). Big improvement on all splits vs v2. W&B: `askeladd/v3-warmstart2`.
+- **Verdict:** kept — new best by large margin. Continued monotonic improvement through ep7 before a slight regression at ep8.
+- **Notes:**
+  - Trajectory: v1 (ep8) → 136 → v2 (ep6) → 94 → v3 (ep7) → 74. Warm-starting + halving LR is the reliable recipe.
+  - Auto-submit overwrote the experimental `5dc1b0c` ensemble dir but the score 89.21 was already captured before (single-model v2 alone is better at 85.22).
+  - Running expected test ≈ 65-70 based on v1/v2 val-to-test ratio (~88-95%).
+
+### 2026-04-23 — ensemble v1 + v2 (5dc1b0c)
+- **Hypothesis:** Averaging v1 + v2 predictions might boost via error decorrelation.
+- **Change:** `ensemble_preds.py` — simple element-wise mean of saved test predictions.
+- **Result:** test avg_surf_p = **89.21**. Worse than v2 alone (85.22).
+- **Verdict:** discarded — v1 is a strictly-worse ancestor of v2 (warm-start lineage), so averaging pulls predictions toward v1's errors. Decorrelation requires diverse checkpoints.
+- **Notes:** Ensembling works only with diverse errors. For future ensembles use models trained from scratch with different seeds or architectures.
+
 ### 2026-04-23 — v2 warm-start fine-tune
 - **Hypothesis:** v1 was still descending at the 30min cap. Warm-starting from v1's epoch-8 checkpoint with lower LR (2e-4) and skipping validation on odd epochs (val_every=2) should effectively extend training by ~8 epochs.
 - **Change:** `train.py` adds `--warm_start` to load checkpoint before optimizer init, `--val_every` to skip validations, and auto-val near timeout.
