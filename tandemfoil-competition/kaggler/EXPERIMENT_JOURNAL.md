@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v10-resume-lr5e6-from-v9 (current best)
+- **Hypothesis:** Push the warm-start chain one more time with an even lower `lr=5e-6`. The tail-end gains are tiny but reliable — lower LR just does gentler refinement on the EMA.
+- **Change:** `train.py --resume .../model-j4xz2ho8/checkpoint.pt --lr 5e-6`.
+- **Result:** Best `val/l2_error = 4.2322` at epoch 15 (val/loss=2.34). Gain 0.024 over v9, still monotonic. W&B `alphonse/v10-resume-lr5e6` (`csvexb95`). **0.55% over v9 (4.256→4.232), 39.1% over v2.**
+- **Verdict:** Kept — new best single model. Stopping the warm-start chain here; tail gains are now ≤0.025 per 30 min and likely to hit numerical noise soon.
+
 ### 2026-04-23 — v9-resume-lr1e5-from-v8 (current best)
 - **Hypothesis:** Continue the warm-start chain one more iteration. Per-iteration gain is now ~0.03 so the expected value is small but the risk is zero — at worst we match v8.
 - **Change:** `train.py --resume .../model-j93i4dy0/checkpoint.pt --lr 1e-5` (same recipe as v8).
