@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v11-fullmesh-breakthrough (MAJOR WIN)
+- **Hypothesis:** Training has been using `train_max_points=80_000` random subsample while val/predict use the full mesh (up to ~240K nodes). That's a distribution mismatch — the PhysicsAttention slice weights are computed on a different density of nodes between train and val. Warm-start from v10 with `train_max_points=0` (no subsample, full mesh) and `batch_size=2` should close this gap.
+- **Change:** `train.py --resume .../model-csvexb95/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2` — otherwise identical recipe. Epoch time ~4.3 min instead of 2.1 min, so only 8 epochs in 30 min.
+- **Result:** Best `val/l2_error = 3.299` at epoch 8 (val/loss=1.39). **22% over v10 in one run (4.23→3.30), 52.6% over v2 baseline.** Biggest jump since v3. Split-level gains are dramatic on the OOD tracks: val_geom_camber_rc 2.98→1.70, val_re_rand 2.70→1.25, val_geom_camber_cruise 1.57→0.58. val_single_in_dist barely moved (2.09→2.03) — so the subsampling was mostly hurting OOD generalisation. W&B `alphonse/v11-resume-fullmesh-lr1e5` (`wsxkhla1`). Submitted at commit `190cc20`.
+- **Verdict:** Kept — step change.
+- **Notes:** HUGE learning — I should have tried full-mesh training much earlier. The hypothesis that subsampling "just acts like a regulariser" was wrong in this domain; it creates a real train/eval distribution gap for attention models that pool over the node set. Next move: continue warm-start on full mesh (v12).
+
 ### 2026-04-23 — v10-resume-lr5e6-from-v9 (current best)
 - **Hypothesis:** Push the warm-start chain one more time with an even lower `lr=5e-6`. The tail-end gains are tiny but reliable — lower LR just does gentler refinement on the EMA.
 - **Change:** `train.py --resume .../model-j4xz2ho8/checkpoint.pt --lr 5e-6`.
