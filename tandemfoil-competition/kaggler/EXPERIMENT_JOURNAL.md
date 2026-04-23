@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter4-resume
+- **Hypothesis:** iter3 was still improving at end. Resume from best.pt with lower LR (2e-4) for another 30 min → effectively 60 min of training, continues the descent.
+- **Change:** added --resume_from flag; lr 5e-4→2e-4; warmup 2→1.
+- **Result:** val/loss=1.5531 at epoch 21. Down from iter3's 2.19.
+- **Verdict:** kept — commit 6cb7d3a
+- **Notes:** Per-split @ epoch 21: single_in_dist=1.75, rc=2.09, cruise=0.82, re_rand=1.55. Train loss (vol=0.25, surf=0.10) now much lower than val, some overfitting, but val still improving. Next: another resume cycle at lr=1e-4.
+
 ### 2026-04-23 — iter3-bs8-vol20k
 - **Hypothesis:** bs=8 + 20K vol pts + 25 epochs + warmup LR beats iter2. More epochs should help since loss still decreasing.
 - **Change:** bs=4→8, n_vol=40K→20K, epochs=50→25, added LinearLR warmup 2ep + cosine.
