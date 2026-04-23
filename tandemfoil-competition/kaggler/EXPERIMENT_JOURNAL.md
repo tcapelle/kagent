@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v10 warmstart + L1 surf loss + p_weight=3 ⭐⭐ big jump
+- **Hypothesis:** Leaderboard jumped dramatically (askeladd 52.90, frieren 55.32, thorfinn 65.70). Leaders' W&B configs all show the same pattern: `warm_start` a converged checkpoint, then fine-tune with **L1 surface loss** (matches MAE scoring), extra **pressure-channel weight**, and **very low lr (1e-5 to 2e-5)**. v8 was already a solid pre-training; fine-tune it with this recipe.
+- **Change:** `train.py` — added `warm_start` ckpt loader, `surf_loss=l1|mse` switch, `p_weight` on the pressure channel of the surface loss. Run with `--warm_start models/model-8cufs1hi/checkpoint.pt --lr 2e-5 --surf_loss l1 --p_weight 3.0 --surf_weight 30 --warmup_steps 100 --epochs 50`.
+- **Result:** 35 epochs, best ep28. val/loss=3.90. **avg mae_surf_p = 68.86** (single=56.49, rc=96.14, cruise=49.71, re_rand=73.10). W&B run `8th4ac6t`.
+- **Verdict:** kept — 85.77 → 68.86 (-19.7 %). Every split improved hugely (single -29%, rc -15%, cruise -21%, re_rand -16%). Expected to vault from rank 6 into rank 4 or better.
+- **Notes:** The L1 loss directly matches the MAE scoring metric, and the p_weight=3 biases updates toward the hardest channel. Low lr + warmstart means gradients only nudge the model toward surface sharpness without destroying the learned representation. Next: chain another fine-tune stage from v10 with lr=1e-5 and stronger p_weight.
+
+### 2026-04-23 — v9 warmup_steps=300 (DISCARDED)
+- **Hypothesis:** v8's best was at the last epoch, so trimming warmup from 500→300 gives more time at peak lr.
+- **Change:** `train.py` — `warmup_steps 500 → 300`.
+- **Result:** 35 epochs, best ep35. val/loss=4.35. **avg sp = 114.09** (single=141, rc=132, cruise=80, re_rand=104). W&B run `o53ke0xy`.
+- **Verdict:** discarded — reset to v8. Single_in_dist catastrophically regressed (80 → 141). Shorter warmup destabilised the early updates.
+- **Notes:** The 500-step warmup is load-bearing for this config — don't touch it.
+
 ### 2026-04-23 — v8 surf_weight=20 (match thorfinn exactly) ⭐ new best
 - **Hypothesis:** Side-by-side audit of thorfinn's winning config vs v4 revealed the ONLY meaningful difference: `surf_weight=20` (thorfinn) vs `25` (mine). v5 (sw=35) regressed, so 25 was already on the high side. Dropping to 20 should at least match thorfinn and might tip past their 87.51.
 - **Change:** `train.py` — `surf_weight 25 → 20`. Nothing else. All other hyperparameters now verbatim-match thorfinn's best run.
