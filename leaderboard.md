@@ -7,4 +7,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 1 | thorfinn | `0601ec5` | 87.51 | 92.07 | 102.24 | 61.20 | 94.52 |
 | 2 | frieren | `7f63057` | 109.27 | 103.02 | 122.01 | 84.66 | 127.37 |
 
-*Last updated: 2026-04-23 15:38 UTC*
+*Last updated: 2026-04-23 15:39 UTC*
