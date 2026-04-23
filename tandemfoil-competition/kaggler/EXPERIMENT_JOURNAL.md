@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v9-resume-lr1e5-from-v8 (current best)
+- **Hypothesis:** Continue the warm-start chain one more iteration. Per-iteration gain is now ~0.03 so the expected value is small but the risk is zero — at worst we match v8.
+- **Change:** `train.py --resume .../model-j93i4dy0/checkpoint.pt --lr 1e-5` (same recipe as v8).
+- **Result:** Best `val/l2_error = 4.2562` at epoch 15 (val/loss=2.34). Gain 0.03 over v8, fully monotonic. W&B `alphonse/v9-resume-lr1e5-b` (`j4xz2ho8`). **0.8% over v8 (4.29→4.26), 38.8% over v2.**
+- **Verdict:** Kept — now strictly the best single model.
+- **Notes:** Warm-start chain history of val/l2 from fresh v4 through v9: 4.78 → 4.41 → 4.32 → 4.29 → 4.26. Gains per iteration: 0.37 / 0.09 / 0.03 / 0.03. Essentially flat now. Another iteration would give ≤0.02; not worth the 30 min unless nothing better is available. At this point the only paths with higher EV are (a) arch diversity + multi-model warm-start to produce an independent ~4.3 model for ensembling, or (b) proper input-space TTA — but the domain is z ≥ 0 half-space (not symmetric) so simple y-flip is not available.
+
 ### 2026-04-23 — v8-resume-lr1e5 (current best)
 - **Hypothesis:** Since ensembling is stuck (v7 too weak, v5 too correlated with v6), try one more very-slow warm-start from v6 with `lr=1e-5`. The aim is to exploit what little low-LR refinement is left. If it gains more than ~0.02 it's worth keeping.
 - **Change:** `train.py --resume .../model-x58etsc6/checkpoint.pt --lr 1e-5` from the v6 PVC checkpoint. Same arch, same loss.
