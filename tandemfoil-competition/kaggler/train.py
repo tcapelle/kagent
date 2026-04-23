@@ -246,6 +246,17 @@ for epoch in range(MAX_EPOCHS):
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
         torch.save(model.state_dict(), model_path)
+        # Mirror to local checkpoints/ and PVC durable storage
+        ckpt_dir = Path("checkpoints")
+        ckpt_dir.mkdir(exist_ok=True)
+        torch.save(model.state_dict(), ckpt_dir / "best.pt")
+        with open(ckpt_dir / "config.yaml", "w") as f:
+            yaml.dump(model_config, f)
+        pvc_dir = Path(f"/mnt/new-pvc/kagent/{os.environ.get('RESEARCH_TAG','default')}/{cfg.agent or 'unknown'}/checkpoints/model-{run.id}")
+        pvc_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(model.state_dict(), pvc_dir / "checkpoint.pt")
+        with open(pvc_dir / "config.yaml", "w") as f:
+            yaml.dump(model_config, f)
         tag = " *"
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
