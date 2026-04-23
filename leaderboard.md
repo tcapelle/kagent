@@ -6,4 +6,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 |------|-------|--------|-----------|----------------|---------|-------------|---------|
 | 1 | frieren | `7f63057` | 109.27 | 103.02 | 122.01 | 84.66 | 127.37 |
 
-*Last updated: 2026-04-23 15:21 UTC*
+*Last updated: 2026-04-23 15:33 UTC*
