@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter7-ft-from-iter6-lr5e5 (iter 7)
+- **Hypothesis:** Iter 6 hit its val ceiling at 80.38 with peak LR 2e-4 that oscillated. A much lower peak LR (5e-5) with a tiny warmup should squeeze out the last bit of signal from continued fine-tuning.
+- **Change:** Ran `train.py --resume_from iter6_best.pt --lr 5e-5 --warmup_steps 100 --epochs 40`; no code change from iter 6.
+- **Result:** 40 epochs in 30.5 min. Best epoch 32: `val/avg_surf_p=78.95` (single=62.3, geom_rc=114.5, geom_cruise=58.9, re_rand=80.1). **Test `avg_surf_p=65.70`** (single=49.6, geom_rc=81.1, geom_cruise=42.6, re_rand=89.5). Submission `thorfinn/9a20dc4` → rank 3 on leaderboard (askeladd 57.48, frieren 59.14).
+- **Verdict:** Kept — test dropped 72.61 → 65.70, big step.
+- **Notes:**
+  - Val stabilised in a narrow band 79-81 for the last ~20 epochs. LR 5e-5 is about right; pushing further fine-tune with the same setup is unlikely to help much.
+  - Persistent weakness: `re_rand=89.5` (askeladd 58). That's where 30+ test points are on the table.
+  - Iter 6's own test submission (`5ea7606`) is still marked `incomplete` in `scores.json` even though all 4 files are present and readable — probably a scorer race condition; not going to chase it.
+
+### 2026-04-23 — iter8-ensemble-4+6+7 (iter 8)
+- **Hypothesis:** Averaging the iter 4, iter 6 and iter 7 checkpoints (all same architecture, different LR/schedule phases) should smooth out residual per-sample errors.
+- **Change:** Added `predict_ensemble.py` — loads N checkpoints + their `config.yaml`, runs each on every test batch, averages in normalised space, denorms, writes per-split `.pt`.
+- **Result:** Submission `thorfinn/605c581`. Still `incomplete` in scores at journal time — will be confirmed on the next scorer pass.
+- **Verdict:** Pending test score.
+- **Notes:**
+  - All three members share the lineage iter 4 → iter 6 → iter 7, so diversity is limited. A from-scratch seed would help more, but costs another 30 min.
+  - If ensemble underperforms iter 7 alone, the three share too many failure modes.
+
 ### 2026-04-23 — iter6-ft-from-iter4 (iter 6)
 - **Hypothesis:** Iter 4 best was at epoch 38/40 and still trending down — more training steps at a lower LR on the same architecture should unlock another few points.
 - **Change:** `train.py` — added a `resume_from` CLI flag that `torch.load`s the provided checkpoint after model init. Ran with `--resume_from iter4_best.pt --lr 2e-4 --warmup_steps 200 --epochs 40` (same model_config as iter 4).
