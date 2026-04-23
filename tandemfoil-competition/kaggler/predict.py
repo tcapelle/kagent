@@ -39,7 +39,7 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 2
-    no_slip_bc: bool = True
+    no_slip_bc: bool = False
 
 
 cfg = sp.parse(Config)

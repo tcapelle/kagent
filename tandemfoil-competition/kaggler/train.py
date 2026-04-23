@@ -212,7 +212,7 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 10.0
     p_weight: float = 1.0          # extra multiplier on pressure channel loss
-    no_slip_bc: bool = True        # zero out Ux,Uy on surface post-model
+    no_slip_bc: bool = False       # is_surface includes inlet/outlet/walls, not just airfoil
     amp: bool = True               # bfloat16 autocast
     n_hidden: int = 192
     n_layers: int = 6
