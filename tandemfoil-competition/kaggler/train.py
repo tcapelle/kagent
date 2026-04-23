@@ -52,11 +52,41 @@ class Config:
     # Random point subsampling during training — caps memory and speeds up
     # large cruise samples (~240K → 80K). Val/predict use full mesh.
     train_max_points: int = 80_000
+    ema_decay: float = 0.999
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+
+
+class EMA:
+    """Exponential moving average of model parameters."""
+    def __init__(self, model: torch.nn.Module, decay: float):
+        self.decay = decay
+        self.shadow = {n: p.detach().clone() for n, p in model.named_parameters() if p.requires_grad}
+
+    @torch.no_grad()
+    def update(self, model: torch.nn.Module):
+        for n, p in model.named_parameters():
+            if p.requires_grad:
+                self.shadow[n].mul_(self.decay).add_(p.detach(), alpha=1.0 - self.decay)
+
+    def store_and_swap(self, model: torch.nn.Module):
+        """Swap model weights with EMA; returns backup for later restore."""
+        backup = {n: p.detach().clone() for n, p in model.named_parameters() if p.requires_grad}
+        with torch.no_grad():
+            for n, p in model.named_parameters():
+                if p.requires_grad:
+                    p.data.copy_(self.shadow[n])
+        return backup
+
+    @staticmethod
+    def restore(model: torch.nn.Module, backup: dict):
+        with torch.no_grad():
+            for n, p in model.named_parameters():
+                if p.requires_grad and n in backup:
+                    p.data.copy_(backup[n])
 
 
 cfg = sp.parse(Config)
@@ -115,13 +145,17 @@ model_config = dict(
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-# Effective epochs bounded by timeout; tune T_max so LR actually decays
-effective_epochs = 8
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=effective_epochs)
+# Effective epochs bounded by timeout; T_max≥budget so LR decays cleanly
+# with no warm-restart oscillation.
+effective_epochs = 16
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    optimizer, T_max=effective_epochs, eta_min=cfg.lr * 0.02,
+)
 channel_weights = torch.tensor(
     [cfg.channel_weight_Ux, cfg.channel_weight_Uy, cfg.channel_weight_p],
     device=device,
 )
+ema = EMA(model, decay=cfg.ema_decay) if cfg.ema_decay > 0 else None
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -190,6 +224,8 @@ for epoch in range(MAX_EPOCHS):
         if cfg.grad_clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
+        if ema is not None:
+            ema.update(model)
         global_step += 1
         if global_step % 20 == 0:
             wandb.log({"train/loss_step": loss.item(), "global_step": global_step})
@@ -202,7 +238,8 @@ for epoch in range(MAX_EPOCHS):
     epoch_vol /= n_batches
     epoch_surf /= n_batches
 
-    # --- Validate ---
+    # --- Validate using EMA weights when available ---
+    ema_backup = ema.store_and_swap(model) if ema is not None else None
     model.eval()
     val_loss_sum = 0.0
     split_metrics: dict[str, dict] = {}
@@ -297,8 +334,13 @@ for epoch in range(MAX_EPOCHS):
         }
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+        # Save the weights that were validated (EMA if enabled, else live).
         torch.save(model.state_dict(), model_path)
         tag = " *"
+
+    # Restore training weights (EMA was swapped in for validation)
+    if ema_backup is not None:
+        EMA.restore(model, ema_backup)
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     split_summary = "  ".join(
