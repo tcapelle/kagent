@@ -38,15 +38,20 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 4
     surf_weight: float = 10.0
     epochs: int = 50
     grad_clip: float = 1.0
     amp: bool = True
-    # Channel weights [Ux, Uy, p] — leaderboard ranks by velocity L2 only
+    # Channel weights align training MSE with physical-space velocity L2.
+    # Using y_std^2 gives Ux≈474, Uy≈95, p≈461658. Normalize to Ux=1:
+    #   Ux=1.0, Uy=0.2, p≈small (we keep some signal for physics).
     channel_weight_Ux: float = 1.0
-    channel_weight_Uy: float = 1.0
-    channel_weight_p: float = 0.3
+    channel_weight_Uy: float = 0.2
+    channel_weight_p: float = 0.1
+    # Random point subsampling during training — caps memory and speeds up
+    # large cruise samples (~240K → 80K). Val/predict use full mesh.
+    train_max_points: int = 80_000
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -63,19 +68,34 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
 
-loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
+def train_collate(batch, max_points=cfg.train_max_points):
+    """Subsample each sample to at most `max_points` then pad."""
+    new_batch = []
+    for x, y, sf in batch:
+        n = x.shape[0]
+        if max_points > 0 and n > max_points:
+            idx = torch.randperm(n)[:max_points]
+            x, y, sf = x[idx], y[idx], sf[idx]
+        new_batch.append((x, y, sf))
+    return pad_collate(new_batch)
+
+
+loader_common = dict(num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
+train_kwargs = dict(collate_fn=train_collate, **loader_common)
+val_kwargs = dict(collate_fn=pad_collate, **loader_common)
 
 if cfg.debug:
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              shuffle=True, **loader_kwargs)
+                              shuffle=True, **train_kwargs)
 else:
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              sampler=sampler, **loader_kwargs)
+                              sampler=sampler, **train_kwargs)
 
+# Validation uses batch_size=2 with full mesh (no subsampling)
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=2, shuffle=False, **val_kwargs)
     for name, ds in val_splits.items()
 }
 
