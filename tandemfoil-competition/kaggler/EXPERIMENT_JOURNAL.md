@@ -22,6 +22,23 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter4-256x6-slice96-sub20k (iter 4)
+- **Hypothesis:** Scale the model to attack the `geom_camber_rc` and `re_rand` plateaus. Move to n_hidden=256, slice_num=96 and compensate with a 20K subsample so ~40 epochs still fit.
+- **Change:** `train.py` — model_config `n_hidden=256, slice_num=96` (n_layers=6, mlp_ratio=4, n_head=8 unchanged); `train_subsample=20000`. All else matches iter 2 (lr 5e-4, warmup 1000, surf_weight 20, surf_p_weight 2).
+- **Result:** 40 epochs in 30.5 min (~46 s/epoch). Best epoch 38: `val/avg_surf_p=85.63` (single=65.2, geom_rc=124.9, geom_cruise=64.6, re_rand=87.9). **Test `avg_surf_p=72.61`** — new best. Splits: single=54.0, geom_rc=89.6, geom_cruise=47.5, re_rand=99.4. Submission `thorfinn/246fe7f`.
+- **Verdict:** Kept — test improved 77.98 → 72.61. Hidden test numbers sharply better on the two easier tracks, modest improvement on geom_rc, still weakest on re_rand.
+- **Notes:**
+  - The bigger model broke the 100-point val ceiling that iter 2/3 could not. Capacity was the bottleneck on `geom_camber_rc` (val e38=125 vs iter 2 e42 best still in the 155 region).
+  - Peak VRAM still only 9.3 GB, nowhere near the 96 GB cap — plenty of room to grow next.
+  - Askeladd leads at 64.79 on test, with a very strong re_rand (64.97) — that's the gap I need to close. My re_rand is 99.38.
+
+### 2026-04-23 — iter3-ema-decay999 (iter 3, discarded)
+- **Hypothesis:** EMA weights (decay 0.999) smoothes the val curve and typically helps on unseen splits.
+- **Change:** `train.py` — added an `EMA` class; update per optimizer step; validate and save checkpoint from the EMA shadow.
+- **Result:** 42 epochs in 30.6 min. Best epoch 30: `val/avg_surf_p=105.76`. **Test `avg_surf_p=84.98`** — worse than iter 2 (77.98). Submission `thorfinn/5fb9930`.
+- **Verdict:** Discarded via `git reset --hard HEAD~1`. With only ~40 effective epochs, EMA at decay 0.999 (half-life ≈ 1.85 epochs) is biased too strongly toward the early, suboptimal weights. Validation did look monotonic and smooth — just lower ceiling.
+- **Notes:** If EMA is retried, either use decay ≈ 0.995 (half-life ~0.37 epochs) or skip averaging until after warmup completes.
+
 ### 2026-04-23 — iter2-sub30k-lr5e4-surfp2x (iter 2)
 - **Hypothesis:** Iter 1 was still improving at the timeout (e32) and had high epoch-to-epoch variance. Cut subsample 40K→30K for more epochs (~45), drop peak LR 7e-4→5e-4 with warmup 500→1000 to reduce variance, and upweight surface pressure 2× in the surface loss (the scoring metric).
 - **Change:** `train.py` — `train_subsample=30000`, `lr=5e-4`, `warmup_steps=1000`, `surf_p_weight=2.0`, channel-weighted surface loss, `epochs=50` (so cosine schedule fully decays within the 30-min cap).
