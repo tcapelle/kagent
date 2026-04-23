@@ -38,7 +38,7 @@ MAX_TIMEOUT = 30.0  # minutes
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 2
     surf_weight: float = 10.0
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
@@ -82,6 +82,7 @@ model_config = dict(
     n_head=8,
     slice_num=128,
     mlp_ratio=2,
+    use_checkpoint=True,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
@@ -143,17 +144,19 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2
+        with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            pred = model({"x": x})["preds"]
+            sq_err = (pred.float() - y_norm) ** 2
 
-        vol_mask = mask & ~is_surface
-        surf_mask = mask & is_surface
-        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-        loss = vol_loss + cfg.surf_weight * surf_loss
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -177,7 +180,7 @@ for epoch in range(MAX_EPOCHS):
         mae_vol = torch.zeros(3, device=device)
         n_surf = n_vol = n_vb = 0
 
-        with torch.no_grad():
+        with torch.no_grad(), torch.amp.autocast("cuda", dtype=torch.bfloat16):
             for x, y, is_surface, mask in vloader:
                 x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
                 is_surface = is_surface.to(device, non_blocking=True)
@@ -186,7 +189,7 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
+                pred = model({"x": x})["preds"].float()
                 sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface

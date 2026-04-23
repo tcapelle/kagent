@@ -101,7 +101,8 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"].float()
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):

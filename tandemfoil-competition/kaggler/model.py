@@ -125,11 +125,13 @@ class Transolver(nn.Module):
     def __init__(self, space_dim=1, n_layers=5, n_hidden=256, dropout=0.0,
                  n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
                  slice_num=32, ref=8, unified_pos=False,
+                 use_checkpoint=False,
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None):
         super().__init__()
         self.ref = ref
         self.unified_pos = unified_pos
+        self.use_checkpoint = use_checkpoint
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
 
@@ -166,5 +168,8 @@ class Transolver(nn.Module):
         x = data["x"]
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for block in self.blocks:
-            fx = block(fx)
+            if self.use_checkpoint and self.training:
+                fx = torch.utils.checkpoint.checkpoint(block, fx, use_reentrant=False)
+            else:
+                fx = block(fx)
         return {"preds": fx}
