@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — iter10-ema099
+- **Hypothesis:** add EMA (decay=0.99) to smooth weights against overfitting noise. Resume from iter9.
+- **Change:** added EMA class; eval runs on EMA weights; save EMA weights as best.pt.
+- **Result:** val/avg_mae_surf_p=54.21 at epoch 4 (from 54.91).
+- **Verdict:** kept — commit 84d7df9 (will update with iter10 ckpt).
+- **Notes:** Small but consistent improvement from EMA. Leaderboard: askeladd #1 at 51.96, frieren #2 at 55.32 — I'm between them now on val (but val != test).
+
 ### 2026-04-23 — iter9-surfp40
 - **Hypothesis:** push surf_p_weight higher (40, was 20) for even more pressure focus.
 - **Change:** --surf_p_weight 40 --lr 1e-5; resumed from iter8.
