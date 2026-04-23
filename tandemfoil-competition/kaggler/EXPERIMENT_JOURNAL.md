@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v12-sw15 (FAILED, discarded)
+- **Hypothesis:** push past the avg=104 plateau by up-weighting the surface loss (surf_weight 10→15) since the ranking metric is surface-p MAE.
+- **Change:** `train.py` — `surf_weight: 10 → 15`, everything else v10-identical.
+- **Result:** all 12 epochs completed. **Avg val surf_p MAE 104.1 → 105.5 (+1.4%, WORSE).** Every split regressed. predict.py auto-submit OOMed because training hadn't released GPU yet. W&B `kagent-tandemfoil/pz648ti4`.
+- **Verdict:** discarded, reset to v10.
+- **Notes:** v2 (Huber + per-channel p weight) and v12 (flat surf_weight bump) both pushed this direction and both hurt. Strong signal: at `surf_weight=10` the surface/volume balance is close to optimal; extra surface weight starves volume features that the surface also needs (for wake/shock context). Don't re-try.
+
 ### 2026-04-23 — v11-h144-e14 (MARGINAL, discarded)
 - **Hypothesis:** bracket the v8 (h=128, e=14) vs v10 (h=160, e=12) tie with the interpolated midpoint; maybe it captures both axes' wins.
 - **Change:** `train.py` — `n_hidden: 160 → 144`, `epochs: 12 → 14`.
