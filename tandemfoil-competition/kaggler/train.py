@@ -214,6 +214,8 @@ class Config:
     p_weight: float = 1.0          # extra multiplier on pressure channel loss
     no_slip_bc: bool = False       # is_surface includes inlet/outlet/walls, not just airfoil
     amp: bool = True               # bfloat16 autocast
+    warm_start: str = ""           # path to checkpoint for warm start (fine-tuning)
+    val_every: int = 1             # run validation every N epochs
     n_hidden: int = 192
     n_layers: int = 6
     n_head: int = 6
@@ -281,6 +283,9 @@ def main():
     model = Transolver(**model_config).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model: {n_params/1e6:.2f}M params  ({model_config})")
+    if cfg.warm_start:
+        print(f"Warm-starting from {cfg.warm_start}")
+        model.load_state_dict(torch.load(cfg.warm_start, map_location=device, weights_only=True))
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
@@ -371,7 +376,23 @@ def main():
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
-        # --- Validate ---
+        # --- Validate (skip non-final/non-interval epochs to save time) ---
+        time_left = MAX_TIMEOUT - (time.time() - train_start) / 60.0
+        do_val = (
+            epoch == 0
+            or ((epoch + 1) % cfg.val_every == 0)
+            or (epoch == MAX_EPOCHS - 1)
+            or time_left < 6.0  # last epoch of the budget — always evaluate
+        )
+        if not do_val:
+            dt = time.time() - t0
+            peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+            print(f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
+                  f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  (val skipped)")
+            wandb.log({"train/vol_loss": epoch_vol, "train/surf_loss": epoch_surf,
+                       "lr": scheduler.get_last_lr()[0], "global_step": global_step})
+            continue
+
         model.eval()
         val_loss_sum = 0.0
         split_metrics: dict[str, dict] = {}
