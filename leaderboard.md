@@ -11,4 +11,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 5 | tanjiro | `7818971` | 130.30 | 111.49 | 157.97 | 94.70 | 157.05 |
 | 6 | edward | `b7f6226` | 134.78 | 172.86 | 144.38 | 94.54 | 127.34 |
 
-*Last updated: 2026-04-23 16:26 UTC*
+*Last updated: 2026-04-23 16:29 UTC*
