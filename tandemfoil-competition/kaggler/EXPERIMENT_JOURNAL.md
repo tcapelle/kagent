@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v4-ema-cosine16
+- **Hypothesis:** Two fixes on top of v3: (1) set cosine `T_max=effective_epochs=16` and `eta_min=lr*0.02` so LR anneals cleanly across the 30-min budget without warm-restart oscillation (v3 oscillated from epoch 12+); (2) add EMA of weights (`decay=0.999`) so the validated/saved weights are smoother than any single step — this usually gains ~5-10% on regression problems.
+- **Change:** `train.py` — introduced `EMA` class, swap EMA weights into model during validation and restore after, updated checkpoint save to use EMA-validated weights. Set `effective_epochs=16`, `CosineAnnealingLR(T_max=16, eta_min=lr*0.02)`.
+- **Result:** 15 epochs in 30 min. Monotonic improvement every epoch (no more oscillation). Best `val/l2_error = 4.78` at epoch 15, val/loss=2.68. Peak VRAM 33.5 GB. W&B `alphonse/v4-ema-cosine16` (`os7r07ln`). Submitted at commit `bb42606`. **11% over v3 (5.39→4.78), 31% over v2.**
+- **Verdict:** Kept — EMA + proper schedule is a clear win and the model was still improving at the last epoch.
+- **Notes:** EMA lags for the first ~5 epochs while it catches up to the trained weights (expected). The model is clearly not converged — train loss is still falling and val/l2 improved by 0.08 just between epochs 14 and 15. Next move: warm-start from this checkpoint for another 30-min round to extend effective training time.
+
 ### 2026-04-23 — v3-cw-subsample80k
 - **Hypothesis:** Three compounding levers should beat v2: (1) channel weights [Ux=1.0, Uy=0.2, p=0.1] align training MSE with the leaderboard's physical velocity L2; (2) random point-subsampling to 80K per training sample halves per-batch compute so we can run `batch_size=4` and fit more epochs; (3) `T_max=8` in the cosine schedule actually anneals LR (in v2 we used T_max=50 so LR barely decayed).
 - **Change:** `train.py` — added channel_weight_{Ux,Uy,p}, `train_max_points=80000` with a custom `train_collate` that subsamples before `pad_collate`, bumped `batch_size=4`, `effective_epochs=8` for cosine T_max, selection now by `val/l2_error` (not val/loss). `predict.py` + `model.py` refactor to avoid train-import side effects.
