@@ -22,6 +22,23 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v6–v9 + ensembles (pushed to #5 at 83.97)
+- **Hypothesis:** stack warm-starts (askeladd recipe), add diverse-loss model (frieren's L1 iter15), ensemble with baseline for OOD-robustness.
+- **Changes & individual scores:**
+  - v6: 128h/5L/slice=96/mlp=2 diverse-arch (val 112 — too weak, scoring race produced "incomplete")
+  - v7: warm-start from v5 at lr 1e-4, 40 ep — val=92.35, test=93.75
+  - v8: warm-start from v7 at lr 5e-5 — no improvement, killed
+  - v9: L1-loss from scratch (192x6, everything else v5) — val=92.17, test=~92
+- **Ensembles (all on PVC):**
+  - v5+v4 best (0.85/0.15): 94.09 — marginal
+  - v7+baseline (0.7/0.3): 86.20 — **big jump**: baseline's better OOD rescues V7's OOD blind spot
+  - v7+baseline+v9 (0.4/0.3/0.3) ⇒ **83.97** — new best, #5 on leaderboard
+- **Key findings:**
+  - Baseline (128h/5L, no surf_p_weight) has re_rand=110, camber_rc=118 — noticeably better OOD than V5/V7 (~130). It's bad on in_dist (135) but complements cleanly.
+  - V9 vs V7 |diff|=57 (vs V5 vs V7 |diff|=33) — L1 loss created meaningfully diverse predictions.
+  - My camber_rc/re_rand are still much worse than #1-#4 competitors (>115 vs their 70-90). That's the key gap.
+- **Verdict:** kept as current best. Next: another from-scratch diverse model (V10 = warm-start from V9 with L1; V11 if needed = smaller-size L1).
+
 ### 2026-04-23 — v5 add EMA + sub30k + warmup1000
 - **Hypothesis:** EMA of weights is thorfinn iter2's big win (97→78 on val). Add it + thorfinn iter2 tweaks (sub30k, warmup 1000, lr 5e-4).
 - **Change:** `EMA(decay=0.999)` class; swap to EMA weights before validation and save EMA state; restore live weights for next epoch. train_subsample_n 40k→30k, warmup 500→1000, lr 7e-4→5e-4. Everything else from v4.
