@@ -216,6 +216,8 @@ class Config:
     amp: bool = True               # bfloat16 autocast
     warm_start: str = ""           # path to checkpoint for warm start (fine-tuning)
     val_every: int = 1             # run validation every N epochs
+    re_weight_exp: float = 0.0     # per-sample loss weight = exp((log_Re - 14.58) * re_weight_exp)
+    re_noise_std: float = 0.0      # stddev of gaussian noise added to normalized log_Re during training
     n_hidden: int = 192
     n_layers: int = 6
     n_head: int = 6
@@ -347,6 +349,11 @@ def main():
             mask = mask.to(device, non_blocking=True)
 
             x = (x - stats["x_mean"]) / stats["x_std"]
+            # Optional augmentation: add Gaussian noise to normalized log_Re (feature 13)
+            if cfg.re_noise_std > 0:
+                noise = torch.randn_like(x[:, :1, 13:14]) * cfg.re_noise_std  # [B,1,1]
+                x = x.clone()
+                x[..., 13:14] = x[..., 13:14] + noise
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.amp):
@@ -354,6 +361,12 @@ def main():
                 if cfg.no_slip_bc:
                     pred = apply_no_slip(pred, is_surface, stats["y_mean"], stats["y_std"])
                 sq_err = ((pred - y_norm) ** 2) * ch_w  # [B,N,3]
+
+                # Optional per-sample Re-based loss weight (use raw log_Re from normalized features)
+                if cfg.re_weight_exp != 0.0:
+                    log_Re_raw = x[:, 0, 13] * stats["x_std"][13] + stats["x_mean"][13]  # [B]
+                    sample_w = torch.exp((log_Re_raw - 14.58) * cfg.re_weight_exp).clamp(max=10.0)  # [B]
+                    sq_err = sq_err * sample_w.view(-1, 1, 1)
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
