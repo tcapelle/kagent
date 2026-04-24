@@ -1,19 +1,12 @@
-"""Generate predictions on the hidden test splits.
+"""Generate predictions on the hidden test splits (with optional ensembling).
 
-Adapt this to your model. The key contract:
-  - Load your model from a checkpoint
-  - Run inference on each test split (4 splits, 200 samples each)
-  - Save per-split predictions to PVC
+Supports ensembling multiple checkpoints by averaging their predictions.
 
-Output layout:
-  /mnt/new-pvc/predictions/<tag>/<agent>/<commit>/
-  ├── test_single_in_dist.pt
-  ├── test_geom_camber_rc.pt
-  ├── test_geom_camber_cruise.pt
-  └── test_re_rand.pt
-
-Run:
+Run single-model:
   python predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <your-name>
+
+Run ensemble (comma-separated checkpoints):
+  python predict.py --checkpoints models/a/checkpoint.pt,models/b/checkpoint.pt --agent <your-name>
 """
 
 import json
@@ -24,6 +17,7 @@ from pathlib import Path
 
 import simple_parsing as sp
 import torch
+import yaml
 from tqdm import tqdm
 
 from data import X_DIM
@@ -42,10 +36,10 @@ TEST_SPLITS = [
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    checkpoint: str | None = None            # single checkpoint path
+    checkpoints: str | None = None           # comma-separated list of checkpoint paths (ensemble)
     splits_dir: str = str(SPLITS_DIR)
-    agent: str | None = None  # kaggler name for output path
+    agent: str | None = None
     batch_size: int = 4
 
 
@@ -53,20 +47,27 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-import yaml
 from train import Transolver
 
-ckpt_path = Path(cfg.checkpoint)
-cfg_path = ckpt_path.parent / "config.yaml"
-with open(cfg_path) as f:
-    model_config = yaml.safe_load(f)
-model = Transolver(**model_config).to(device)
-model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
+if cfg.checkpoints:
+    ckpt_paths = [Path(p.strip()) for p in cfg.checkpoints.split(",")]
+elif cfg.checkpoint:
+    ckpt_paths = [Path(cfg.checkpoint)]
+else:
+    raise ValueError("Must provide --checkpoint or --checkpoints")
 
-model.eval()
-print(f"Loaded model from {cfg.checkpoint}")
+models = []
+for p in ckpt_paths:
+    with open(p.parent / "config.yaml") as f:
+        mc = yaml.safe_load(f)
+    m = Transolver(**mc).to(device)
+    m.load_state_dict(torch.load(p, map_location=device, weights_only=True))
+    m.eval()
+    models.append(m)
+    print(f"Loaded {p}")
 
-# Load stats
+print(f"Ensemble of {len(models)} models")
+
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
 x_mean = torch.tensor(stats_data["x_mean"], dtype=torch.float32, device=device)
@@ -74,7 +75,6 @@ x_std = torch.tensor(stats_data["x_std"], dtype=torch.float32, device=device)
 y_mean = torch.tensor(stats_data["y_mean"], dtype=torch.float32, device=device)
 y_std = torch.tensor(stats_data["y_std"], dtype=torch.float32, device=device)
 
-# Save predictions keyed by agent + commit hash
 agent_name = cfg.agent or "unknown"
 commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
@@ -83,7 +83,6 @@ commit = subprocess.run(
 output_dir = PREDICTIONS_DIR / agent_name / commit
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Run inference on each test split
 for split in TEST_SPLITS:
     test_dir = splits_dir / split
     test_files = sorted(test_dir.glob("*.pt"))
@@ -102,7 +101,11 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            x_norm = (x_pad - x_mean) / x_std
+            pred_norm_sum = torch.zeros(B, max_n, 3, device=device)
+            for m in models:
+                pred_norm_sum += m({"x": x_norm})["preds"]
+            pred_norm = pred_norm_sum / len(models)
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
