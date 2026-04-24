@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v16-sw1 (FAILED, discarded)
+- **Hypothesis:** extend the sweep — go to `surf_weight=1.0` to see if even less surface emphasis helps.
+- **Change:** `train.py` — `surf_weight: 1.5 → 1.0`.
+- **Result:** all 12 epochs. **Avg val surf_p MAE 96.4 → 97.9 (+1.5%, WORSE).** All splits regressed. W&B `kagent-tandemfoil/0v2l6pn6`.
+- **Verdict:** discarded, reset to v15. `surf_weight=1.5` is the optimum under this architecture/budget.
+- **Notes:** Sweep summary for reference: `sw=10 → 5 → 3 → 1.5 (min) → 1.0`. U-shape confirmed. Not worth sweeping this axis further.
+
 ### 2026-04-24 — v15-sw1.5 (KEPT)
 - **Hypothesis:** continue the surf_weight sweep that v13/v14 validated — lower surface weight, more volume gradient share.
 - **Change:** `train.py` — `surf_weight: 3 → 1.5`.
