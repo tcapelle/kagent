@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — iter101/iter111/iter115: bs=2 chain continues, ensemble new PB 34.78
+- **Hypothesis:** Continue bs=2 no-subsample chain (iter101 lr=5e-6 from iter93; iter111 lr=2e-6 from iter101). Averaging iter93+iter101 might smooth errors across their slightly different LR regimes.
+- **Change:** iter101 warm iter93 lr=5e-6 10ep, iter111 warm iter101 lr=2e-6 10ep. iter113/115 2-way iter93+iter101 at 0.5/0.5 & 0.3/0.7.
+- **Result:** iter101 val/loss 1.0080 (marginal gain). iter111 val/loss 1.0085 (flat). iter113 scored **34.89**, iter115 scored **34.78** — new PB. iter115 per-split: single=39.32, rc=48.34, cruise=18.24, re_rand=33.20.
+- **Verdict:** kept. Weighted ensemble of chain iterations beats single best. Even highly correlated models add value via SWA-like averaging when given more weight to the later/stronger one.
+- **Notes:** iter111 saturated at LR=2e-6. Next move: try `slice=128 + bs=2 + no-subsample` (iter125) to stack architecture capacity with breakthrough recipe.
+
 ### 2026-04-24 — iter93: bs=2 + no-subsample + warm-start = 🚀🚀 **BREAKTHROUGH** 🥇 #1 at 35.27
 - **Hypothesis:** Askeladd uses `batch_size=2` and no volume subsampling. My `batch_size=8` + subsample-to-40K-nodes was cheap but information-lossy. Try bs=2 no-subsample to match their setup. With 1499 samples bs=2 gives 750 steps/epoch (4x my normal 188) so 10 epochs with cosine fits the 30-min budget.
 - **Change:** `train.py --warm_start /tmp/iter79_best.pt --slice_num 64 --loss_type l1 --lr 2e-5 --p_weight 3.0 --epochs 10 --batch_size 2 --train_subsample 0`. Commit `3b06e7b` (placeholder). Run `jbidn8vs`.
