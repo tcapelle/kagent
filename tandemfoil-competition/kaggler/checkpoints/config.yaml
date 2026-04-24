@@ -1,3 +1,4 @@
+dropout: 0.1
 fun_dim: 22
 mlp_ratio: 2
 n_head: 8
