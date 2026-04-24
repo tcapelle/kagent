@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v19-inoise (FAILED, discarded)
+- **Hypothesis:** input Gaussian noise (0.02 of normalized std) during training should regularise and help OOD generalisation.
+- **Change:** `train.py` — inject `x = x + randn * 0.02` before model forward, training only.
+- **Result:** **Avg val surf_p MAE 95.6 → 97.9 (+2.4%, WORSE).** in-dist +3.8%, rc +5.0%, cruise -1.8%, re_rand +1.1%. W&B `kagent-tandemfoil/eyc04zqh`.
+- **Verdict:** discarded, reset to v17.
+- **Notes:** Noise hurts in-dist/rc but helps cruise — consistent with noise forcing the model to be less confident, which helps low-pressure regime but hurts high-pressure peak fitting. Same failure mode as v18 (lr bump) and v6 (EMA) — extra stochasticity doesn't pay off in this short-budget regime.
+
 ### 2026-04-24 — v18-lr7e-4 (FAILED, discarded)
 - **Hypothesis:** bump lr 5e-4 → 7e-4 on v17 config — more exploration early, cosine still fully decays by epoch 14.
 - **Change:** `train.py` — `lr: 5e-4 → 7e-4`.
