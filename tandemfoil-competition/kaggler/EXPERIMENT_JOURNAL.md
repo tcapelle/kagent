@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — iter15-dropout01
+- **Hypothesis:** big train/val gap (train vol=0.32 vs val ~1) implies overfitting — add dropout=0.1 to Transolver attention.
+- **Change:** added --dropout flag; ran with --dropout 0.1 --lr 2e-5 --warmup_epochs 1 --epochs 10 (wider LR window to let regularized model settle).
+- **Result:** val/avg_mae_surf_p=49.70 at epoch 4 (from 52.20). **Big -2.5 jump.**
+- **Verdict:** kept — commit fc3deab. Major finding.
+- **Notes:** Before: askeladd 50.52, frieren 52.82. Now I'm likely #2 or #3. Also tried a soup ensemble (iter12/13/14) — soup=52.50 worse than iter14=52.20, checkpoints too correlated.
+
 ### 2026-04-23 — iter14-l1vol
 - **Hypothesis:** L1 loss on volume (not just surf_p) may help robustness to pressure outliers in Part2 (high Re extreme values).
 - **Change:** added --l1_vol flag; used with surf_p_weight=60.
