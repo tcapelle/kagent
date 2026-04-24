@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — iter93: bs=2 + no-subsample + warm-start = 🚀🚀 **BREAKTHROUGH** 🥇 #1 at 35.27
+- **Hypothesis:** Askeladd uses `batch_size=2` and no volume subsampling. My `batch_size=8` + subsample-to-40K-nodes was cheap but information-lossy. Try bs=2 no-subsample to match their setup. With 1499 samples bs=2 gives 750 steps/epoch (4x my normal 188) so 10 epochs with cosine fits the 30-min budget.
+- **Change:** `train.py --warm_start /tmp/iter79_best.pt --slice_num 64 --loss_type l1 --lr 2e-5 --p_weight 3.0 --epochs 10 --batch_size 2 --train_subsample 0`. Commit `3b06e7b` (placeholder). Run `jbidn8vs`.
+- **Result:** best val/loss **1.0158** at epoch 10 (25.2 min, 30.2GB). Per-split val: single=1.80, rc=1.17, cruise=0.20, re_rand=0.89 — all MUCH lower than iter79 (1.84, 2.02, 0.37, 1.40). **Scored 35.27 avg_surf_p** — **#1 by 12.66 pts over edward (47.93), 14.68 over askeladd (49.95)**. Per-split test: single=40.26, rc=48.87, cruise=18.50, re_rand=**33.43** (was 73 before). Re-generalization FIXED.
+- **Verdict:** KEPT. Single biggest improvement of the competition. All previous ensembles superseded.
+- **Notes:** Subsampling was the root cause of my re_rand weakness — dropping 60% of volume nodes left the model unable to learn Re-dependent field structure. bs=2 gives 4x more gradient updates per epoch, and with no subsampling the model sees the full 240K-node grid. Askeladd's edge was entirely this config difference (slice=128 was a minor factor). Starting iter101 = warm-start iter93 with lr=5e-6 to continue chain.
+
+### 2026-04-24 — iter79+iter81: slice=64 chain-3 + 3-way ensemble PB 52.36
+- **Hypothesis:** Continue warm-start chain on best slice=64 model (iter37). Then replace iter37 with iter79 in the winning 3-way.
+- **Change:** iter79 warm-start iter37 L1 lr=5e-6 p_weight=3 30ep. iter81 ensemble iter29+iter79+iter47 0.5/0.3/0.2.
+- **Result:** iter79 val/loss 1.3951. iter81 scored **52.36** (down from 52.82). Per-split: single=41.65, rc=67.94, cruise=26.74, re_rand=73.11.
+- **Verdict:** kept iter79 for ensembles. iter81 was my best before bs=2 breakthrough.
+
 ### 2026-04-23 — iter63/iter73-77: slice=128 chain-2 + 4-way ensemble experiments
 - **Hypothesis:** Further warm-start iter47 at lr=5e-5 gets slice=128 model past val/loss 1.8. Then replace iter47 with iter63 in the best 3-way, or add iter63 as 4th model.
 - **Change:** iter63 warm-start iter47 slice=128 L1 p_weight=3 lr=5e-5 30ep. Run `y3i6aw3f` killed at ep27 by timeout (slice=128 takes 66s/ep). Ran predict manually. Ensembles iter73 (3-way 0.5/0.3/0.2 with iter63 swapped for iter47), iter75/77 (4-way variants).
