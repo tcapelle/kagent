@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v16-fullmesh-lr1e5-d
+- **Hypothesis:** Same recipe. Per-run gain is still ~0.05; keep riding this train.
+- **Change:** `train.py --resume .../model-gjameqab/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `val/l2_error = 3.036` at epoch 8 (val/loss=1.23). Gain 0.06 over v15. W&B `alphonse/v16-fullmesh-lr1e5-d` (`a7rsdijp`). **2.0% over v15, 56.3% over v2.**
+- **Verdict:** Kept.
+
 ### 2026-04-24 — v15-fullmesh-lr1e5-c
 - **Hypothesis:** Same recipe as v14; per v14's lesson, keep lr=1e-5 — it's still producing per-run gains of ~0.05+ on full mesh.
 - **Change:** `train.py --resume .../model-6lzqlfsd/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2`.
