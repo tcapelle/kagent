@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — iter17-dropout015
+- **Hypothesis:** more dropout (0.15 vs 0.10) regularizes more.
+- **Change:** --dropout 0.15.
+- **Result:** val/avg_mae_surf_p=49.00 at epoch 3 (from 49.13).
+- **Verdict:** kept — commit fc3deab (updated ckpt).
+- **Notes:** Marginal improvement; curve flattening. Next: more dropout or other regularizer.
+
 ### 2026-04-24 — iter16-dropout01-cycle2
 - **Hypothesis:** continue resume cycle with dropout=0.1; another -0.5 expected.
 - **Change:** --lr 1e-5 --epochs 7; same dropout/L1/EMA recipe. Resumed from iter15.
