@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v17-h128-e14-sw1.5 (KEPT)
+- **Hypothesis:** combine v15's tuned surf_weight (1.5) with v8's smaller-faster model (h=128, n_head=4, epochs=14). Each lever was validated independently; the combination may stack.
+- **Change:** `train.py` — `n_hidden: 160 → 128`, `epochs: 12 → 14`. `surf_weight=1.5` (inherited from v15).
+- **Result:** 13 of 14 epochs completed (timeout). **Avg val surf_p MAE 96.4 → 95.6 (-0.8%).** Three splits improved (re_rand -3.5% led), single_in_dist +2.1% regression. W&B `kagent-tandemfoil/nlfzya86`.
+- **Verdict:** kept. Cumulative: 120.4 → 95.6 (**-20.6%**).
+- **Notes:** Levers stack but the marginal return is now small (<1%). Next: try `lr=7e-4` or a different axis (regularization / augmentation) since the obvious dial-adjusting seems to be saturating.
+
 ### 2026-04-24 — v16-sw1 (FAILED, discarded)
 - **Hypothesis:** extend the sweep — go to `surf_weight=1.0` to see if even less surface emphasis helps.
 - **Change:** `train.py` — `surf_weight: 1.5 → 1.0`.
