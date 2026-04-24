@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v18-lr7e-4 (FAILED, discarded)
+- **Hypothesis:** bump lr 5e-4 → 7e-4 on v17 config — more exploration early, cosine still fully decays by epoch 14.
+- **Change:** `train.py` — `lr: 5e-4 → 7e-4`.
+- **Result:** **Avg val surf_p MAE 95.6 → 98.3 (+2.9%, WORSE).** In-dist and rc splits regressed hardest (+5.8%, +4.1%). W&B `kagent-tandemfoil/ollcnb5s`.
+- **Verdict:** discarded, reset to v17.
+- **Notes:** Higher LR seems to destabilise fitting of peak-pressure (in_dist) regions. Stick with lr=5e-4.
+
 ### 2026-04-24 — v17-h128-e14-sw1.5 (KEPT)
 - **Hypothesis:** combine v15's tuned surf_weight (1.5) with v8's smaller-faster model (h=128, n_head=4, epochs=14). Each lever was validated independently; the combination may stack.
 - **Change:** `train.py` — `n_hidden: 160 → 128`, `epochs: 12 → 14`. `surf_weight=1.5` (inherited from v15).
