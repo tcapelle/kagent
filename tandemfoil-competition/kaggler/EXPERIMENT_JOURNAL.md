@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v15-fullmesh-lr1e5-c
+- **Hypothesis:** Same recipe as v14; per v14's lesson, keep lr=1e-5 — it's still producing per-run gains of ~0.05+ on full mesh.
+- **Change:** `train.py --resume .../model-6lzqlfsd/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `val/l2_error = 3.096` at epoch 8 (val/loss=1.27). Gain **0.05** over v14; all 8 epochs monotonic again. W&B `alphonse/v15-fullmesh-lr1e5-c` (`gjameqab`). **1.8% over v14, 55.5% over v2.**
+- **Verdict:** Kept.
+- **Notes:** Fourth full-mesh round still producing ~0.05 gains. No sign of plateau yet. Keep going.
+
 ### 2026-04-24 — v14-fullmesh-lr1e5-b (LR restart win)
 - **Hypothesis:** v12/v13 used lr=5e-6/3e-6 and their gains were flattening (0.05, then 0.03). Maybe the LR was *too* low, not the model-was-converged. Try going *back up* to lr=1e-5 (same as v11) and see if it's still training.
 - **Change:** `train.py --resume .../model-2f3iycuq/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2`.
