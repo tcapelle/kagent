@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v14-fullmesh-lr1e5-b (LR restart win)
+- **Hypothesis:** v12/v13 used lr=5e-6/3e-6 and their gains were flattening (0.05, then 0.03). Maybe the LR was *too* low, not the model-was-converged. Try going *back up* to lr=1e-5 (same as v11) and see if it's still training.
+- **Change:** `train.py --resume .../model-2f3iycuq/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `val/l2_error = 3.1535` at epoch 8 (val/loss=1.31). Gain **0.07** over v13 — bigger than the last two rounds combined. 8 monotonic epochs. W&B `alphonse/v14-fullmesh-lr1e5-b` (`6lzqlfsd`). **2.2% over v13 (3.23→3.15), 54.7% over v2.**
+- **Verdict:** Kept — key finding.
+- **Notes:** Important lesson: dropping LR too aggressively was causing the apparent convergence in v12/v13. Going back to lr=1e-5 (same as v11) exposed more training left. Stick with lr=1e-5 for now and only lower it when clearly plateauing.
+
 ### 2026-04-23 — v13-fullmesh-lr3e6
 - **Hypothesis:** Standard warm-start tail; drop LR to 3e-6. At this point gains are tiny but each extra pass on full mesh has been worth it.
 - **Change:** `train.py --resume .../model-2xc78fxp/checkpoint.pt --lr 3e-6 --train_max_points 0 --batch_size 2`.
