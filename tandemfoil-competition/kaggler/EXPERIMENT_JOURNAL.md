@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — iter16-dropout01-cycle2
+- **Hypothesis:** continue resume cycle with dropout=0.1; another -0.5 expected.
+- **Change:** --lr 1e-5 --epochs 7; same dropout/L1/EMA recipe. Resumed from iter15.
+- **Result:** val/avg_mae_surf_p=49.13 at epoch 4 (from 49.70).
+- **Verdict:** kept — commit fc3deab (updated ckpt).
+
 ### 2026-04-24 — iter15-dropout01
 - **Hypothesis:** big train/val gap (train vol=0.32 vs val ~1) implies overfitting — add dropout=0.1 to Transolver attention.
 - **Change:** added --dropout flag; ran with --dropout 0.1 --lr 2e-5 --warmup_epochs 1 --epochs 10 (wider LR window to let regularized model settle).
