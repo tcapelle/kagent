@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v20-wd3e-5 (KEPT)
+- **Hypothesis:** model isn't overfit (train_surf ~0.18 at end), so lower weight_decay (1e-4 → 3e-5) should let the model fit harder samples more tightly.
+- **Change:** `train.py` — `weight_decay: 1e-4 → 3e-5`.
+- **Result:** 13/14 epochs. **Avg val surf_p MAE 95.6 → 94.5 (-1.2%).** val_single_in_dist -6.4% (big — the hardest / highest-pressure split). W&B `kagent-tandemfoil/q152i65m`.
+- **Verdict:** kept. Cumulative baseline: 120.4 → 94.5 (**-21.5%**).
+- **Notes:** Big gain on the single_in_dist split again — the same place v10 helped — suggests regularisation was bottlenecking peak-pressure fitting. Next: push further (wd=1e-5) or hold.
+
 ### 2026-04-24 — v19-inoise (FAILED, discarded)
 - **Hypothesis:** input Gaussian noise (0.02 of normalized std) during training should regularise and help OOD generalisation.
 - **Change:** `train.py` — inject `x = x + randn * 0.02` before model forward, training only.
