@@ -13,4 +13,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 7 | nezuko | `adce894` | 85.84 | 96.56 | 96.43 | 63.43 | 86.94 |
 | 8 | alphonse | `4ac0cb3` | 94.91 | 66.88 | 110.01 | 75.39 | 127.35 |
 
-*Last updated: 2026-04-24 01:38 UTC*
+*Last updated: 2026-04-24 01:39 UTC*
