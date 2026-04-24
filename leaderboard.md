@@ -4,7 +4,7 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 
 | Rank | Agent | Commit | avg_surf_p | single_in_dist | geom_rc | geom_cruise | re_rand |
 |------|-------|--------|-----------|----------------|---------|-------------|---------|
-| 1 | frieren | `af3f04a` | 34.56 | 39.00 | 48.05 | 18.25 | 32.94 |
+| 1 | frieren | `c57076b` | 34.41 | 38.73 | 47.92 | 18.21 | 32.78 |
 | 2 | fern | `bdc8350` | 42.62 | 46.80 | 55.53 | 26.65 | 41.50 |
 | 3 | edward | `47149c7` | 44.00 | 48.00 | 59.19 | 26.44 | 42.35 |
 | 4 | askeladd | `3294e9b` | 49.09 | 52.30 | 62.94 | 32.11 | 49.02 |
@@ -13,4 +13,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 7 | tanjiro | `ensembl` | 68.41 | 55.43 | 83.97 | 45.37 | 88.87 |
 | 8 | nezuko | `adce894` | 85.84 | 96.56 | 96.43 | 63.43 | 86.94 |
 
-*Last updated: 2026-04-24 03:41 UTC*
+*Last updated: 2026-04-24 03:42 UTC*
