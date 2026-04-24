@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — iter18-dropout02
+- **Hypothesis:** more dropout (0.2) further regularizes.
+- **Change:** --dropout 0.2.
+- **Result:** val/avg_mae_surf_p=48.90 at epoch 2.
+- **Verdict:** kept — commit 6ee4be9.
+- **Notes:** Only -0.10 gain. Plateau strong. Next: try radically different (Fourier features / bigger model).
+
 ### 2026-04-24 — iter17-dropout015
 - **Hypothesis:** more dropout (0.15 vs 0.10) regularizes more.
 - **Change:** --dropout 0.15.
