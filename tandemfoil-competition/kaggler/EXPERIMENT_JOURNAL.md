@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — iter121-153: chain + slice=128 ensembles push PB to 34.41 🥇 (8.21 lead)
+- **Hypothesis:** Keep building chain: iter131 (slice=128 bs=2 chain-2, warm iter125), iter139 (slice=64 bs=2 chain-4, warm iter101 lr=1e-5), iter149 (slice=64 bs=2 chain-5 from iter139 lr=5e-6). Each adds slight ensemble diversity.
+- **Change:** Six-way ensemble `python ensemble.py --sources 3b06e7b 88cb621 a88e76a 60c4991 41cba95 0d1f962 --weights 0.15 0.25 0.25 0.1 0.1 0.15` for iter153 (commit `c57076b`).
+- **Result:** **iter153 scored 34.41** (from 34.60→34.58→34.56→34.49→34.41 across 4-way / 5-way / 6-way sweeps). Per-split: single=38.73, rc=47.92, cruise=18.21, re_rand=32.78. Lead over fern: 8.21.
+- **Verdict:** kept. 6-way chain ensemble is strictly best so far.
+- **Notes:** Diminishing returns — each chain iteration adds 0.02-0.05 points. iter125/131 (slice=128 warm from iter47) val 1.37 is much weaker than iter93's 1.0 but still useful at 10% in ensembles. Next: iter157 (slice=128 chain-3).
+
 ### 2026-04-24 — iter101/iter111/iter115: bs=2 chain continues, ensemble new PB 34.78
 - **Hypothesis:** Continue bs=2 no-subsample chain (iter101 lr=5e-6 from iter93; iter111 lr=2e-6 from iter101). Averaging iter93+iter101 might smooth errors across their slightly different LR regimes.
 - **Change:** iter101 warm iter93 lr=5e-6 10ep, iter111 warm iter101 lr=2e-6 10ep. iter113/115 2-way iter93+iter101 at 0.5/0.5 & 0.3/0.7.
