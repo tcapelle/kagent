@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v18-fullmesh-lr1e5-f
+- **Hypothesis:** Keep riding; gains are still 0.05/run and unambiguously monotonic.
+- **Change:** `train.py --resume .../model-0yt9iqfz/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `val/l2_error = 2.935` at epoch 8. Gain 0.05. W&B `alphonse/v18-fullmesh-lr1e5-f` (`j9d6aw9t`). **1.7% over v17, 57.8% over v2.**
+- **Verdict:** Kept.
+
 ### 2026-04-24 — v17-fullmesh-lr1e5-e (broke 3.0)
 - **Hypothesis:** Keep riding v14-v16 recipe.
 - **Change:** `train.py --resume .../model-a7rsdijp/checkpoint.pt --lr 1e-5 --train_max_points 0 --batch_size 2`.
