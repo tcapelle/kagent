@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-23 — v14-sw3 (KEPT)
+- **Hypothesis:** v13 (surf_weight=5) was a big win over v10 (surf_weight=10). Push the trend — surf_weight=3 gives volume even more relative gradient.
+- **Change:** `train.py` — `surf_weight: 5 → 3`.
+- **Result:** all 12 epochs completed. **Avg val surf_p MAE 99.7 → 98.7 (-1.0%).** Three splits improved, val_geom_camber_rc regressed +2.7%. W&B `kagent-tandemfoil/6xqsflxu`.
+- **Verdict:** kept. Cumulative vs baseline: 120.4 → 98.7 (**-18.0%**).
+- **Notes:** Gains are shrinking (v10→v13 was -4.2%, v13→v14 is -1.0%) — approaching another plateau. One more point in this direction (surf_weight=2) will tell if we've passed the optimum. If that still wins, try 1. If that regresses, optimum is between 2 and 3.
+
 ### 2026-04-23 — v13-sw5 (BIG WIN — KEPT)
 - **Hypothesis:** v2 and v12 both pushed `surf_weight` UP and both failed. Maybe the arrow points the OTHER way: letting the volume loss dominate training could give volume features enough capacity to contextualise the surface prediction (wake-aware pressure).
 - **Change:** `train.py` — `surf_weight: 10 → 5`. All other knobs identical to v10 (h=160, epochs=12).
