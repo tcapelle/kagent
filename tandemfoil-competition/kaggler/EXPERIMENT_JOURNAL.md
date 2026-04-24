@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-24 — v15-sw1.5 (KEPT)
+- **Hypothesis:** continue the surf_weight sweep that v13/v14 validated — lower surface weight, more volume gradient share.
+- **Change:** `train.py` — `surf_weight: 3 → 1.5`.
+- **Result:** all 12 epochs. **Avg val surf_p MAE 98.7 → 96.4 (-2.3%).** Three splits improved (camber_rc -4.7% led), re_rand flat (+0.3%). W&B `kagent-tandemfoil/mk60viyr`.
+- **Verdict:** kept. Cumulative baseline: 120.4 → 96.4 (**-20.0%**). First sub-100 avg.
+
 ### 2026-04-23 — v14-sw3 (KEPT)
 - **Hypothesis:** v13 (surf_weight=5) was a big win over v10 (surf_weight=10). Push the trend — surf_weight=3 gives volume even more relative gradient.
 - **Change:** `train.py` — `surf_weight: 5 → 3`.
