@@ -251,6 +251,7 @@ class Config:
     warm_start: str | None = None  # path to checkpoint to fine-tune from
     surf_loss: str = "mse"           # "mse" or "l1"
     p_weight: float = 1.0            # extra weight on pressure channel in surface loss
+    dropout: float = 0.0             # dropout inside attention/MLP (regularization during fine-tuning)
 
 
 
@@ -292,6 +293,7 @@ def main():
         n_head=8,
         slice_num=64,
         mlp_ratio=4,
+        dropout=cfg.dropout,
         output_fields=["Ux", "Uy", "p"],
         output_dims=[1, 1, 1],
     )
