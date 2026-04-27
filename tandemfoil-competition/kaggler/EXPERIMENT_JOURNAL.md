@@ -22,6 +22,24 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v4 chain-train from v3 (LR=2e-5, 30 epochs)
+- **Hypothesis:** v3 trajectory was still descending at the timeout, so another 30 min from the
+  v3 best ckpt with a *lower* LR (2e-5 vs 5e-5 in v3) should let the optimiser keep peeling off
+  surface-pressure error without disturbing the basin we landed in.
+- **Change:** no code changes — just `--warm_start` to v3's best (`model-4csd0d8b/checkpoint.pt`),
+  `--lr 2e-5 --epochs 30`. v3 scored on the apr27-5 leaderboard at 48.54 (#2) — independent
+  confirmation that the warm-start recipe + best-by-surf-p selection works.
+- **Result:** wandb run, 29 epochs in 30.2 min. Best at epoch 25 → **val/avg_surf_p = 50.20**
+  (single 41.81 / geom_rc 70.48 / cruise 34.86 / re_rand 53.63). Predictions saved to
+  `/mnt/new-pvc/predictions/apr27-5/alphonse/baab103/`. Expected test ≈ 46.9 if val/test ratio holds
+  (askeladd 0.935, my v3 0.935).
+- **Verdict:** kept — slight but consistent improvement on every split vs v3 best.
+- **Notes:** trajectory plateaued around 50.2-50.4 in the last 10 epochs — chain-training another round
+  with the same recipe will probably give diminishing returns. Better next moves: (a) Polyak/SWA
+  weight average across late-epoch checkpoints (need to start saving them); (b) prediction-space
+  ensemble of v3 + v4 + askeladd; (c) push for capacity by training a from-scratch 256/8/8/128 with
+  L1 + best-by-surf-p (no warm-start) and ensembling its predictions in.
+
 ### 2026-04-27 — v3 warm-start from askeladd's apr27-5 leader + L1 + best-by-surf-p
 - **Hypothesis:** the apr27-5 leader askeladd (test 51.22) reached val=54.79 by warm-starting
   from thorfinn's apr27-bis ckpt (192/6/6/128, fun_dim=24/space_dim=0). Continuing the same recipe
