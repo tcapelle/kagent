@@ -1,16 +1,12 @@
 """Train Transolver on TandemFoilSet.
 
-Structured benchmark with four validation tracks:
-  val_in_dist          — interpolation (raceCar single holdout)
-  val_tandem_transfer  — unseen tandem front foil (Part2)
-  val_ood_cond         — extreme conditions (frontier 20%)
-  val_ood_re           — OOD Reynolds number (cruise Part2)
-
-Run:
-  uv run train.py [--debug]
+Edward's v1 — match top-performer Transolver size, add Fourier features
+for position, attention masking for padding, bf16, grad clipping.
 """
 
+import math
 import os
+import shutil
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, asdict
@@ -29,6 +25,29 @@ from tqdm import tqdm
 
 from data import X_DIM, VAL_SPLIT_NAMES, pad_collate, load_data
 from viz import visualize
+
+
+# ---------------------------------------------------------------------------
+# Fourier features for position
+# ---------------------------------------------------------------------------
+
+
+class FourierFeatures(nn.Module):
+    """Multi-scale Fourier features for 2D position (x, z).
+
+    Maps [B, N, 2] -> [B, N, 4 * num_scales] via sin/cos of B @ x for log-spaced freqs.
+    """
+
+    def __init__(self, num_scales: int = 8, max_freq: float = 16.0):
+        super().__init__()
+        freqs = 2 ** torch.linspace(0.0, math.log2(max_freq), num_scales)
+        self.register_buffer("freqs", freqs)  # [num_scales]
+
+    def forward(self, pos: torch.Tensor) -> torch.Tensor:
+        # pos: [B, N, 2]
+        # out: [B, N, 2 * 2 * num_scales] = sin/cos for x and z
+        x = pos.unsqueeze(-1) * self.freqs * math.pi  # [B, N, 2, S]
+        return torch.cat([x.sin(), x.cos()], dim=-1).flatten(-2)
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +86,7 @@ class MLP(nn.Module):
 
 
 class PhysicsAttention(nn.Module):
-    """Physics-aware attention for irregular meshes."""
+    """Physics-aware attention for irregular meshes, with optional padding mask."""
 
     def __init__(self, dim, heads=8, dim_head=64, dropout=0.0, slice_num=64):
         super().__init__()
@@ -87,7 +106,7 @@ class PhysicsAttention(nn.Module):
         self.to_v = nn.Linear(dim_head, dim_head, bias=False)
         self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout))
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         B, N, _ = x.shape
 
         fx_mid = (
@@ -103,6 +122,10 @@ class PhysicsAttention(nn.Module):
             .contiguous()
         )
         slice_weights = self.softmax(self.in_project_slice(x_mid) / self.temperature)
+        if mask is not None:
+            # mask: [B, N], True for real
+            m = mask[:, None, :, None].to(slice_weights.dtype)
+            slice_weights = slice_weights * m
         slice_norm = slice_weights.sum(2)
         slice_token = torch.einsum("bhnc,bhng->bhgc", fx_mid, slice_weights)
         slice_token = slice_token / ((slice_norm + 1e-5)[:, :, :, None].repeat(1, 1, 1, self.dim_head))
@@ -141,8 +164,8 @@ class TransolverBlock(nn.Module):
                 nn.Linear(hidden_dim, out_dim),
             )
 
-    def forward(self, fx):
-        fx = self.attn(self.ln_1(fx)) + fx
+    def forward(self, fx, mask=None):
+        fx = self.attn(self.ln_1(fx), mask=mask) + fx
         fx = self.mlp(self.ln_2(fx)) + fx
         if self.last_layer:
             return self.mlp2(self.ln_3(fx))
@@ -150,26 +173,20 @@ class TransolverBlock(nn.Module):
 
 
 class Transolver(nn.Module):
-    def __init__(self, space_dim=1, n_layers=5, n_hidden=256, dropout=0.0,
-                 n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
-                 slice_num=32, ref=8, unified_pos=False,
+    def __init__(self, space_dim=2, n_layers=6, n_hidden=192, dropout=0.0,
+                 n_head=6, act="gelu", mlp_ratio=2, fun_dim=22, out_dim=3,
+                 slice_num=64, fourier_scales=8, fourier_max_freq=16.0,
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None):
         super().__init__()
-        self.ref = ref
-        self.unified_pos = unified_pos
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
+        self.fourier = FourierFeatures(num_scales=fourier_scales, max_freq=fourier_max_freq)
+        ff_dim = 2 * 2 * fourier_scales  # sin/cos for x and z
+        in_dim = fun_dim + space_dim + ff_dim
 
-        if self.unified_pos:
-            self.preprocess = MLP(fun_dim + ref**3, n_hidden * 2, n_hidden,
-                                   n_layers=0, res=False, act=act)
-        else:
-            self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
-                                   n_layers=0, res=False, act=act)
-
+        self.preprocess = MLP(in_dim, n_hidden * 2, n_hidden, n_layers=0, res=False, act=act)
         self.n_hidden = n_hidden
-        self.space_dim = space_dim
         self.blocks = nn.ModuleList([
             TransolverBlock(
                 num_heads=n_head, hidden_dim=n_hidden, dropout=dropout,
@@ -191,10 +208,16 @@ class Transolver(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, data, **kwargs):
-        x = data["x"]
-        fx = self.preprocess(x) + self.placeholder[None, None, :]
+        x = data["x"]  # [B, N, 24] normalized
+        mask = data.get("mask")  # [B, N] bool, True for real
+        pos_norm = x[..., :2]  # normalized position used as feature; raw position is recoverable but normalized is fine for FF
+        ff = self.fourier(pos_norm)
+        x_in = torch.cat([x, ff], dim=-1)
+        if mask is not None:
+            x_in = x_in * mask.unsqueeze(-1).to(x_in.dtype)
+        fx = self.preprocess(x_in) + self.placeholder[None, None, :]
         for block in self.blocks:
-            fx = block(fx)
+            fx = block(fx, mask=mask)
         return {"preds": fx}
 
 
@@ -202,7 +225,7 @@ class Transolver(nn.Module):
 # Training
 # ---------------------------------------------------------------------------
 
-MAX_TIMEOUT = 30.0  # minutes
+MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 
 
 @dataclass
@@ -212,6 +235,7 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 10.0
     epochs: int = 50
+    grad_clip: float = 1.0
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -248,17 +272,20 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=128,
-    n_layers=5,
-    n_head=4,
+    n_hidden=192,
+    n_layers=6,
+    n_head=6,
     slice_num=64,
     mlp_ratio=2,
+    fourier_scales=8,
+    fourier_max_freq=16.0,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
 
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
+print(f"Params: {n_params/1e6:.2f}M")
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
@@ -291,10 +318,20 @@ model_path = model_dir / "checkpoint.pt"
 with open(model_dir / "config.yaml", "w") as f:
     yaml.dump(model_config, f)
 
+# Mirror checkpoints to PVC durable path
+research_tag = os.environ.get("RESEARCH_TAG", "default")
+kaggler_name = os.environ.get("KAGGLER_NAME") or cfg.agent or "unknown"
+pvc_dir = Path(f"/mnt/new-pvc/kagent/{research_tag}/{kaggler_name}/checkpoints/model-{run.id}")
+pvc_dir.mkdir(parents=True, exist_ok=True)
+pvc_path = pvc_dir / "checkpoint.pt"
+with open(pvc_dir / "config.yaml", "w") as f:
+    yaml.dump(model_config, f)
+
 best_val = float("inf")
 best_metrics: dict = {}
 global_step = 0
 train_start = time.time()
+amp_dtype = torch.bfloat16
 
 for epoch in range(MAX_EPOCHS):
     if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
@@ -314,8 +351,9 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2
+        with torch.autocast(device_type="cuda", dtype=amp_dtype):
+            pred = model({"x": x, "mask": mask})["preds"]
+        sq_err = (pred.float() - y_norm) ** 2
 
         vol_mask = mask & ~is_surface
         surf_mask = mask & is_surface
@@ -325,6 +363,8 @@ for epoch in range(MAX_EPOCHS):
 
         optimizer.zero_grad()
         loss.backward()
+        if cfg.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -357,7 +397,9 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
+                with torch.autocast(device_type="cuda", dtype=amp_dtype):
+                    pred = model({"x": x, "mask": mask})["preds"]
+                pred = pred.float()
                 sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
@@ -393,12 +435,14 @@ for epoch in range(MAX_EPOCHS):
         val_loss_sum += split_loss
 
     mean_val_loss = val_loss_sum / len(val_loaders)
+    avg_surf_p = sum(m[f"{n}/mae_surf_p"] for n, m in split_metrics.items()) / len(split_metrics)
     dt = time.time() - t0
 
     metrics = {
         "train/vol_loss": epoch_vol,
         "train/surf_loss": epoch_surf,
         "val/loss": mean_val_loss,
+        "val/avg_surf_p": avg_surf_p,
         "lr": scheduler.get_last_lr()[0],
         "epoch_time_s": dt,
         "global_step": global_step,
@@ -410,10 +454,15 @@ for epoch in range(MAX_EPOCHS):
     tag = ""
     if mean_val_loss < best_val:
         best_val = mean_val_loss
-        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
+        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "avg_surf_p": avg_surf_p}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
         torch.save(model.state_dict(), model_path)
+        # Mirror to durable PVC path
+        shutil.copyfile(model_path, pvc_path)
+        # Mirror to git-tracked best.pt
+        Path("checkpoints").mkdir(exist_ok=True)
+        shutil.copyfile(model_path, "checkpoints/best.pt")
         tag = " *"
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
@@ -423,7 +472,7 @@ for epoch in range(MAX_EPOCHS):
     print(
         f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
         f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  "
-        f"val[{split_summary}]{tag}"
+        f"val[{split_summary}] avg_surf_p={avg_surf_p:.2f}{tag}"
     )
 
 # --- Final ---
@@ -431,7 +480,8 @@ total_time = (time.time() - train_start) / 60.0
 print(f"\nDone ({total_time:.1f} min)")
 
 if best_metrics:
-    print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
+    print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}, "
+          f"avg_surf_p={best_metrics['avg_surf_p']:.2f}")
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
     model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))

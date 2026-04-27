@@ -53,19 +53,24 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-# ---------------------------------------------------------------------------
-# Load your model here. Example:
-#
-#   from train import MyModel
-#   model = MyModel(...).to(device)
-#   model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
-#
-# Or if you saved the full model:
-#
-#   model = torch.load(cfg.checkpoint, map_location=device)
-# ---------------------------------------------------------------------------
-raise NotImplementedError("Load your model above and remove this line")
+from train import Transolver
 
+model_config = dict(
+    space_dim=2,
+    fun_dim=X_DIM - 2,
+    out_dim=3,
+    n_hidden=192,
+    n_layers=6,
+    n_head=6,
+    slice_num=64,
+    mlp_ratio=2,
+    fourier_scales=8,
+    fourier_max_freq=16.0,
+    output_fields=["Ux", "Uy", "p"],
+    output_dims=[1, 1, 1],
+)
+model = Transolver(**model_config).to(device)
+model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
@@ -102,10 +107,12 @@ for split in TEST_SPLITS:
             max_n = max(x.shape[0] for x in xs)
             B = len(xs)
             x_pad = torch.zeros(B, max_n, X_DIM, device=device)
+            mask = torch.zeros(B, max_n, dtype=torch.bool, device=device)
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
+                mask[j, :x.shape[0]] = True
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            pred_norm = model({"x": (x_pad - x_mean) / x_std, "mask": mask})["preds"]
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
