@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter17: warm-chain iter16 → val_surf_p=53.31, ensemble val=48.96
+- **Hypothesis:** Chain on the seed-diverse iter16 (55.57). Warm-chains have proven valuable in the optimizer (iter9, iter11, iter15 all weighted heavily). Adding a chain from a different seed should give a useful new perspective.
+- **Change:** Warm-start iter16 (`model-wm65na34`), bs=2 + full mesh + lr=2e-5 + p_weight=3 + 11 epochs. Run `q636386k`.
+- **Result:** epoch 11 best, val/loss=0.7548, surf_p=**53.31** (-4% vs iter16's 55.57). Optimizer (15 sources) val avg_surf_p **48.96** (-0.08 from 49.04). Top weights: iter15=0.28, iter9=0.25, iter3=0.19, iter17=0.13, iter11=0.12.
+- **Verdict:** kept; submitted under `d096d3b`.
+- **Notes:** Adding chains > adding fresh seeds for ensemble. Each chain run buys -0.07 to -0.10 val. The marginal cost is one full 30-min training session per chain step.
+
 ### 2026-04-27 — iter16: another seed (PYTHONHASHSEED=123) Fourier model + 9-way ensemble val=49.04
 - **Hypothesis:** More seed-diverse Fourier models → larger effective ensemble. Same recipe as iter1 with PYTHONHASHSEED=123. Run `wm65na34`.
 - **Result:** epoch 29 best, val/loss=0.7820, surf_p=**55.57**. Optimizer (now 14 sources) found val avg_surf_p **49.0383** (-0.07 from 49.12 → 49.04). New top weights: iter15=0.21, iter11=0.20, iter9=0.18, iter3=0.18, iter14=0.05, iter16=0.02, iter5/iter1/iter2/iter8 trace.

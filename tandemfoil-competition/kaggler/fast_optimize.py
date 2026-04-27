@@ -22,7 +22,7 @@ TEST_SPLITS = [
 ]
 SOURCES = ["79894e7", "0fa22ab", "5d05ebb", "b04a915", "78e27f0",
            "b7080b6", "29827b6", "ce6d81a", "347116e", "39cb43e", "e8d2478",
-           "2660ef6", "f0f8155", "c52ab1c"]  # iter15 + iter16 (seed=123)
+           "2660ef6", "f0f8155", "c52ab1c", "81a9fab"]  # iter17 (chain on iter16)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
