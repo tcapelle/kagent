@@ -35,6 +35,7 @@ SRC = {
     "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08, rc 57.33
     "tanjiro":  ("tanjiro",  "9f6f523"),  # rc 54.98, re 40.43, single 44.86, cruise 26.14
     "tanjiro2": ("tanjiro",  "5613c7b"),  # NEW! rc 52.32, re 37.94 (BEST!), single 42.04, cruise 24.06
+    "tanjiro3": ("tanjiro",  "63e5e26"),  # tanjiro v2 (avg 38.45) — single 41.44, rc 51.60, cruise 23.55, re 37.20
     "fern":     ("fern",     "0f7f9e0"),  # cruise 24.85, rc 59.08, single 48.29, re 44.04
     "fern2":    ("fern",     "cc186e5"),  # cruise 25.14, rc 59.79
     "fern3":    ("fern",     "36e8feb"),  # NEW! cruise 23.88, rc 58.12, re 41.48 (worse alone but different agent)
