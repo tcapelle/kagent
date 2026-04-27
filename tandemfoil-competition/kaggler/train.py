@@ -62,14 +62,14 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 8e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
-    surf_weight: float = 25.0
+    batch_size: int = 8
+    surf_weight: float = 30.0
     p_channel_weight: float = 1.0  # equal channel weighting
-    epochs: int = 25
+    epochs: int = 35
     grad_clip: float = 1.0
-    train_max_volume: int = 25000  # subsample volume nodes during training (0 = keep all)
+    train_max_volume: int = 30000  # subsample volume nodes during training (0 = keep all)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -113,6 +113,7 @@ model_config = dict(
     n_head=8,
     slice_num=96,
     mlp_ratio=2,
+    dropout=0.05,
     n_pos_freqs=10,         # Fourier features on (x, z) for high-freq turbulence
     max_pos_freq=16.0,
     output_fields=["Ux", "Uy", "p"],
