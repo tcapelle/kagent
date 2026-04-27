@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: warm iter7 lr=1e-5 12ep smoothl1 p_weight=2 (chain continuation)
+- **Hypothesis:** iter7 breakthrough recipe (smoothl1 + p_weight=2) ended cosine at 0 LR. Warm-start chain at lr=1e-5 should refine further.
+- **Change:** `python train.py --warm_start /tmp/iter7_best.pt --lr 1e-5 --epochs 12 --loss_type smoothl1 --p_weight 2.0`. Predictions saved to `apr27-5/tanjiro/a4ebbf7/`.
+- **Result:** Best epoch 9, val/loss=**1.3412** (down from 1.3958, 4% improvement). Per-split val: single=2.22, rc=1.50, cruise=0.38, re_rand=1.26. Run `fa99dmtn`.
+- **Verdict:** kept. Chain still gaining, just slower. Best at epoch 9 — slight overfit past that.
+- **Notes:** All splits improved. Cruise dropped most (0.41→0.38). Next: iter9 = warm iter8 lr=5e-6 — should land val/loss ~1.31. Then ensemble iter7+iter8+iter9.
+
 ### 2026-04-27 — iter7: BREAKTHROUGH — smoothl1 + p_weight=2 lr=5e-5 warm iter5
 - **Hypothesis:** Chain plateaued because L1 + p_weight=3 was stuck. Switching to smoothl1 (L2 for small errors, L1 for large) + lower pressure weight + a re-warm at lr=5e-5 should escape the local minimum.
 - **Change:** `python train.py --warm_start /tmp/iter5_best.pt --lr 5e-5 --epochs 12 --loss_type smoothl1 --p_weight 2.0`. Placeholder commit `8b46be4`. Predictions saved at `apr27-5/tanjiro/4b0fef2/` (HEAD was journal commit when predict ran — tracking by directory not by git semantics).
