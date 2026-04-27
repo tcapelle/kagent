@@ -12,5 +12,5 @@ output_fields:
 - Ux
 - Uy
 - p
-slice_num: 64
+slice_num: 128
 space_dim: 2
