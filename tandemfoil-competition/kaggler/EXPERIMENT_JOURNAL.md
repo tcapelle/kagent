@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter20: MSE bs=2 fine-tune (commit c40c4d8)
+- **Hypothesis:** Apply bs=2/no-subsample to MSE iter19 base. Builds an MSE-mature model whose error patterns differ from L1 chain.
+- **Change:** `--warm_start /tmp/iter19_best.pt --loss_type mse --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** val/loss=1.5830 (MSE) at epoch 10. Per-split val (L2² of normalized resid): single=2.30, rc=2.08, cruise=0.57, re_rand=1.39. Weaker than iter16 in absolute terms, but errors should be uncorrelated.
+- **Verdict:** kept for ensemble. Will sweep weights for iter21 = iter16 (L1) + iter20 (MSE).
+- **Notes:** MSE-trained model up-weights large errors quadratically — should fit outlier samples differently than L1.
+
 ### 2026-04-27 — iter19: fresh MSE-loss 192x6 for ensemble diversity (commit fb713c0)
 - **Hypothesis:** All my trained models so far use L1; their predictions correlate. A fresh MSE-trained model should produce decorrelated errors (MSE penalizes large errors quadratically, L1 linearly → different fit on outliers).
 - **Change:** `--loss_type mse --epochs 25 --batch_size 4 --train_subsample 60000 --lr 5e-4 --warmup_epochs 3`. Fresh init, no warm-start. Same 192x6 arch.
