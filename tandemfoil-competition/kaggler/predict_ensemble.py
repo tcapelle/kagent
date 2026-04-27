@@ -83,11 +83,12 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter27: try 4-way blends on rc and single (add I=55cc0ab to mix), keep proven cruise/re.
+    # iter28: combine empirical bests — 4-way L+M+K+I single (proven 35.2140), 3-way L+M+K rc
+    # (proven 48.6777), 50/50 N+O cruise (proven 20.6158), 50/50 M+N re (proven 34.9014).
     single: str = "thorfinnL:0.30,thorfinnM:0.30,thorfinnK:0.20,thorfinnI:0.20"
-    rc: str = "thorfinnL:0.30,thorfinnM:0.30,thorfinnK:0.20,thorfinnI:0.20"
-    cruise: str = "thorfinnN:0.5,thorfinnO:0.5"   # proven 20.6158
-    re_rand: str = "thorfinnM:0.5,thorfinnN:0.5"  # proven 34.9014
+    rc: str = "thorfinnL:0.40,thorfinnM:0.40,thorfinnK:0.20"
+    cruise: str = "thorfinnN:0.5,thorfinnO:0.5"
+    re_rand: str = "thorfinnM:0.5,thorfinnN:0.5"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
