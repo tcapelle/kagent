@@ -55,6 +55,8 @@ class Config:
     debug: bool = False
     warm_start: str | None = None
     warmup_epochs: int = 3
+    # Boost sampler weight on raceCar single domain (1.0 = balanced, 2.0 = 2x).
+    single_boost: float = 1.0
 
 
 cfg = sp.parse(Config)
@@ -86,6 +88,20 @@ def subsample_collate(batch):
 
 loader_kwargs = dict(num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
+
+if cfg.single_boost != 1.0:
+    import json as _json
+    with open(Path(cfg.splits_dir) / "meta.json") as _f:
+        _meta = _json.load(_f)
+    _single_idxs = set(_meta["domain_groups"].get("racecar_single", []))
+    boost = torch.ones_like(sample_weights)
+    for _i in _single_idxs:
+        if _i < len(sample_weights):
+            boost[_i] = cfg.single_boost
+    sample_weights = sample_weights * boost
+    print(f"single_boost={cfg.single_boost}: total weight on raceCar single now "
+          f"{sample_weights[list(_single_idxs)[:1]].item() * len(_single_idxs):.3f} of "
+          f"{sample_weights.sum().item():.3f}")
 
 if cfg.debug:
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True,
