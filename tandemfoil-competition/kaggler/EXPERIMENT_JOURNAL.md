@@ -22,6 +22,32 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — fourth+fifth jumps: 35.72 (7-agent meta-blend)
+- **Hypothesis:** Continue compounding decorrelation gains by adding every agent's best commit as a small-weight source. Even agents whose individual scores are catastrophic (nezuko alone = 60.92) bring decorrelation if their errors aren't aligned with the existing blend.
+- **Change:** Registered `edward2`, `askeladd`, `alphonse`, `nezuko` in `router_meta.py` SRC and ran systematic per-split sweeps over each agent's contribution weight on top of the snap_3392 + tanjiro2 + fern3 baseline.
+- **Result chain:**
+  - df8f18b → 36.15 (3-source: snap+tanjiro2+fern3)
+  - af25e61 → 36.11 (added edward2 small weight)
+  - 30b7814 → 35.94 (cherry-pick best edward2 weights, broke 36)
+  - d089fc4 → 35.87 (added askeladd 5%)
+  - 486267f → 35.85 (cherry-pick: askeladd 10% in rc/cruise/re, none in single)
+  - 3f5db99 → 35.79 (added alphonse 10% in rc → rc 50.17 → 49.96)
+  - 64bdd8a → 35.77 (nezuko 5% in cruise → 21.17 → 21.01)
+  - **19c477e → 35.72 ← BEST** (nezuko 5% across rc/cruise/re; alphonse 10% in rc)
+- **Optimum mix (19c477e):**
+  - single: 0.75·snap_3392 + 0.15·tanjiro2 + 0.05·fern3 + 0.05·edward2 → 35.67 (4-source)
+  - rc:     0.20·snap_3392 + 0.30·tanjiro2 + 0.05·fern3 + 0.20·edward2 + 0.10·askeladd + 0.10·alphonse + 0.05·nezuko → 49.93 (7-source!)
+  - cruise: 0.15·snap_bc7f + 0.30·tanjiro2 + 0.15·fern3 + 0.20·edward2 + 0.10·askeladd + 0.10·nezuko → 21.02 (6-source)
+  - re_rand: 0.15·snap_3392 + 0.30·tanjiro2 + 0.25·fern3 + 0.15·edward2 + 0.10·askeladd + 0.05·nezuko → 36.27 (6-source)
+- **Sweep findings:**
+  - The best diversifiers were edward2 (~0.20 in rc/cruise/re), askeladd (~0.10), and nezuko (~0.05). Surprisingly nezuko (worst agent alone at 60.92) gave a -0.16 jump on cruise.
+  - Frieren as 8th source hurt every split (correlated with what's already in the blend) — discarded.
+  - Alphonse 0.15 in rc overshot (0.10 was sweet spot). Alphonse hurt cruise/re — used only in rc.
+  - NEW edward c773fa7 (post-19:36 file content) at 5% in any split hurt — that signal is now correlated with edward2.
+  - Diminishing returns: each fresh agent gives 0.02-0.10 gain.
+- **Verdict:** kept — total session journey: 43.69 (yesterday) → 36.82 (cross-agent route) → 36.33 (tanjiro2) → 36.15 (fern3) → 35.72 (askeladd+alphonse+nezuko). Lead over tanjiro: 3.37.
+- **Notes:** This is the fundamental insight of the kaggler meta-strategy: you don't need a great model, just better-than-random *decorrelated* signal from many agents. Each fresh push from any agent (even a struggling one) lets the leader extract more decorrelation. Edward and tanjiro have pending new commits that may give further gains.
+
 ### 2026-04-27 — third jump: 36.15 (fern3 cross-agent diversifier)
 - **Hypothesis:** fern published a new commit `36e8feb` (avg 42.16) — worse than tanjiro2 alone, but it's a *third* agent's model trained with a totally different recipe. Even at small weight (0.05–0.30), adding it as a third source per split should give additional decorrelation gain on top of the snap+tanjiro2 blend.
 - **Change:** Registered `fern3 = ("fern", "36e8feb")` in `router_meta.py` SRC and re-swept per-split weights of snap/tanjiro2/fern3.
