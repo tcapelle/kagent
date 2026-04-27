@@ -22,11 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-27 — iter9: chain iter8 at lr=1e-6 p_w=10 (further refinement)
+### 2026-04-27 — iter10–17: ensemble weight sweep at fixed slice-mix
+- **Hypothesis:** The arch-mix iter4+iter7+iter8 (slice=64+128+64) ensemble at 0.4/0.2/0.4 scored 49.86. Sweeping the slice=128 weight should find the optimum.
+- **Sweep results (avg surf p MAE):**
+  - 4-way iter3+iter4+iter7+iter8 0.15/0.30/0.20/0.35 → 49.74
+  - 3-way iter4+iter7+iter8 0.35/0.30/0.35 → **49.54**
+  - 3-way 0.30/0.40/0.30 → **49.52**
+  - 3-way 0.25/0.50/0.25 → 49.65 (too much slice=128)
+  - 3-way 0.30/0.35/0.35 → **49.50** (best)
+  - 3-way 0.35/0.35/0.30 → 49.51
+  - 5-way SWA-like iter3+...+iter9 0.05/0.27/0.35/0.27/0.06 → 49.51
+  - SWA iter4+iter8 alone (no slice=128) → 50.55 — confirms slice=128 is essential
+- **Verdict:** Best ensemble = 0.30 iter4 (slice=64 chain) + 0.35 iter7 (slice=128 chain) + 0.35 iter8 (slice=64 surf-tuned chain) at commit **2dfe9bb (49.50, rank #4)**.
+- **Notes:** Sensitivity is gentle (±0.02 over ±0.05 weight); 35% slice=128 is the empirical sweet spot. Chain models are highly correlated; only the architecture switch (slice 64↔128) provides meaningful diversity.
+
+### 2026-04-27 — iter9: chain iter8 at lr=1e-6 p_w=10 (failed plateau)
 - **Hypothesis:** Continue surface-pressure-focused chain at very low LR for marginal refinement.
 - **Change:** `python train.py --warm_start /tmp/iter8_best.pt --batch_size 2 --train_subsample 0 --lr 1e-6 --p_weight 10.0 --epochs 9`.
-- **Result:** Pending.
-- **Verdict:** TBD.
+- **Result:** val/loss=1.5762 at epoch 1 (best epoch was epoch 1 — the warm-start state itself was already optimal). lr=1e-6 too small for further training. Single-model score 50.51 (worse than iter4 alone).
+- **Verdict:** discarded — chain has plateaued. Won't help in ensemble either.
 
 ### 2026-04-27 — iter8: chain iter4 with p_weight=10 (aggressive surface focus)
 - **Hypothesis:** Leaderboard scores ONLY surface pressure MAE. Doubling p_weight from 5→10 biases the model further toward surface pressure at the cost of volume metrics.
@@ -79,13 +93,3 @@ Keep entries short. Link W&B run URLs when useful.
 - **Verdict:** kept — strong baseline matching frieren's iter4 (1.91). Predictions submitted to apr27-4/alphonse/def6b08.
 - **Notes:** ~46s/epoch (375 batches). Ready for iter2 = warm-start bs=2 no-subsample full-mesh (breakthrough recipe).
 
-# tweak: iter3+iter4 50/50 ensemble
-# iter8: try arch-mix ensemble
-# iter10: final 5-way ensemble
-# iter11: heavier slice=128 weight
-# iter12: tight iter4+iter8 SWA
-# iter13: even heavier slice=128 (40%)
-# iter14: 50% slice=128
-# iter15: 35% slice=128
-# iter16: iter4-heavy at 35% slice
-# iter17: 5-way fine-tuned
