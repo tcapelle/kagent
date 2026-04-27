@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14-wide-floor-blend (TIE, no improvement)
+- **Hypothesis:** thorfinn has many submitted commits all hitting per-split floors (35.5855 single, 49.0415 rc, 20.8320 cruise, 35.3237 re) but with *distinct underlying predictions* (cluster analysis: 5-9 distinct prediction groups per split, pairwise diffs up to 5+ MAE units in rc). Averaging across these distinct groups should reduce errors via independent-noise averaging.
+- **Change:** `predict_ensemble.py` — added 5 new SRC entries (`thorfinnC=89dd381, D=86a8146, E=afabff7, F=847a2f4, G=889c2a0`) and set wide blends per split: single 6-source equal-ish, rc 5-source, cruise 3-source, re 5-source. Commit `8157ca8`.
+- **Result:** **avg=35.195686 vs 209c93e floor=35.195674 — tie at the 6th decimal (0.000012 worse, not detectable in 4-decimal scoring).** Per-split: single 35.5855 (=floor), rc 49.0415 (=floor), cruise 20.8320 (+0.00003 worse), re 35.3237 (=floor).
+- **Verdict:** discarded as a marginal regression — kept floor 209c93e as the published best. The wide blend confirms my iter12 hypothesis: floor commits all share highly-correlated errors, so even multi-source averaging doesn't dip below 35.5855 single / 49.0415 rc / 20.8320 cruise / 35.3237 re. The deterministic floor is real.
+- **Notes:** distinct cluster sizes per split — single: 9 groups (largest = {89dd381, 0e56f78, 889c2a0}); rc: 8 groups (largest = {0e56f78, 86a8146, afabff7}); cruise: 5 groups (group 0 dominant: 7 commits identical); re: 7 groups. Averaging within-cluster is wasteful (identical predictions); across clusters, the gain is below 1e-5 detection threshold. **Implication:** to dip below 35.196 I need a *genuinely independent* high-quality prediction source — i.e., a NEW model. Going to iter15.
+
 ### 2026-04-27 — iter12-thorfinn-blend (HUGE WIN, KEPT — #1 leaderboard)
 - **Hypothesis:** thorfinn's PVC test predictions dominate every split (single 35.60, rc 49.07, cruise 20.88, re 35.33 vs my best blend 36.82). Their model.py is architecture-compatible with mine (Transolver). Blending thorfinn-as-base with small contributions from per-split runners-up should beat thorfinn's individual scores via residual error decorrelation.
 - **Change:** `predict_ensemble.py` — added thorfinn's 8 best individual commits as named sources (`thorfinn=1f9db55`, `thorfinn0=0cc44bf` for rc base, `thorfinn5=8ce7299` for single, `thorfinn6=90567b5`, `thorfinn7=ae15980`, etc). Final blend: single = `thorfinn5:0.7,thorfinn:0.15,thorfinn6:0.15` (3-way thorfinn-only); rc = `thorfinn0:0.85,tanjiro:0.10,thorfinn:0.05` (only split where non-thorfinn helps); cruise/re = pure 1f9db55.
