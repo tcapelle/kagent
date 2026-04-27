@@ -95,3 +95,4 @@ Keep entries short. Link W&B run URLs when useful.
 
 # iter19: 40% iter18
 # iter20: 4-way both slice128
+# iter21: lighter iter4
