@@ -49,9 +49,9 @@ class Config:
     seed: int = 0  # 0 disables explicit seeding (matches iter 8's default behavior)
     grad_clip: float = 1.0
     warmup_epochs: int = 1
-    epochs: int = 80
+    epochs: int = 60
     use_amp: bool = True
-    vol_subsample: int = 20000  # max volume nodes per sample at training time
+    vol_subsample: int = 32000  # max volume nodes per sample at training time
     cp_normalize: bool = True  # divide pressure target by exp(2*(log_re - LOG_RE_REF))
     velocity_norm: bool = False  # also divide Ux/Uy by Re-linear factor (iter 9 found this hurts)
     log_re_ref: float = 14.0  # reference log(Re) ~1.2M for Cp normalization
