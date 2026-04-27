@@ -61,8 +61,8 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # 46d956a was 35.1959. Try 50/50 of two best singles (8ce7299 + 90567b5).
-    single: str = "thorfinn5:0.5,thorfinn6:0.5"
+    # 4-way single: 8ce7299 + 90567b5 + 1f9db55 + 0cc44bf
+    single: str = "thorfinn5:0.4,thorfinn6:0.3,thorfinn:0.2,thorfinn0:0.1"
     rc: str = "thorfinn0:0.85,tanjiro:0.10,thorfinn:0.05"
     cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
