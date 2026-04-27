@@ -1,5 +1,7 @@
 """Transolver model for CFD surrogate prediction on irregular meshes."""
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -126,12 +128,25 @@ class Transolver(nn.Module):
                  n_head=6, act="gelu", mlp_ratio=2, fun_dim=22, out_dim=3,
                  slice_num=64,
                  output_fields: list[str] | None = None,
-                 output_dims: list[int] | None = None):
+                 output_dims: list[int] | None = None,
+                 fourier_freqs: int = 0,
+                 fourier_max_freq: float = 32.0):
         super().__init__()
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
+        self.fourier_freqs = fourier_freqs
 
-        self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
+        # Fourier features encode the first 2 dims (position) at multiple
+        # logarithmically spaced frequencies — gives the model high-frequency
+        # capacity for turbulent components without baking it into the MLP.
+        if fourier_freqs > 0:
+            freqs = torch.exp(torch.linspace(0, math.log(fourier_max_freq), fourier_freqs))
+            self.register_buffer("fourier_freqs_buf", freqs)
+            extra_dim = 2 * 2 * fourier_freqs  # 2 spatial dims * 2 (sin,cos) * freqs
+        else:
+            extra_dim = 0
+
+        self.preprocess = MLP(fun_dim + space_dim + extra_dim, n_hidden * 2, n_hidden,
                                n_layers=0, res=False, act=act)
 
         self.n_hidden = n_hidden
@@ -158,6 +173,12 @@ class Transolver(nn.Module):
 
     def forward(self, data, **kwargs):
         x = data["x"]
+        if self.fourier_freqs > 0:
+            # x[..., :2] are normalized positions (after train.py's standardization)
+            pos = x[..., :2].unsqueeze(-1) * self.fourier_freqs_buf  # [B,N,2,F]
+            ff = torch.cat([pos.sin(), pos.cos()], dim=-1)  # [B,N,2,2F]
+            ff = ff.flatten(-2, -1)  # [B,N,4F]
+            x = torch.cat([x, ff], dim=-1)
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for block in self.blocks:
             fx = block(fx)

@@ -98,6 +98,8 @@ class Config:
     camber_noise: float = 0.0  # Gaussian noise std on foil1 camber (raw NACA-M units)
     aoa_noise: float = 0.0  # Gaussian noise std on AoA foil1/foil2 (radians, raw scale)
     ema_decay: float = 0.0  # 0 = disabled. Common values: 0.99, 0.995, 0.999.
+    fourier_freqs: int = 0  # 0 = disabled. Number of log-spaced freqs for position encoding.
+    fourier_max_freq: float = 32.0
     n_hidden: int = 192
     n_layers: int = 6
     n_head: int = 6
@@ -150,6 +152,8 @@ model_config = dict(
     slice_num=cfg.slice_num,
     mlp_ratio=cfg.mlp_ratio,
     dropout=cfg.dropout,
+    fourier_freqs=cfg.fourier_freqs,
+    fourier_max_freq=cfg.fourier_max_freq,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
