@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: chain sw=20 lr=5e-7
+- **Hypothesis:** With val plateau at 44.90, push surface loss harder vs volume by raising `surf_weight` 10→20 while staying on chain.
+- **Change:** `--lr 5e-7 --warmup_frac 0.0 --surf_p_weight 10.0 --surf_weight 20.0 --loss_beta 0.0`. No code change.
+- **Result:** Best E12, avg_p = **44.71** (from 44.90, -0.4%). single=44.60, rc=60.17, cruise=28.94, re_rand=45.14. W&B `5fircslo`.
+- **Verdict:** Kept (marginal). Per-epoch gain <0.05. Plateau very real.
+- **Notes:** Tested ensemble (avg of 3 ckpts, val=45.33) and weight-soup (avg of iter7+iter8, val=45.06) — both worse than iter8 single. The lineage being too correlated makes pure averaging counterproductive. **Next:** try truly aggressive pw/sw or accept plateau.
+
+### 2026-04-27 — iter8: chain lr=1e-6 (plateau confirmation)
+- **Hypothesis:** Last fine-step at lr=1e-6 to confirm plateau.
+- **Change:** `--lr 1e-6 --warmup_frac 0.0 --surf_p_weight 10.0 --loss_beta 0.0`.
+- **Result:** Best E13, avg_p = **44.90** (from 45.25, -0.8%). single=44.70, rc=60.33, cruise=29.14, re_rand=45.44. W&B `mswo1ups`.
+- **Verdict:** Kept. Plateau confirmed. Test at iter6 commit 5613c7b scored 39.09 (LB #2 at the time) — iter7 at 63e5e26 scored 38.45 (LB #3). Test/val gap consistently ~6.8.
+- **Notes:** Above the architectural floor. Need structural change to break through.
+
 ### 2026-04-27 — iter7: chain lr=2e-6 + pw=10
 - **Hypothesis:** Push surface_p weight further (8→10) and drop lr 2.5×, see if there's more juice.
 - **Change:** `--lr 2e-6 --warmup_frac 0.02 --surf_p_weight 10.0 --loss_beta 0.0`. No code change.
