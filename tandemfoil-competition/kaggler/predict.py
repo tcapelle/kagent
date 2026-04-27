@@ -51,7 +51,7 @@ class Config:
     checkpoints: str = ""  # comma-separated paths for ensemble
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
-    batch_size: int = 2
+    batch_size: int = 1  # bs=1 avoids padding-driven attention degradation
 
 
 cfg = sp.parse(Config)
