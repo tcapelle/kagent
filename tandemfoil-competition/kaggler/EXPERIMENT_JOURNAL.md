@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: stronger domain bias (1,3,2) + p_weight 22 + LR 5e-6
+- **Hypothesis:** Iter7 domain bias worked. Push tandem weight harder (1,2.5,1.5 → 1,3,2) and continue chain ramp.
+- **Change:** args only.
+- **Result:** 28 epochs in 30.9 min. Best epoch 27 → val/avg_surf_p=45.74 (single=39.55, geom_rc=63.20, geom_cruise=31.76, re_rand=48.47). Run vl7ppxcd. Predictions at apr27-5/askeladd/5543a18.
+- **Verdict:** kept — improvement (45.95 → 45.74, -0.21).
+- **Notes (negative):** Ensemble(iter7,iter8) val=45.81; SWA(iter7,iter8) val=45.81. Both worse than iter8 alone — chained models too correlated, averaging hurts. Plateau is real.
+
 ### 2026-04-27 — iter7: domain re-weighting + chain LR 6e-6 + p_weight 18
 - **Hypothesis:** geom_camber_rc=64.36 dominated the avg in iter6 (next worst is re_rand=49). Oversample tandem domains to push the model harder on the bottleneck distribution. Add `--domain_weights "1,2.5,1.5"` (single 1×, racecar_tandem 2.5×, cruise 1.5×). Continue chain ramp.
 - **Change:** add `--domain_weights` CLI to train.py — multiplies the existing balanced sampler weights by per-domain factors before constructing `WeightedRandomSampler`. No change to data.py.
