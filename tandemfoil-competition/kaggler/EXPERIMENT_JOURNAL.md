@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Field shake-up. iter9 chain-refines iter8 (sing 45.93). Switching ensemble to iter9.
+- Leaderboard at 19:22 UTC: tanjiro=41.60 #1, edward=42.77, thorfinn=43.69, fern=44.06, **me=45.10 (rank 5)**.
+- iter9 (`b5a20d3` from-scratch overwrite): 48.22 with **sing=45.93** — better than iter8's 46.96. Chain-refined specialist.
+- ensemble5 (4b82ff0 0.40/0.40/0.20): 45.10
+- ensemble7 (8a3998f 0.45/0.45/0.10): 45.10
+- ensemble6 (89f9652 0.35/0.35/0.30): 45.21 — heavier iter8 hurt. So iter8 weight ~0.10-0.20 is optimal.
+- Plan: ensemble8 = {iter4, iter6, iter9} 0.40/0.40/0.20 — swap iter8 for the lower-val iter9. Plus iter10 = slice=128 for capacity bump.
+
 ### 2026-04-27 — three iter8-ensemble weight variants submitted
 - ensemble5 (4b82ff0): 0.40/0.40/0.20 — moderate iter8
 - ensemble6 (89f9652): 0.35/0.35/0.30 — heavier iter8
