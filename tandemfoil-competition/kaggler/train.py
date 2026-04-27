@@ -230,8 +230,9 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter3 warmstarts from iter2's best checkpoint (run id bwa7nnol).
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-bwa7nnol/checkpoint.pt"
+# Iter4: warmstart from the *actual* 42.11 leader ckpt — model-s8nqhr0q
+# (hid=192 L=6 S=64). Earlier iters chained the wrong (bigger) checkpoint.
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-s8nqhr0q/checkpoint.pt"
 
 
 @dataclass
@@ -245,7 +246,7 @@ class Config:
     grad_clip: float = 1.0
     l1_weight: float = 1.0
     l2_weight: float = 1.0
-    ema_decay: float = 0.995
+    ema_decay: float = 0.99
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -254,15 +255,15 @@ class Config:
     debug: bool = False
 
 
-# Architecture matches WARMSTART_PATH
+# Architecture matches WARMSTART_PATH (s8nqhr0q: hid=192 L=6 S=64)
 MODEL_CONFIG = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=256,
-    n_layers=8,
-    n_head=8,
-    slice_num=96,
+    n_hidden=192,
+    n_layers=6,
+    n_head=6,
+    slice_num=64,
     mlp_ratio=2,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
