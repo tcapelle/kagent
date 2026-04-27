@@ -65,8 +65,12 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 10.0
-    p_weight: float = 3.0  # extra weight on pressure channel (eval metric)
+    # Separate weights for surface vs volume, pressure vs U,V channels.
+    # The leaderboard metric is surface pressure MAE — surf_p_weight dominates.
+    surf_p_weight: float = 6.0
+    surf_uv_weight: float = 1.0
+    vol_p_weight: float = 0.5
+    vol_uv_weight: float = 0.5
     epochs: int = 200
     warmup_epochs: int = 3
     grad_clip: float = 1.0
@@ -178,16 +182,16 @@ model_path = model_dir / "checkpoint.pt"
 with open(model_dir / "config.yaml", "w") as f:
     yaml.dump(model_config, f)
 
-# Channel weights: emphasize pressure
-ch_weights = torch.tensor([1.0, 1.0, cfg.p_weight], device=device)
-
-
-def weighted_l1(pred, target, mask):
-    """L1 loss weighted by per-channel weights, masked."""
-    err = (pred - target).abs() * ch_weights  # [B, N, 3]
+# Per-region / per-channel weights for the loss
+# Channels are [Ux, Uy, p]. We split them into uv (0,1) and p (2).
+def _l1_uv_p(pred, target, mask):
+    """Returns (mean L1 over uv channels, mean L1 over p channel) within masked region."""
+    err = (pred - target).abs()  # [B, N, 3]
     m = mask.unsqueeze(-1).float()  # [B, N, 1]
-    denom = m.sum().clamp(min=1) * 3.0
-    return (err * m).sum() / denom
+    denom = m.sum().clamp(min=1.0)
+    err_uv = (err[..., :2] * m).sum() / (denom * 2.0)
+    err_p = (err[..., 2:3] * m).sum() / denom
+    return err_uv, err_p
 
 
 best_val = float("inf")
@@ -217,9 +221,11 @@ for epoch in range(MAX_EPOCHS):
             pred = model({"x": x})["preds"]
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
-            vol_loss = weighted_l1(pred, y_norm, vol_mask)
-            surf_loss = weighted_l1(pred, y_norm, surf_mask)
-            loss = vol_loss + cfg.surf_weight * surf_loss
+            vol_uv, vol_p = _l1_uv_p(pred, y_norm, vol_mask)
+            surf_uv, surf_p = _l1_uv_p(pred, y_norm, surf_mask)
+            vol_loss = cfg.vol_uv_weight * vol_uv + cfg.vol_p_weight * vol_p
+            surf_loss = cfg.surf_uv_weight * surf_uv + cfg.surf_p_weight * surf_p
+            loss = vol_loss + surf_loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -264,8 +270,10 @@ for epoch in range(MAX_EPOCHS):
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                val_vol += weighted_l1(pred, y_norm, vol_mask).item()
-                val_surf += weighted_l1(pred, y_norm, surf_mask).item()
+                vu, vp = _l1_uv_p(pred, y_norm, vol_mask)
+                su, sp = _l1_uv_p(pred, y_norm, surf_mask)
+                val_vol += (cfg.vol_uv_weight * vu + cfg.vol_p_weight * vp).item()
+                val_surf += (cfg.surf_uv_weight * su + cfg.surf_p_weight * sp).item()
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
@@ -277,7 +285,7 @@ for epoch in range(MAX_EPOCHS):
 
         val_vol /= max(n_vb, 1)
         val_surf /= max(n_vb, 1)
-        split_loss = val_vol + cfg.surf_weight * val_surf
+        split_loss = val_vol + val_surf
         mae_surf /= max(n_surf, 1)
         mae_vol /= max(n_vol, 1)
 
