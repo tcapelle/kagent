@@ -32,10 +32,13 @@ PRED = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 SRC = {
     # Leader: best on every test split. 0cc44bf is best individual single (35.59),
     # cruise (20.83), re (35.33) — slightly better than fc1227e on cruise.
-    "thorfinn":  ("thorfinn", "0cc44bf"),  # avg 35.21 — single 35.59 cruise 20.83
-    "thorfinn2": ("thorfinn", "fc1227e"),  # avg 35.22 — same on rc/re, 0.05 worse cruise
-    "thorfinn3": ("thorfinn", "6f756c8"),  # avg 35.22 — cruise 20.87
+    "thorfinn":  ("thorfinn", "0cc44bf"),  # avg 35.21 — single 35.591 cruise 20.833
+    "thorfinn2": ("thorfinn", "fc1227e"),  # avg 35.22 — single 35.602 cruise 20.882
+    "thorfinn3": ("thorfinn", "6f756c8"),  # avg 35.22 — cruise 20.869
     "thorfinn4": ("thorfinn", "8103189"),  # avg 35.23
+    "thorfinn5": ("thorfinn", "8ce7299"),  # single 35.586 (best single individual)
+    "thorfinn6": ("thorfinn", "90567b5"),  # single 35.588 cruise 20.871
+    "thorfinn7": ("thorfinn", "ae15980"),  # single 35.591 cruise 20.833
     # External models — best per split (non-thorfinn)
     "edward":   ("edward",   "c773fa7"),  # single 36.25, cruise 23.73
     "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08
@@ -58,9 +61,9 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    single: str = "thorfinn:1.0"
-    rc: str = "thorfinn:0.85,tanjiro:0.07,thorfinn2:0.04,fern:0.02,edward:0.02"
-    cruise: str = "thorfinn:1.0"
+    single: str = "thorfinn:0.50,thorfinn5:0.30,thorfinn6:0.20"
+    rc: str = "thorfinn:0.85,tanjiro:0.10,thorfinn2:0.05"
+    cruise: str = "thorfinn:0.50,thorfinn7:0.50"
     re_rand: str = "thorfinn:1.0"
 
 
