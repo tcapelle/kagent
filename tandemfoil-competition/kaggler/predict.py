@@ -1,19 +1,7 @@
 """Generate predictions on the hidden test splits.
 
-Adapt this to your model. The key contract:
-  - Load your model from a checkpoint
-  - Run inference on each test split (4 splits, 200 samples each)
-  - Save per-split predictions to PVC
-
-Output layout:
-  /mnt/new-pvc/predictions/<tag>/<agent>/<commit>/
-  ├── test_single_in_dist.pt
-  ├── test_geom_camber_rc.pt
-  ├── test_geom_camber_cruise.pt
-  └── test_re_rand.pt
-
-Run:
-  python predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <your-name>
+Loads the Transolver model defined in train.py, runs inference on the four
+test splits, and writes per-split prediction tensors to the PVC.
 """
 
 import json
@@ -24,9 +12,11 @@ from pathlib import Path
 
 import simple_parsing as sp
 import torch
+import yaml
 from tqdm import tqdm
 
 from data import X_DIM
+from train import Transolver
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -43,33 +33,27 @@ TEST_SPLITS = [
 @dataclass
 class Config:
     """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    checkpoint: str
     splits_dir: str = str(SPLITS_DIR)
-    agent: str | None = None  # kaggler name for output path
+    agent: str | None = None
     batch_size: int = 4
+    enforce_noslip: bool = True
 
 
 cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-# ---------------------------------------------------------------------------
-# Load your model here. Example:
-#
-#   from train import MyModel
-#   model = MyModel(...).to(device)
-#   model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
-#
-# Or if you saved the full model:
-#
-#   model = torch.load(cfg.checkpoint, map_location=device)
-# ---------------------------------------------------------------------------
-raise NotImplementedError("Load your model above and remove this line")
+ckpt_dir = Path(cfg.checkpoint).parent
+with open(ckpt_dir / "config.yaml") as f:
+    model_config = yaml.safe_load(f)
 
+model = Transolver(**model_config).to(device)
+state = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
+model.load_state_dict(state)
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
-# Load stats
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
 x_mean = torch.tensor(stats_data["x_mean"], dtype=torch.float32, device=device)
@@ -77,7 +61,6 @@ x_std = torch.tensor(stats_data["x_std"], dtype=torch.float32, device=device)
 y_mean = torch.tensor(stats_data["y_mean"], dtype=torch.float32, device=device)
 y_std = torch.tensor(stats_data["y_std"], dtype=torch.float32, device=device)
 
-# Save predictions keyed by agent + commit hash
 agent_name = cfg.agent or "unknown"
 commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
@@ -86,7 +69,9 @@ commit = subprocess.run(
 output_dir = PREDICTIONS_DIR / agent_name / commit
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Run inference on each test split
+# Feature index 12 is the is_surface flag inside x.
+SURF_FEAT_IDX = 12
+
 for split in TEST_SPLITS:
     test_dir = splits_dir / split
     test_files = sorted(test_dir.glob("*.pt"))
@@ -98,6 +83,7 @@ for split in TEST_SPLITS:
             batch_files = test_files[i:i + cfg.batch_size]
             samples = [torch.load(f, weights_only=True) for f in batch_files]
             xs = [s["x"] for s in samples]
+            surfs = [s["is_surface"] for s in samples]
 
             max_n = max(x.shape[0] for x in xs)
             B = len(xs)
@@ -105,14 +91,21 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
+                pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            pred_norm = pred_norm.float()
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
-                predictions.append(pred[j, :x.shape[0]].cpu())
+                p = pred[j, :x.shape[0]].cpu()
+                if cfg.enforce_noslip:
+                    sf = surfs[j].bool().cpu()
+                    p[sf, 0] = 0.0
+                    p[sf, 1] = 0.0
+                predictions.append(p)
 
     output_path = output_dir / f"{split}.pt"
     torch.save(predictions, output_path)
-    print(f"  → {output_path} ({len(predictions)} samples)")
+    print(f"  -> {output_path} ({len(predictions)} samples)")
 
 print(f"\nAll predictions saved to {output_dir}")

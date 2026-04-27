@@ -207,16 +207,19 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 10.0
-    epochs: int = 50
+    surf_weight: float = 20.0
+    p_channel_weight: float = 2.0  # extra weight on pressure surface MSE (matches ranking metric)
+    epochs: int = 12
+    grad_clip: float = 1.0
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    bf16: bool = True
 
 
 cfg = sp.parse(Config)
@@ -248,10 +251,10 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=128,
-    n_layers=5,
-    n_head=4,
-    slice_num=64,
+    n_hidden=192,
+    n_layers=6,
+    n_head=8,
+    slice_num=96,
     mlp_ratio=2,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
@@ -296,6 +299,17 @@ best_metrics: dict = {}
 global_step = 0
 train_start = time.time()
 
+# Per-channel weights for the surface loss; pressure (channel 2) is the ranking metric.
+chan_w = torch.tensor([1.0, 1.0, cfg.p_channel_weight], device=device)
+chan_w = chan_w / chan_w.mean()  # keep overall scale
+
+use_bf16 = cfg.bf16 and device.type == "cuda"
+
+def autocast_ctx():
+    if use_bf16:
+        return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    return torch.autocast(device_type="cpu", enabled=False)
+
 for epoch in range(MAX_EPOCHS):
     if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
         print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
@@ -314,17 +328,23 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
+        with autocast_ctx():
+            pred = model({"x": x})["preds"]
+        pred = pred.float()
         sq_err = (pred - y_norm) ** 2
 
         vol_mask = mask & ~is_surface
         surf_mask = mask & is_surface
-        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1) / 3.0
+        # weighted surface MSE
+        surf_per_chan = (sq_err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1)) / surf_mask.sum().clamp(min=1)
+        surf_loss = (surf_per_chan * chan_w).mean()
         loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
         loss.backward()
+        if cfg.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -357,17 +377,23 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+                with autocast_ctx():
+                    pred = model({"x": x})["preds"]
+                pred = pred.float()
+                # Enforce no-slip: surface velocity is exactly zero in physical units.
+                pred_phys = pred * stats["y_std"] + stats["y_mean"]
+                pred_phys_eval = pred_phys.clone()
+                pred_phys_eval[..., 0] = torch.where(is_surface, torch.zeros_like(pred_phys[..., 0]), pred_phys[..., 0])
+                pred_phys_eval[..., 1] = torch.where(is_surface, torch.zeros_like(pred_phys[..., 1]), pred_phys[..., 1])
 
+                sq_err = (pred - y_norm) ** 2
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
                 val_vol += (sq_err * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
                 val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
                 n_vb += 1
 
-                pred_orig = pred * stats["y_std"] + stats["y_mean"]
-                err = (pred_orig - y).abs()
+                err = (pred_phys_eval - y).abs()
                 mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 n_surf += surf_mask.sum().item()
