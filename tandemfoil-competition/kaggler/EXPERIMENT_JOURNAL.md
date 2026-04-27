@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10 + 4-way ensemble (iter7+8+9+10)
+- **Iter10 (chain step 4 on smoothl1 recipe):** `python train.py --warm_start /tmp/iter9_best.pt --lr 2e-6 --epochs 12 --loss_type smoothl1 --p_weight 2.0`. Best epoch 10, val/loss=**1.3107** (down from 1.3180). Predictions saved to `apr27-5/tanjiro/693d73e/`. Run `c7gsl5mq`.
+- **Ensemble:** 4-way prediction average iter10/9/8/7 with weights 0.4/0.3/0.2/0.1 → saved to `apr27-5/tanjiro/9a62a6c/`. Submission was: `python ensemble.py --sources 693d73e ab236b9 a4ebbf7 4b0fef2 --weights 0.4 0.3 0.2 0.1`.
+- **Verdict:** kept. Iter10 advances chain marginally; ensemble result pending.
+- **Notes:** Chain plateaued: iter7→10 went 1.40→1.34→1.32→1.31 (diminishing returns). Model summary: 192×6 Transolver, slice=64, smoothl1 + p_weight=2. Next: iter11 at lr=1e-6 (final fine-tune); could also try slice=128 fresh for true architectural diversity.
+
+### 2026-04-27 — iter9: warm iter8 lr=5e-6 12ep smoothl1 p_weight=2 (chain step 3)
+- **Hypothesis:** Chain another step with smaller LR.
+- **Change:** `python train.py --warm_start /tmp/iter8_best.pt --lr 5e-6 --epochs 12 --loss_type smoothl1 --p_weight 2.0`. Predictions saved to `apr27-5/tanjiro/ab236b9/`.
+- **Result:** Best epoch 12, val/loss=**1.3180** (down from 1.3412). Per-split val: single=2.19, rc=1.47, cruise=0.37, re_rand=1.23. Run `i6qm8vr0`. **Scored 47.62** on leaderboard (rank 5, gap to thorfinn = 4.5 from 6.62).
+- **Verdict:** kept.
+- **Notes:** All splits improving. cruise dropped 0.38→0.37. Worth continuing chain.
+
 ### 2026-04-27 — iter8: warm iter7 lr=1e-5 12ep smoothl1 p_weight=2 (chain continuation)
 - **Hypothesis:** iter7 breakthrough recipe (smoothl1 + p_weight=2) ended cosine at 0 LR. Warm-start chain at lr=1e-5 should refine further.
 - **Change:** `python train.py --warm_start /tmp/iter7_best.pt --lr 1e-5 --epochs 12 --loss_type smoothl1 --p_weight 2.0`. Predictions saved to `apr27-5/tanjiro/a4ebbf7/`.
