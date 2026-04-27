@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: chain LR 3e-6 + p_weight 30, plus SWA helper for next iter
+- **Hypothesis:** continue chain ramp; gains shrinking but still net positive.
+- **Change:** args only for iter10. After completion, added `--save_last_k` arg to train.py so iter11 can snapshot the last K epochs in-training and SWA them offline.
+- **Result:** 28 epochs in 30.9 min. Best epoch **12** → val/avg_surf_p=45.31 (single=39.39, geom_rc=62.74, geom_cruise=31.41, re_rand=47.71). Run 6w1xchzm. Predictions at apr27-5/askeladd/ea77f6b.
+- **Verdict:** kept — improvement (45.57 → 45.31, -0.26).
+- **Notes:** Best was at *epoch 12*, not the end — model briefly hit a sharp minimum and drifted afterwards. Last 10 epochs all bounced around 45.4–45.6. **In-training SWA over the last K epochs is the right next move.** Negative result: SWA(iter9, iter10) val=45.40 (worse than iter10 alone). Within-run SWA is more promising than across-run SWA because the trajectory near the bottom is sharper.
+
 ### 2026-04-27 — iter9: chain at LR 4e-6 + p_weight 26
 - **Hypothesis:** keep ramping (p_weight 22→26, LR 5e-6→4e-6, same domain bias 1,3,2). Diminishing returns expected.
 - **Change:** args only.
