@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — bs8-lr11e4 (DISCARDED)
+- **Hypothesis:** larger batch (4→8) for smoother gradients with sqrt(2)x LR (8e-4→1.1e-3); plenty of VRAM available.
+- **Change:** `batch_size=8`, `lr=1.1e-3`.
+- **Result:** 31 epochs in 30.4 min. Best epoch 31: avg_surf_p=108.90 (worse than iter8). val_geom_camber_rc=2.37 (worse).
+- **Verdict:** discarded. The smaller-batch noise was apparently helpful for generalization here; bigger batch + higher LR converges to a worse minimum.
+- **Notes:** consistent pattern: optimization configs that work for big-batch ImageNet-style training don't transfer. The current setup needs noisy gradients.
+
 ### 2026-04-27 — pos-freq12-mxf64 (DISCARDED)
 - **Hypothesis:** richer positional encoding might capture finer geometry — bump pos_freqs 8→12 and pos_max_freq 32→64.
 - **Change:** model_config pos_freqs=12, pos_max_freq=64.
