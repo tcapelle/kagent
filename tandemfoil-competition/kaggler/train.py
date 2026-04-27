@@ -97,6 +97,7 @@ class Config:
     train_subsample: int = 40000
     camber_noise: float = 0.0  # Gaussian noise std on foil1 camber (raw NACA-M units)
     aoa_noise: float = 0.0  # Gaussian noise std on AoA foil1/foil2 (radians, raw scale)
+    ema_decay: float = 0.0  # 0 = disabled. Common values: 0.99, 0.995, 0.999.
     n_hidden: int = 192
     n_layers: int = 6
     n_head: int = 6
@@ -161,6 +162,40 @@ if cfg.warm_start:
     print(f"Warm-starting from {cfg.warm_start}")
     state = torch.load(cfg.warm_start, map_location=device, weights_only=True)
     model.load_state_dict(state)
+
+# EMA shadow weights — initialised from current model. Updated each opt step.
+ema_state: dict | None = None
+if cfg.ema_decay > 0:
+    ema_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    print(f"EMA enabled (decay={cfg.ema_decay})")
+
+
+def _update_ema():
+    if ema_state is None:
+        return
+    d = cfg.ema_decay
+    with torch.no_grad():
+        for k, v in model.state_dict().items():
+            if v.dtype.is_floating_point:
+                ema_state[k].mul_(d).add_(v.detach(), alpha=1.0 - d)
+            else:
+                ema_state[k].copy_(v.detach())
+
+
+def _swap_in_ema():
+    """Swap model.state_dict() with EMA. Returns the saved (live) state for restore."""
+    if ema_state is None:
+        return None
+    live = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    model.load_state_dict(ema_state)
+    return live
+
+
+def _restore_live(saved):
+    if saved is None:
+        return
+    model.load_state_dict(saved)
+
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
@@ -255,6 +290,7 @@ for epoch in range(MAX_EPOCHS):
         if cfg.grad_clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
+        _update_ema()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -266,8 +302,9 @@ for epoch in range(MAX_EPOCHS):
     epoch_vol /= n_batches
     epoch_surf /= n_batches
 
-    # --- Validate ---
+    # --- Validate (use EMA weights if enabled) ---
     model.eval()
+    saved_live = _swap_in_ema()
     val_loss_sum = 0.0
     val_surf_p_sum = 0.0
     split_metrics: dict[str, dict] = {}
@@ -350,8 +387,12 @@ for epoch in range(MAX_EPOCHS):
         best_metrics = {"epoch": epoch + 1, "val_surf_p": mean_surf_p, "val_loss": mean_val_loss}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+        # Saves EMA-weighted state if EMA enabled (we're currently swapped in).
         torch.save(model.state_dict(), model_path)
         tag = " *"
+
+    # Restore live (non-EMA) weights for the next training step.
+    _restore_live(saved_live)
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     print(
