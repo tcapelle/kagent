@@ -48,7 +48,7 @@ class Config:
     checkpoint: str  # path to best model checkpoint
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None  # kaggler name for output path
-    batch_size: int = 4
+    batch_size: int = 1  # cruise meshes are huge (~208K nodes); bs=1 avoids OOM
 
 
 cfg = sp.parse(Config)
