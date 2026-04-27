@@ -40,9 +40,9 @@ class Config:
     weight_decay: float = 3e-5
     batch_size: int = 4
     surf_weight: float = 1.5  # legacy; only used if balanced=False
-    surf_p_weight: float = 2.5  # weight on per-sample-balanced surface pressure loss
-    surf_uv_weight: float = 0.5  # weight on per-sample-balanced surface velocity loss
-    var_floor: float = 0.05  # added to per-sample variance — caps upweighting
+    surf_p_weight: float = 4.0  # weight on per-sample-balanced surface pressure loss
+    surf_uv_weight: float = 0.3  # weight on per-sample-balanced surface velocity loss
+    var_floor: float = 0.02  # added to per-sample variance — caps upweighting
     epochs: int = 14
     n_hidden: int = 128
     n_layers: int = 6
