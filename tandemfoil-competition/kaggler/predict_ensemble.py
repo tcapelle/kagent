@@ -62,9 +62,9 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # rc 88/8/4 (lighter tanjiro, lighter 1f9db55): see if curves are convex.
+    # rc 82/12/6 (slightly heavier tanjiro to find optimum). Best was 85/10/5 = 49.04159.
     single: str = "thorfinn5:0.7,thorfinn:0.15,thorfinn6:0.15"
-    rc: str = "thorfinn0:0.88,tanjiro:0.08,thorfinn:0.04"
+    rc: str = "thorfinn0:0.82,tanjiro:0.12,thorfinn:0.06"
     cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
 
