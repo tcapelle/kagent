@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: warm-start iter2 ckpt @ lr=1e-4, wd=3e-4
+
+- **Hypothesis:** Iter2 hit val=87.57 then bounced/overfit on geom_camber_rc (129→152). Drop LR by 2× and 3× weight decay to slow overfit while letting other splits keep improving.
+- **Change:** `--warm_start checkpoints/best.pt --lr 1e-4 --weight_decay 3e-4 --epochs 25 --warmup_epochs 0`. Else identical to iter2.
+- **Result:** 21 epochs, best val avg_mae_surf_p=**86.36 at E10** (only ~1.4% better than iter2). Splits: single=59.7, geom_rc=136.0, geom_cruise=58.8, re_rand=90.9.
+- **Verdict:** kept — small but real win. Single_in_dist did improve (70→60) but geom_camber_rc barely moved.
+- **Notes:** Plateau is real; ~86 looks like the ceiling for this architecture+config under heavy warm-start. geom_camber_rc dominates avg now (136 vs ~60 elsewhere). Tried inspecting data for safe mirror aug — z is always positive (floor at z≈0), so vertical flip would create OOD data. x-flip changes foil orientation (not symmetric). Need a real architectural change next.
+
 ### 2026-04-27 — iter2: warm-start iter1 ckpt @ lr=2e-4, 25 epochs (cosine to 0)
 
 - **Hypothesis:** Iter1 cosine schedule was set for 200 epochs but only ran 21 → LR barely decayed and val bounced 103–128. Warm-starting and giving the schedule full decay over a 25-epoch budget should let the model fine-tune.
