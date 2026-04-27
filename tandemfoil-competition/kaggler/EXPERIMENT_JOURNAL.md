@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12: polish iter11 (lr=3e-6, pw=12, sw=12)
+- **Hypothesis:** Standard polish-after-warm-restart with the new sw=12 weighting.
+- **Change:** Resume iter11; --lr 3e-6 --p_weight 12 --surf_weight 12.
+- **Result:** **surf_p 47.00 → 46.58** (~0.9%, best ep7). Per-split: single≈55, rc≈73, cruise≈30, re_rand≈49. W&B `b952g8ux`.
+- **Verdict:** Kept (best). Plateau hits earlier this cycle — best at ep7 instead of ep10.
+- **Notes:** Going to push: iter13 = 4th warm-restart with sw=15 (was 12) to see if more surface weight helps. Pattern of (warm-restart → polish) cycles is yielding ~3-4% per pair.
+
 ### 2026-04-27 — iter11: 3rd warm-restart from iter10 (lr=2e-5, pw=12, sw=12)
 - **Hypothesis:** 3rd warm-restart cycle with stronger pressure (pw=10→12) and surface (sw=10→12) weighting. Should escape current plateau again.
 - **Change:** Resume iter10; --lr 2e-5 --p_weight 12 --surf_weight 12.
