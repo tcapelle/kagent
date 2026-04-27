@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter2-balanced-loss (KEPT)
+- **Hypothesis:** Pressure variance is 17–304 across domains (after global y_std=679 normalisation, per-sample variance ranges 0.0006 to 0.12 — 200x). Loss is dominated by raceCar tandem; low-Re cruise Part3 gets nearly no gradient. Divide squared error by per-sample variance (with floor 0.05 to cap upweight) → equalises gradient contributions. Also split surface weight: surf_p_w=2.5, surf_uv_w=0.5 (concentrate budget on the metric).
+- **Change:** `train.py` — compute per-sample masked variance; `sq_err *= 1/(y_var_b + var_floor)`; per-channel split surface loss into `surf_uv_loss + surf_p_loss`. Ckpt selection switched to `avg val surf_p MAE` (the leaderboard metric) instead of `val/loss`.
+- **Result:** 13/14 epochs. **avg_surf_p_mae 97.85 → 94.42 (-3.5%).** Per-split: in_dist 117.35→114.13 (-2.7%), rc 108.63→107.91 (-0.7%), cruise 73.79→68.51 (-7.2%), re_rand 91.61→87.12 (-4.9%). W&B `kagent-tandemfoil3/ecv6vhuq`.
+- **Verdict:** kept. Direction confirmed: cruise (lowest pressure scale) gained the most.
+- **Notes:** var_floor=0.05 was conservative — actual upweight ratio ~3-4x. More aggressive (smaller floor) might net more, but risk overfitting Part3. Single_in_dist still stuck near 114 — peak-pressure stagnation regions dominate. Next: Fourier features on position to capture high-freq pressure spikes (Aero-Nef recipe).
+
 ### 2026-04-27 — iter1-apr23-baseline (KEPT)
 - **Hypothesis:** rebuild apr23 nezuko's validated config (h=128, L=6, slice=96, n_head=4, surf_weight=1.5, weight_decay=3e-5, epochs=14, lr=5e-4, bf16 autocast, grad_clip=1.0). Modular split: model classes -> `model.py` so `predict.py` can import without launching training. Mirror best ckpt to `checkpoints/best.pt` and PVC.
 - **Change:** new `model.py` with Transolver classes; `train.py` imports from it and applies bf16 autocast + grad_clip + PVC mirror. `predict.py` loads via `model.py` + reads `config.yaml` from checkpoint dir.
