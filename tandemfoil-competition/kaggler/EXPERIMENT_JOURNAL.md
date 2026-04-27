@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: warm iter5 256x8 bs=2 no-subsample (commit 7f2faa7)
+- **Hypothesis:** Apply frieren's bs=2 + no-subsample breakthrough to the bigger 256×8 model. Larger capacity + full mesh + low LR should push past 192×6 ceiling.
+- **Change:** `--warm_start /tmp/iter5_best.pt --n_hidden 256 --n_layers 8 --n_head 8 --slice_num 64 --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. 50.7GB peak.
+- **Result:** val/loss=**1.8014** at epoch 7 (30.0 min, hit MAX_TIMEOUT). Per-split val: single=2.91, rc=2.29, cruise=0.52, re_rand=1.50. Better than iter5 alone (2.31) but **worse than iter3 (1.52)** — iter5 was undertrained so iter6 inherits that gap.
+- **Verdict:** kept for ensemble diversity. Different architecture should add value when blended with iter3/iter4.
+- **Notes:** 256×8 at bs=2 no-subsample takes 257s/epoch (vs 152s for 192×6). Only 7 of 10 epochs ran. Could do iter9 to chain at lower LR after a longer pre-training pass. Next: iter7 = 2-way ensemble iter3+iter6.
+
 ### 2026-04-27 — iter5: 256x8 slice=64 fresh-train (commit 5b181c5)
 - **Hypothesis:** Bigger Transolver (n_hidden=256, n_layers=8, n_head=8) for ensemble diversity. Frieren's best apr27 ckpt (model-9f4m2qmm) used the same shape.
 - **Change:** `--n_hidden 256 --n_layers 8 --n_head 8 --slice_num 64 --epochs 25 --batch_size 4 --train_subsample 60000 --lr 5e-4 --warmup_epochs 3`. Fresh init.
