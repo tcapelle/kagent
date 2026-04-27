@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — tensor-level blend of stored predictions (avg=43.69, #3)
+- **Hypothesis:** I can't reproduce the warm-start's stored 4318185 predictions exactly (model mismatch), but the *files* are still on disk. By directly blending those stored prediction tensors with my chain-model predictions (no inference), I can get error decorrelation on every split — including rc and re_rand — without needing a new model.
+- **Change:** `router_blend.py` reads stored `.pt` prediction files from two commits and saves a weighted average per split. Best blend so far: single=0.3·gold+0.7·iter2, cruise=0.5·gold+0.5·iter2, rc=0.55·gold+0.45·iter2, re=0.75·gold+0.25·iter2 (commit `a4bbc13`).
+- **Result:** **43.69** (single=39.13, rc=59.18, cruise=26.14, re=50.33). Beats my prior router 1733088 (45.25) by 1.56 points and clears fern (44.06) by 0.37. Tanjiro (41.60) and edward (42.77) remain ahead. Per-split improvements: single 40.28→39.13 (-1.15), rc 61.70→59.18 (-2.52), cruise 27.95→26.14 (-1.81), re 51.05→50.33 (-0.72).
+- **Verdict:** kept — blend is a free win on top of the per-split router.
+- **Notes:** The blend gain only works because gold and iter2 have decorrelated (partially anti-correlated) errors. iter1 doesn't add useful diversity (3-way blends scored worse). Adding rc and re_rand to the blend was the largest single jump — even though gold dominates those splits alone, the small contribution from iter2 still helps. iter5 solo + blends still pending scoring.
+
 ### 2026-04-27 — diversification attempts (iter4/5/6) and warm-start mismatch
 - **Hypothesis:** A fresh-trained model would give ensemble diversity that lowers re_rand and cruise; alternatively, fine-tuning the warm-start with the original frieren-style L1 loss preserves test performance better than my surf-p-heavy loss.
 - **Change:** iter4 = fresh 192/6/6/slice=128 with frieren loss (50 epochs, only fits 26) → val 78.68, test 73.95 (no good). iter5 = warm-start fine-tune with frieren loss → val 55.26 (test pending). iter6 = fresh 256/8/8 with frieren loss → killed at epoch 4 (only 14 epochs would fit at 117s/epoch — never enough). Multiple ensemble variants with weighted ratios.
