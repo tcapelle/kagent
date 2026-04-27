@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter2: chain-resume lr=5e-5
+- **Hypothesis:** iter1 was undertrained (loss still falling at E13). Chain-resume from `checkpoints/best.pt` at lr=5e-5 (4× lower) with short warmup (2%) should keep improving without diverging.
+- **Change:** `python train.py --resume checkpoints/best.pt --lr 5e-5 --warmup_frac 0.02`. No code change.
+- **Result:** Best E13/14, val/avg_mae_surf_p = **62.71** (down from 90.47 / -30%). Per-split: single_in_dist=68.83, camber_rc=77.62, camber_cruise=43.10, re_rand=61.28. 29.2 min, 32.9 GB peak. W&B run id `sbmww1g5`.
+- **Verdict:** Kept. Strong gain from chain-resume confirms the prior-comp recipe works here too. Loss still trending down at E13 — would benefit from another chain step.
+- **Notes:** Single biggest jump per-budget seen so far. **Next:** chain-resume again at lr=2e-5 (or 5e-5) to keep extracting gains; if plateau, try iter4 with bigger/wider model from a fresh init seeded by this ckpt's slice tokens.
+
 ### 2026-04-27 — iter1: scaled Transolver h=384 L=8 + bf16 + subsample
 - **Hypothesis:** Default baseline (h=128 L=5) is far below leaders. Scale Transolver to h=384/L=8, switch MSE→smooth-L1 (better aligned with MAE leaderboard), add 3x channel weight on surface pressure (the only metric scored), EMA(0.999), warmup+cosine LR, grad-clip=1, bf16 autocast for memory, and subsample 60k pts/sample during training to fit bs=4 in time budget.
 - **Change:** rewrote `train.py` (Transolver h=384 L=8 n_head=8 slice_num=64 mlp_ratio=2; smooth-L1; surf_p_weight=3; EMA-evaluated); added subsample_batch keeping all surface pts; bf16 autocast in fwd; rewrote `predict.py` to import the model and load EMA state. Mask propagated through PhysicsAttention (zero post-softmax) so padding doesn't leak into slice tokens.
