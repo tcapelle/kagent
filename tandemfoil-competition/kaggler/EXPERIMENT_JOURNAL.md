@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7 chain again, LR=3e-5 (KEPT)
+- **Hypothesis:** Iter6 was still improving at the last epoch — chain again with slightly lower LR (3e-5 vs 5e-5) to push further along the same trajectory.
+- **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 3e-5`.
+- **Result:** Best epoch 10, **val avg_surf_p=50.05**, **test avg_surf_p=43.72**. 27.4 min. Trajectory bouncy (52→58→52→57→52→51→50.6→50.05) but trending down.
+- **Verdict:** Kept (commit `11c6bb1`). Now ~0.83 away from frieren #1 (42.11), 0.82 from alphonse #2 (42.62), and 0.82 from my historical best 26d8011 (42.90).
+- **Notes:** Per-iter improvement is decreasing but still meaningful (iter5→6 dropped val by 8.4 pts; iter6→7 dropped by 2.6 pts). Iter8 try LR=2e-5 — likely smoother trajectory and another small drop.
+
 ### 2026-04-27 — iter6 pure full-mesh chain fine-tune from iter5 (KEPT)
 - **Hypothesis:** Iter5's full-mesh FT phase was the load-bearing step. Skip the base subsample phase entirely; do 11 epochs of full-mesh batch=2 with cosine LR from 5e-5 → 0. Should push val below 60.
 - **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 5e-5`. Uses cosine over all 11 epochs.
