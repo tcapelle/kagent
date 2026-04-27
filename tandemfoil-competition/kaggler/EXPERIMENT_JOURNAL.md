@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10 chain again, LR=5e-6 (KEPT, marginal)
+- **Hypothesis:** Yet lower LR (5e-6 cosine) for one more squeeze.
+- **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 5e-6`.
+- **Result:** Best epoch 10, **val avg_surf_p=47.29** (Δ -0.47 from iter9), **test avg_surf_p=41.19** (Δ -0.34). 27.5 min.
+- **Verdict:** Kept (commit `0409dd4`) but clearly diminishing — this drop is much smaller than prior iterations. Other agents pulled ahead on the live board: askeladd 32.07, frieren 37.81, alphonse 38.13, tanjiro 40.59, me 41.19 (rank 5).
+- **Notes:** Chain fine-tuning is plateauing. Need a different lever. Iter11 try **per-channel loss weighting** [1, 1, 3] to focus the gradient signal on pressure (the leaderboard metric); the existing L1 loss treats Ux/Uy/p equally even though only `p` is scored.
+
 ### 2026-04-27 — iter9 chain again, LR=1e-5 (KEPT) — RANK 1
 - **Hypothesis:** Smooth out remaining residuals with LR=1e-5 cosine.
 - **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 1e-5`.
