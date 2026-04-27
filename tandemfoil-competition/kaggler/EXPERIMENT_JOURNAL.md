@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: single_boost=2.5 to push the racecar_single domain
+- **Hypothesis:** Per-split test gap analysis from iter5 showed `test_single_in_dist` was my biggest weakness (69.6 vs top 50.0). The training sampler is balanced 1/3 per domain {racecar_single, racecar_tandem, cruise}; upweighting racecar_single in the WeightedRandomSampler should give the model more single-foil exposure.
+- **Change:** `train.py`: added `single_boost: float` config; multiplies sample_weights for samples in the `racecar_single` domain group (read from `meta.json`). Run with `--single_boost 2.5` and the same chain recipe (lr=2e-6, nosub, bs=2, 4-weight loss).
+- **Result:** 7 epochs in 30 min, best `val/avg_surf_p=58.42` at epoch 7. Trajectory: 61.33 → 60.33 → 59.10 → 59.03 → 58.84 → 58.46 → 58.42. `val_single_in_dist` improved from iter6's 2.32 → iter7's 2.17 (the targeted split). Predictions at `askeladd/170bb37`. W&B: askeladd/iter7-singleboost2.5-lr2e6.
+- **Verdict:** kept (-1.79 vs iter6). Single boost works without hurting other splits — none of them regressed. Worth pushing further.
+- **Notes:** iter8: bump `single_boost` to 3.5 and `surf_p_weight` 10→12 for more aggressive surface-pressure focus on the hard split.
+
 ### 2026-04-27 — iter6: chain at lr=2e-6 (frieren chain step)
 - **Hypothesis:** With iter5 settled at val/surf_p=63.80, drop LR another 2.5x to 2e-6 (frieren's iter4 LR) and let the model polish for 6 more full-mesh epochs.
 - **Change:** No code changes. `--lr 2e-6 --epochs 8` (rest unchanged).
