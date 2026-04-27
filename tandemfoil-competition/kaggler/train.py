@@ -28,6 +28,31 @@ from models import Transolver
 from viz import visualize
 
 
+class _VolumeSubsample(torch.utils.data.Dataset):
+    """Wrapper that keeps every surface node and randomly drops most volume nodes
+    so each forward pass has at most `max_volume + n_surface` points. Validation
+    uses the unsubsampled base dataset."""
+
+    def __init__(self, base, max_volume: int):
+        self.base = base
+        self.max_volume = max_volume
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        x, y, is_surface = self.base[idx]
+        if self.max_volume is None or self.max_volume <= 0:
+            return x, y, is_surface
+        surf_idx = is_surface.nonzero(as_tuple=True)[0]
+        vol_idx = (~is_surface).nonzero(as_tuple=True)[0]
+        if vol_idx.numel() > self.max_volume:
+            perm = torch.randperm(vol_idx.numel())[: self.max_volume]
+            vol_idx = vol_idx[perm]
+        keep = torch.cat([surf_idx, vol_idx])
+        return x[keep], y[keep], is_surface[keep]
+
+
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
@@ -40,10 +65,11 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 20.0
+    surf_weight: float = 25.0
     p_channel_weight: float = 1.0  # equal channel weighting
-    epochs: int = 15
+    epochs: int = 25
     grad_clip: float = 1.0
+    train_max_volume: int = 25000  # subsample volume nodes during training (0 = keep all)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -64,12 +90,13 @@ stats = {k: v.to(device) for k, v in stats.items()}
 loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
 
+train_ds_subs = _VolumeSubsample(train_ds, cfg.train_max_volume)
 if cfg.debug:
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+    train_loader = DataLoader(train_ds_subs, batch_size=cfg.batch_size,
                               shuffle=True, **loader_kwargs)
 else:
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+    train_loader = DataLoader(train_ds_subs, batch_size=cfg.batch_size,
                               sampler=sampler, **loader_kwargs)
 
 val_loaders = {
