@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: chain lr=2e-6 + pw=10
+- **Hypothesis:** Push surface_p weight further (8→10) and drop lr 2.5×, see if there's more juice.
+- **Change:** `--lr 2e-6 --warmup_frac 0.02 --surf_p_weight 10.0 --loss_beta 0.0`. No code change.
+- **Result:** Best E13/14, avg_p = **45.25** (from 45.98, -1.6%). Per-split: single=45.08, rc=60.82, cruise=29.48, re_rand=45.64. W&B `fs20tj39`.
+- **Verdict:** Kept. Marginal gain; per-epoch improvement E12→E13 was 0.02 — clear plateau.
+- **Notes:** Test score was 39.09 at iter5-ckpt commit 5613c7b — leaderboard #2. iter7 expected test ~38 (iter6 val=45.98 likely ~39 too). Need a structural change to break through to thorfinn (test 36.23). y-flip augmentation looked tempting but data has z ∈ [0,10] (one-sided domain) so y-flip would map to invalid geometry — discarded. **Next:** one more chain at lr=1e-6 to confirm plateau, then try ensemble of recent ckpts.
+
 ### 2026-04-27 — iter6: pure L1 + pw=8 + lr=5e-6
 - **Hypothesis:** Plateau at iter5 came from smooth_l1's quadratic region near zero error damping the gradient when most points are already close. Pure L1 keeps gradient magnitude constant — better aligned with the L1-MAE leaderboard metric. Combine with stronger pressure weight (5→8) and lower lr=5e-6 for a fine-step push.
 - **Change:** added `--loss_beta` (0.0 ⇒ pure L1). `--resume ckpt --lr 5e-6 --warmup_frac 0.01 --surf_p_weight 8.0 --loss_beta 0.0`.
