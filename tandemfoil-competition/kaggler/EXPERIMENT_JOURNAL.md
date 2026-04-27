@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: chain finetune iter3 with p_weight bumped 3→6
+- **Hypothesis:** rc split is the bottleneck (surf_p≈74) and pressure is the leaderboard metric, so doubling the pressure-channel weight in the L1 loss should bias gradients more toward pressure error and squeeze a few more points from the surface metric.
+- **Change:** Resume from iter3 ckpt; same shape as iter3 (bs=2, full mesh, ep=10, lr=5e-6, no warmup) plus `--p_weight 6`.
+- **Result:** **surf_p 52.74 → 52.05** (~1.3% gain). val/loss is not comparable (loss formula scaled by p_weight). Per-split surf_p: single≈54, rc≈74, cruise≈30, re_rand≈50. W&B `12v6mgmg`. Predictions submitted.
+- **Verdict:** Kept — small but monotone. The bottleneck is still the rc (unseen camber) split.
+- **Notes:** Trade-off seems neutral on Ux/Uy (no big regression observed). Next: lower LR + p_weight=6 chain (iter5), then if plateau, try larger model or augmentation.
+
 ### 2026-04-27 — iter3: chain finetune iter2 (bs=2, full mesh, lr=5e-6)
 - **Hypothesis:** Drop LR another 4x (2e-5 → 5e-6) for fine polishing — frieren's chain pattern showed each LR cut yielded a few percent.
 - **Change:** Resume from iter2 ckpt; --batch_size 2 --n_sub 0 --epochs 10 --lr 5e-6 --warmup_epochs 0.
