@@ -230,27 +230,27 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter13: warm-restart cycle from iter11 best (ii1fhq90, val=44.32) with a
-# bigger LR + single_boost=4 to push harder on the weakest split.
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-ii1fhq90/checkpoint.pt"
+# Iter14: chain from iter13 best (90uw6d5h, val=42.89). Add tandem boost since
+# geom_rc is now the biggest gap to askeladd (7.5 points).
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-90uw6d5h/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 2e-5
+    lr: float = 1e-5
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
     surf_weight: float = 10.0
     epochs: int = 14
-    warmup_epochs: int = 0  # no warmup; chain step
+    warmup_epochs: int = 0
     grad_clip: float = 1.0
     l1_weight: float = 1.0
-    l2_weight: float = 1.0  # restore L2 — earlier soup analysis shows L1-only is correlated with iter7 anyway
+    l2_weight: float = 1.0
     p_weight: float = 5.0
     ema_decay: float = 0.99
-    # Strongly boost the racecar_single domain — biggest test gap is here.
     single_boost: float = 4.0
+    tandem_boost: float = 3.0  # NEW: boost racecar_tandem (geom_rc gap target)
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -291,17 +291,21 @@ def main():
         train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                                   shuffle=True, **loader_kwargs)
     else:
-        # Optionally upweight the racecar_single domain (our weakest val split).
-        if cfg.single_boost != 1.0:
+        # Optionally upweight specific domains.
+        boosts = {"racecar_single": cfg.single_boost,
+                  "racecar_tandem": getattr(cfg, "tandem_boost", 1.0)}
+        if any(b != 1.0 for b in boosts.values()):
             import json as _json
             with open(Path(cfg.splits_dir) / "meta.json") as f:
                 _meta = _json.load(f)
-            single_idxs = set(_meta["domain_groups"].get("racecar_single", []))
-            boosted = sample_weights.clone()
-            for i in single_idxs:
-                boosted[i] = boosted[i] * cfg.single_boost
-            print(f"Sampler: single_boost={cfg.single_boost} applied to {len(single_idxs)} samples")
-            sample_weights = boosted
+            sample_weights = sample_weights.clone()
+            for group, boost in boosts.items():
+                if boost == 1.0:
+                    continue
+                idxs = _meta["domain_groups"].get(group, [])
+                for i in idxs:
+                    sample_weights[i] = sample_weights[i] * boost
+                print(f"Sampler: {group} boost={boost} applied to {len(idxs)} samples")
         sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
         train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                                   sampler=sampler, **loader_kwargs)
