@@ -48,8 +48,9 @@ class Config:
     huber_delta: float = 1.0
     grad_clip: float = 1.0
     warmup_epochs: int = 1
-    epochs: int = 30
+    epochs: int = 60
     use_amp: bool = True
+    vol_subsample: int = 12000  # max volume nodes per sample at training time
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -66,19 +67,36 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
 
-loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
-                     persistent_workers=True, prefetch_factor=2)
+def subsample_collate(batch):
+    """Surface-aware subsampling: keep all surface nodes, subsample volume to vol_subsample."""
+    K = cfg.vol_subsample
+    new = []
+    for x, y, sf in batch:
+        surf_idx = sf.nonzero(as_tuple=True)[0]
+        vol_idx = (~sf).nonzero(as_tuple=True)[0]
+        if K < vol_idx.numel():
+            perm = torch.randperm(vol_idx.numel())[:K]
+            vol_idx = vol_idx[perm]
+        keep = torch.cat([surf_idx, vol_idx])
+        new.append((x[keep], y[keep], sf[keep]))
+    return pad_collate(new)
+
+
+train_loader_kwargs = dict(collate_fn=subsample_collate, num_workers=4, pin_memory=True,
+                           persistent_workers=True, prefetch_factor=2)
+val_loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
+                         persistent_workers=True, prefetch_factor=2)
 
 if cfg.debug:
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              shuffle=True, **loader_kwargs)
+                              shuffle=True, **train_loader_kwargs)
 else:
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              sampler=sampler, **loader_kwargs)
+                              sampler=sampler, **train_loader_kwargs)
 
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **val_loader_kwargs)
     for name, ds in val_splits.items()
 }
 
