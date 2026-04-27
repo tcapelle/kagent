@@ -8,8 +8,9 @@ import torch
 PRED_DIR = Path(f"/mnt/new-pvc/predictions/{os.environ['RESEARCH_TAG']}/frieren")
 SPLITS = ["test_single_in_dist", "test_geom_camber_rc", "test_geom_camber_cruise", "test_re_rand"]
 
-# iter4 / iter5 / iter6 — the converged finetune basin
-COMMITS = ["37a85cf", "7c0c3c8", "f088509"]
+# Cross-basin ensemble: iter4 (chain1 mid), iter6 (chain1 final), iter9 (chain2 finetune)
+# iter4 and iter6 share base; iter9 has a different random init → more decorrelated.
+COMMITS = ["37a85cf", "f088509", "ffcecba"]
 
 # Save under current HEAD's commit
 out_commit = subprocess.run(
