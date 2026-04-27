@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14: seed-diverse Fourier model + 6-way validated ensemble → val=49.12
+- **Hypothesis:** Optimizer dropped non-Fourier models. Seed diversity within Fourier+chain family might help. Train another iter1-style model (192/6/6, fourier=8, p_weight=3, 30ep) with `PYTHONHASHSEED=42`.
+- **Change:** Re-run iter1 recipe. Run `o4n26g12`. Submitted ensemble at HEAD via fast_optimize.py with 12 sources.
+- **Result:** iter14 single val_surf_p ~ 56 (worse than iter3's 51), but adds 0.06 weight to optimal ensemble. Best val avg_surf_p **49.12** (from 49.16 with 5-way → 49.12 with 6-way). Final weights: iter3=0.38, iter9=0.23, iter11=0.17, iter2=0.16, iter14=0.06, iter1=0.005. Submitted under `8871171`.
+- **Verdict:** kept; -0.04 marginal improvement from added diversity. Iter14 is a "ensemble tax" — single model is weak but helps the whole.
+- **Notes:** Optimizer iterates fast (<10 sec for 11 sources). Path forward: more seeds? Try TTA (flip Re axis)? Continue best-chain (iter3 → iter11 chain)?
+
 ### 2026-04-27 — iter13: validation-grid ensemble optimization → val avg_surf_p=49.16
 - **Hypothesis:** Hand-picked weights are likely suboptimal. Compute val predictions for every model, then greedy-search ensemble weights to minimize avg_surf_p directly. Frieren did this kind of search and squeezed 35.27 → 34.41 (3% gain).
 - **Change:** New `fast_optimize.py` that pre-stacks per-(model,sample-on-surface) pressure predictions into a `[K, T]` GPU tensor and evaluates ensemble metric in O(KT). Ran with all 11 single-model checkpoints (iter1-3, iter5-12).
