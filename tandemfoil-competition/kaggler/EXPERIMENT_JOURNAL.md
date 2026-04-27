@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15: cycle-3 deeper pretrain — warm iter14 bs=4 sub60K lr=1e-5 25ep (commit 402f7ea)
+- **Hypothesis:** Repeat coarse pretraining from iter14. Lower LR (1e-5) since model is highly converged.
+- **Change:** `--warm_start /tmp/iter14_best.pt --lr 1e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
+- **Result:** **val/loss=1.1895** at epoch 12. Per-split val: 1.93, 1.48, 0.30, 1.05. Marginal ~0.6% improvement over iter14 (1.196).
+- **Verdict:** kept; cycle saturating fast. Still useful for ensemble.
+- **Notes:** Diminishing returns are sharp now. Next: iter16 = bs=2 fine-tune from iter15, then 3-way ensemble of iter10/iter14/iter16.
+
 ### 2026-04-27 — iter14: cycle-2 bs=2 fine-tune NEW BEST (commit d3350b0)
 - **Hypothesis:** Apply bs=2/no-subsample to cycle-2 base iter13 (val 1.236).
 - **Change:** `--warm_start /tmp/iter13_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
