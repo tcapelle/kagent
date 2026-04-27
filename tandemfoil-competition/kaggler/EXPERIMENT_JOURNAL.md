@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: resume from iter2 best, lr=1.5e-4, warmup=100
+
+- **Hypothesis:** iter2 stopped at epoch 37/39 still descending; the 30-min
+  cosine schedule never bottomed out. Continuing from the iter2 best with a
+  fresh, shorter cosine cycle (peak lr=1.5e-4) effectively gives 60 min of
+  training and should let the loss settle further.
+- **Change:** `train.py` — when `--resume_from` is set, default `lr` becomes
+  1.5e-4 and `warmup_steps` becomes 100. Run with
+  `--resume_from .../model-bjq3mkuc/checkpoint.pt`.
+- **Result:** 40 epochs, best val avg_surf_p = **76.99** at epoch 31
+  (single=61.36, geom_rc=111.64, geom_cruise=54.85, re_rand=80.09). Run
+  `mhk382oc`. Commit `c8f502d`. Test scoring: 67.71 (rank 3, behind
+  edward=43.73 and alphonse=50.83).
+- **Verdict:** kept — improved every split vs iter2 (-12% avg).
+- **Notes:** Plateaued by epoch 28+; oscillating 77–80 for the last 10 epochs.
+  Looks like recipe capacity is the limiter — more training won't help, the
+  model can't go lower with this architecture. Big test/val gap (val=77,
+  test=68) suggests the val set is a bit harder. Need a bigger model or a
+  better architecture to close the 24-point gap to edward. Next: try
+  capacity bump (n_layers 6→8 or n_hidden 256→320).
+
 ### 2026-04-27 — iter3: surface MSE → L1 (FAILED)
 
 - **Hypothesis:** the metric is MAE in physical units; switching surface loss
