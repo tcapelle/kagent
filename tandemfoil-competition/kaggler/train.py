@@ -45,6 +45,9 @@ class Config:
     huber_beta: float = 1.0
     p_weight: float = 1.0  # multiplier on the pressure-channel loss (leaderboard metric)
     v_weight: float = 1.0  # multiplier on the velocity-channel loss
+    constant_lr: bool = False  # disable cosine decay; LR stays at peak after warmup (for SWA)
+    swa_last_n: int = 0  # if >0, post-training: average last N per-epoch ckpts and use if better
+    save_per_epoch: bool = False  # save model state dict every epoch (for SWA)
     epochs: int = 50
     grad_clip: float = 1.0
     warmup_steps: int = 100
@@ -167,6 +170,8 @@ total_steps = MAX_EPOCHS * len(train_loader)
 def lr_lambda(step):
     if step < cfg.warmup_steps:
         return (step + 1) / cfg.warmup_steps
+    if cfg.constant_lr:
+        return 1.0
     progress = (step - cfg.warmup_steps) / max(1, total_steps - cfg.warmup_steps)
     progress = min(progress, 1.0)
     return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.141592653589793)).item())
@@ -400,6 +405,9 @@ for epoch in range(MAX_EPOCHS):
         torch.save(ema.state_dict(), ema_path)
         tag = f" * ({chosen_label})"
 
+    if cfg.save_per_epoch or cfg.swa_last_n > 0:
+        torch.save(model.state_dict(), model_dir / f"epoch_{epoch+1:02d}.pt")
+
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     split_summary = "  ".join(
         f"{name}={chosen_split_metrics[name][f'{name}/mae_surf_p']:.2f}" for name in VAL_SPLIT_NAMES
@@ -419,6 +427,32 @@ print(f"\nDone ({total_time:.1f} min)")
 if best_metrics:
     print(f"Best: epoch {best_metrics['epoch']}, mean_mae_surf_p={best_metrics['val/mean_mae_surf_p']:.4f}")
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
+
+    # Post-training SWA over last N per-epoch ckpts
+    if cfg.swa_last_n > 0:
+        epoch_files = sorted(model_dir.glob("epoch_*.pt"))
+        last_n = epoch_files[-cfg.swa_last_n:]
+        print(f"\nSWA over last {len(last_n)} ckpts: {[f.name for f in last_n]}")
+        states = [torch.load(f, map_location="cpu", weights_only=True) for f in last_n]
+        avg_state = {}
+        for k in states[0].keys():
+            ts = [s[k] for s in states]
+            if ts[0].dtype.is_floating_point:
+                avg_state[k] = torch.stack(ts, 0).mean(0)
+            else:
+                avg_state[k] = ts[0].clone()
+        # Evaluate the SWA model
+        swa_model = Transolver(**model_config).to(device)
+        swa_model.load_state_dict(avg_state)
+        _, swa_val, swa_surf_p = run_validation(swa_model)
+        print(f"SWA mean_mae_surf_p = {swa_surf_p:.4f} (vs best {best_metrics['val/mean_mae_surf_p']:.4f})")
+        wandb.summary["swa_mean_mae_surf_p"] = swa_surf_p
+        if swa_surf_p < best_metrics["val/mean_mae_surf_p"]:
+            torch.save(avg_state, model_path)
+            print(f"SWA beats best — saved as new best.pt")
+            best_metrics["val/mean_mae_surf_p"] = swa_surf_p
+            best_metrics["selected"] = "swa"
+        del swa_model
 
     # Mirror best to canonical paths
     research_tag = os.environ.get("RESEARCH_TAG", "default")
