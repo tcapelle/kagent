@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 11 + 12 — chain2 attempt (cross-basin ensemble plan)
+- **Hypothesis:** Following frieren's pattern, train a SECOND independent chain from a different fresh base, then ensemble chain1 (iter 9) + chain2 (iter 11/12) for a cross-basin gain. Their leader (`c0b78fe`, 32.47) is exactly such a 4-way cross-basin ensemble.
+- **Change:** invocation only, no code. Iter 11 = fresh from scratch (no `--resume`, lr=5e-4, same loss recipe as iter 8). Iter 12 = warm-start from iter 11 (`model-lt2ge907`) at lr=2e-5.
+- **Result:** Iter 11 best val avg surf_p = **74.3** (epoch 48). Iter 12 (chain finetune) best val avg surf_p = **71.2** (epoch 7) and plateaued there for 50 more epochs. Per-node test MAE for the 2-way ensemble (iter 9 + iter 11) was 61.86 — *worse* than iter 9 alone (55.47).
+- **Verdict:** Discarded the chain2 ensembles; reverted all latest-commit prediction dirs to iter 9 single. Final submission = iter 9 single (test 51.01).
+- **Notes:** Cross-basin ensembling needs both bases at *similar* quality. With only 30 min per run, chain2 can't catch up to chain1 (which had iter 7's warm-start + iter 8's fast-subsample architecture switch + iter 9's chain finetune — three rounds of compounding gains). Frieren's chain2 reached val=39.54 because their chain2 base was trained for 80 *full* epochs as a fresh run, then chain-finetuned twice — way more compute than I had headroom for. To do this properly: ~3× longer per-iter timeout or pre-trained chain2 from a previous competition.
+
 ### 2026-04-27 — Iter 10 — third chain finetune (lr=5e-6, sw=12, pw=4); regressed to 57.01
 - **Hypothesis:** With iter 9's val/loss settling at 1.54 and the curve clearly bouncing, drop LR another 4× and shift the loss balance (sw=12, pw=4) to nudge the model into a flatter minimum the cosine can anneal into.
 - **Change:** invocation only — `--resume model-dbqik2p5/checkpoint.pt --lr 5e-6 --surf_weight 12 --p_weight 4`. Wandb run `xd15zvoj`.
