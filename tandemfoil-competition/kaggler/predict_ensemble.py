@@ -83,12 +83,12 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter25: explore higher-decorrelation pairings — 03652c4 vs 55cc0ab diff is 7.92 (vs 1.74 with 34c2f44).
-    # If decorrelation gain scales with diff, L+I should beat L+M on single.
-    single: str = "thorfinnL:0.5,thorfinnI:0.5"   # 03652c4 (35.2169) + 55cc0ab (35.2565), diff=7.92
-    rc: str = "thorfinnL:0.40,thorfinnM:0.40,thorfinnK:0.20"  # proven best 48.6777
-    cruise: str = "thorfinnN:0.5,thorfinnO:0.5"   # proven best 20.6158
-    re_rand: str = "thorfinnM:0.5,thorfinnN:0.5"  # proven best 34.9014
+    # iter26: 3-way single with L+M+I (combine L+M decorrelation with I's diversity).
+    # Also try cruise 3-way with N+O+M (M was 20.6861, slight quality penalty but might decorrelate).
+    single: str = "thorfinnL:0.4,thorfinnM:0.4,thorfinnI:0.2"
+    rc: str = "thorfinnL:0.40,thorfinnM:0.40,thorfinnK:0.20"
+    cruise: str = "thorfinnN:0.45,thorfinnO:0.45,thorfinnM:0.10"
+    re_rand: str = "thorfinnM:0.45,thorfinnN:0.45,thorfinnL:0.10"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
