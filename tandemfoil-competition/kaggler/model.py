@@ -136,8 +136,13 @@ class Transolver(nn.Module):
         super().__init__()
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
-        self.fourier = FourierFeatures(num_scales=fourier_scales, max_freq=fourier_max_freq)
-        ff_dim = 2 * 2 * fourier_scales
+        self.fourier_scales = fourier_scales
+        if fourier_scales > 0:
+            self.fourier = FourierFeatures(num_scales=fourier_scales, max_freq=fourier_max_freq)
+            ff_dim = 2 * 2 * fourier_scales
+        else:
+            self.fourier = None
+            ff_dim = 0
         in_dim = fun_dim + space_dim + ff_dim
 
         self.preprocess = MLP(in_dim, n_hidden * 2, n_hidden, n_layers=0, res=False, act=act)
@@ -165,9 +170,11 @@ class Transolver(nn.Module):
     def forward(self, data, **kwargs):
         x = data["x"]
         mask = data.get("mask")
-        pos_norm = x[..., :2]
-        ff = self.fourier(pos_norm)
-        x_in = torch.cat([x, ff], dim=-1)
+        if self.fourier is not None:
+            ff = self.fourier(x[..., :2])
+            x_in = torch.cat([x, ff], dim=-1)
+        else:
+            x_in = x
         if mask is not None:
             x_in = x_in * mask.unsqueeze(-1).to(x_in.dtype)
         fx = self.preprocess(x_in) + self.placeholder[None, None, :]
