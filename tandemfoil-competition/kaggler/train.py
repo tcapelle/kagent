@@ -207,10 +207,11 @@ class Config:
     batch_size: int = 8
     surf_weight: float = 10.0
     p_weight: float = 3.0  # extra weight on surface pressure channel
-    epochs: int = 60
+    epochs: int = 30
     n_vol_subsample: int = 40000
     grad_clip: float = 1.0
     warmup_epochs: int = 2
+    resume: str | None = None  # path to checkpoint.pt to warm-start from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -276,6 +277,10 @@ def main():
     )
 
     model = Transolver(**model_config).to(device)
+    if cfg.resume:
+        print(f"Warm-starting from {cfg.resume}")
+        state = torch.load(cfg.resume, map_location=device, weights_only=True)
+        model.load_state_dict(state)
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
