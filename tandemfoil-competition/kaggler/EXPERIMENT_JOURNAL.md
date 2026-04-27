@@ -94,3 +94,4 @@ Keep entries short. Link W&B run URLs when useful.
 - **Notes:** ~46s/epoch (375 batches). Ready for iter2 = warm-start bs=2 no-subsample full-mesh (breakthrough recipe).
 
 # iter19: 40% iter18
+# iter20: 4-way both slice128
