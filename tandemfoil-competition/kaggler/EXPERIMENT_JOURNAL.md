@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: fresh from scratch with bs=2 nosub (frieren iter93 recipe)
+- **Hypothesis:** frieren's run history showed a big drop (val~1.4 → ~1.0) when restarting from scratch with bs=2 full mesh — maybe my chain-from-sub30k path is stuck in a local min.
+- **Change:** New training run, no resume; bs=2, n_sub=0, ep=10, lr=2e-5, warmup_epochs=1, p_weight=3 (matching iter2 first finetune step).
+- **Result:** 10 ep in 24.8 min. **surf_p=109.48** (from scratch). Worse than iter1 baseline (91.88) and far from iter5 (51.82).
+- **Verdict:** Discarded — fresh restart at bs=2 nosub doesn't beat the iter1+chain pipeline in 10 epochs. Restored iter5 ckpt as best.local.
+- **Notes:** 10 epochs of full-mesh from scratch is just not enough; the model needs the sub30k pre-training to get fast initial progress. iter6 ckpt kept on PVC for possible ensemble use.
+
 ### 2026-04-27 — iter5: chain finetune iter4 (lr=2e-6, p_weight=6)
 - **Hypothesis:** iter4 was still descending — drop LR another 2.5x for further polishing.
 - **Change:** Resume from iter4 ckpt; --lr 2e-6 --p_weight 6 (same shape).
