@@ -372,6 +372,11 @@ if best_metrics:
 if best_metrics and not cfg.debug:
     import subprocess
     print("\nGenerating test predictions...")
+    # Free GPU memory before subprocess so predict.py can allocate.
+    del model, optimizer, scheduler
+    if ema is not None:
+        del ema
+    torch.cuda.empty_cache()
     pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
     if cfg.agent:
         pred_cmd += ["--agent", cfg.agent]
