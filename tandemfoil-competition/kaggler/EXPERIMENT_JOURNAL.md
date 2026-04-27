@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15: 5th warm-restart (lr=2.5e-5, pw=15, sw=15)
+- **Hypothesis:** 5th warm-restart cycle. Push pw further (12→15) and slightly higher LR (2e-5→2.5e-5).
+- **Change:** Resume iter14; --lr 2.5e-5 --p_weight 15 --surf_weight 15.
+- **Result:** **surf_p 45.18 → 43.91** (~2.8% gain — best gain yet). Per-split: rc=4.22 (slow improvement on hardest split), single=3.04, cruise=1.73, re_rand=3.33. W&B `5mgv0u7n`.
+- **Verdict:** Kept (best). Now within ~4% of frieren's apr27 score (42.11). One more warm-restart cycle should put me ahead.
+- **Notes:** Each warm-restart cycle has yielded 2-3%; total since iter5: 51.82 → 43.91 (15.3% reduction). The gradient on pressure is still effective at this LR/pw level. iter16 polish, iter17 6th warm-restart.
+
 ### 2026-04-27 — iter14: polish iter13 (lr=3e-6, pw=12, sw=15)
 - **Hypothesis:** Standard polish at low LR.
 - **Change:** Resume iter13; --lr 3e-6 (other unchanged).
