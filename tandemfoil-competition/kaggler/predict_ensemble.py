@@ -37,6 +37,7 @@ TEST_SPLITS = [
 @dataclass
 class Config:
     checkpoints: str  # comma-separated checkpoint paths
+    weights: str | None = None  # comma-separated weights, default uniform
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 4
@@ -47,7 +48,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 ckpt_paths = [Path(p.strip()) for p in cfg.checkpoints.split(",") if p.strip()]
-print(f"Ensembling {len(ckpt_paths)} checkpoints")
+if cfg.weights:
+    ws = [float(w) for w in cfg.weights.split(",")]
+    assert len(ws) == len(ckpt_paths), "weights must match checkpoints"
+    total = sum(ws)
+    weights = [w / total for w in ws]
+else:
+    weights = [1.0 / len(ckpt_paths)] * len(ckpt_paths)
+print(f"Ensembling {len(ckpt_paths)} checkpoints with weights {weights}")
 
 # Load each model with its runtime info.
 models = []
@@ -125,7 +133,8 @@ for split in TEST_SPLITS:
                 x_pad[j, :x.shape[0]] = x.to(device)
 
             preds = [_predict_one(m, rt, x_pad) for m, rt in models]
-            pred_avg = torch.stack(preds, dim=0).mean(dim=0)
+            ws = torch.tensor(weights, device=device).view(-1, 1, 1, 1)
+            pred_avg = (torch.stack(preds, dim=0) * ws).sum(dim=0)
 
             for j, x in enumerate(xs):
                 predictions.append(pred_avg[j, :x.shape[0]].cpu())
