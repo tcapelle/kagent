@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: chain finetune iter4 (lr=2e-6, p_weight=6)
+- **Hypothesis:** iter4 was still descending — drop LR another 2.5x for further polishing.
+- **Change:** Resume from iter4 ckpt; --lr 2e-6 --p_weight 6 (same shape).
+- **Result:** **surf_p 52.05 → 51.82** (~0.4% gain). val/loss 2.36 → 2.35. Per-split: single≈54, rc≈74, cruise≈30, re_rand≈53. W&B `2qnnkhmb`.
+- **Verdict:** Kept (best). Plateau confirmed: per-epoch deltas <0.5%.
+- **Notes:** Tried SWA of iter3+iter4+iter5 ckpts — gave 52.30, worse than just iter5 (51.82). Chain is monotonic so averaging back-tracks. Next: try a more aggressive lever (larger model 256x8 from scratch, or stronger p_weight=10 + more chain).
+
 ### 2026-04-27 — iter4: chain finetune iter3 with p_weight bumped 3→6
 - **Hypothesis:** rc split is the bottleneck (surf_p≈74) and pressure is the leaderboard metric, so doubling the pressure-channel weight in the L1 loss should bias gradients more toward pressure error and squeeze a few more points from the surface metric.
 - **Change:** Resume from iter3 ckpt; same shape as iter3 (bs=2, full mesh, ep=10, lr=5e-6, no warmup) plus `--p_weight 6`.
