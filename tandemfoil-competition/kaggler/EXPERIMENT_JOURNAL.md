@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — cosine35 (DISCARDED)
+- **Hypothesis:** epochs=80 cosine never decays in our 30 min budget; setting epochs=35 lets cosine fully anneal to ~0 LR for a sharper minimum.
+- **Change:** `epochs: 80 → 35`.
+- **Result:** 32 epochs in 30.5 min. Best epoch 23: avg_surf_p=109.00 (much worse than iter8's 93.62). Training got worse after LR decayed too low — model couldn't keep improving.
+- **Verdict:** discarded — `git reset --hard HEAD~1`. The high-LR-throughout schedule (epochs=80 with our actual ~32-epoch run) is correct for this setup; the model needs a non-zero LR all the way through.
+- **Notes:** confirms our convergence is LR-limited not stuck-in-local-min. Don't reduce epochs/hyperparam for cosine.
+
 ### 2026-04-27 — noise05 (DISCARDED)
 - **Hypothesis:** input noise was the iter8 win; pushing it from 0.03 → 0.05 should help further.
 - **Change:** `input_noise=0.05`.
