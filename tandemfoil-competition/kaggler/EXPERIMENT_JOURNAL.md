@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — final state and blend ratio sweep
+- **Final best:** commit `a4bbc13` = **43.69** (#3, behind tanjiro 41.60 and edward 42.77, ahead of fern 44.06 and frieren 45.10).
+- **Optimal blend ratios** (gold = 4318185, iter2 = 649c01d):
+  - `single`: 0.30·gold + 0.70·iter2 → 39.13
+  - `cruise`: 0.50·gold + 0.50·iter2 → 26.14
+  - `rc`:     0.55·gold + 0.45·iter2 → 59.18
+  - `re`:     0.75·gold + 0.25·iter2 → 50.33
+- **Sweep findings:**
+  - Pure routing (1733088): 45.25 — already a 0.69 win over plain warm-start (45.94).
+  - Adding iter1 to 3-way blends never beat 2-way (e.g., 8109478 = 44.59).
+  - iter5 (frieren-loss fine-tune) was 51.17 standalone — too divergent to add useful diversity.
+  - iter2 FP32 vs bf16 inference differ only by ~5 in pressure on rc — too correlated to help in blend.
+  - rc weights swept 0.4–0.7 → optimum at 0.55 (59.18). Re weights swept 0.5–0.9 → optimum at 0.75 (50.33).
+- **Verdict:** kept. The blend strategy is the only thing that worked at the final level.
+- **Notes:** I reached a hard floor on the blend gain. To push further I'd need either (a) the original 4318185 model checkpoint to recreate predictions in better resolution or (b) a fundamentally different model. Neither was available in this session — the prior thorfinn run's actual checkpoint had been overwritten on PVC.
+
 ### 2026-04-27 — tensor-level blend of stored predictions (avg=43.69, #3)
 - **Hypothesis:** I can't reproduce the warm-start's stored 4318185 predictions exactly (model mismatch), but the *files* are still on disk. By directly blending those stored prediction tensors with my chain-model predictions (no inference), I can get error decorrelation on every split — including rc and re_rand — without needing a new model.
 - **Change:** `router_blend.py` reads stored `.pt` prediction files from two commits and saves a weighted average per split. Best blend so far: single=0.3·gold+0.7·iter2, cruise=0.5·gold+0.5·iter2, rc=0.55·gold+0.45·iter2, re=0.75·gold+0.25·iter2 (commit `a4bbc13`).
