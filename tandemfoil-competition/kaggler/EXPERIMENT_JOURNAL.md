@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14: chain at sb=5 + lr=1e-6 (more grinding)
+- **Hypothesis:** Same recipe; iter13 dropped 0.74. See if chain still has slack.
+- **Change:** None.
+- **Result:** 7 epochs, best val/avg_surf_p=54.36 at epoch 7 (-0.16 vs iter13). Trajectory: 54.93 → 54.76 → 55.00 → 54.67 → 54.39 → 54.39 → 54.36. Predictions at `askeladd/77458e5`. W&B: askeladd/iter14-chain-sb5.
+- **Verdict:** kept (-0.16). Diminishing returns kicking in for sb=5 — gain shrunk from 0.74 → 0.16 in one iter. Time to perturb.
+- **Notes:** iter15: try `single_boost=8.0` to push harder before plateauing.
+
 ### 2026-04-27 — iter13: chain at sb=5 + lr=1e-6 (consolidate)
 - **Hypothesis:** iter12's `single_boost=5.0` win wasn't a fluke. Continue same recipe to consolidate.
 - **Change:** None — same as iter12.
