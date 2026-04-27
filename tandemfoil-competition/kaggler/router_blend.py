@@ -23,6 +23,7 @@ GOLD = "4318185"   # warm-start original (rc=61.70, re=51.05)
 ITER2 = "649c01d"  # iter2 chain (single=40.28, cruise=27.95)
 ITER1 = "790ca24"  # iter1 (single=40.73, cruise=28.39)
 ITER3 = "165f5b0"  # iter3 (= iter2 numbers, same predictions)
+ITER5 = "8199f6c"  # iter5 frieren-loss fine-tune solo
 
 
 @dataclass
@@ -37,6 +38,7 @@ class Config:
     extra_w_rc: float = 0.0       # weight on ITER1 for rc
     extra_w_re: float = 0.0       # weight on ITER1 for re_rand
     use_iter1_main: bool = False  # if true, ITER2 -> ITER1 in blend
+    third_source: str = "iter1"   # "iter1" or "iter5" — what to use for 3-way blends
 
 
 cfg = sp.parse(Config)
@@ -62,7 +64,10 @@ def blend(split: str, w_gold: float, w_extra_iter1: float = 0.0):
     main = ITER1 if cfg.use_iter1_main else ITER2
     b = torch.load(PREDICTIONS_DIR / agent_name / main / f"{split}.pt", weights_only=False)
     if w_extra_iter1 > 0:
-        third = ITER2 if cfg.use_iter1_main else ITER1
+        if cfg.third_source == "iter5":
+            third = ITER5
+        else:
+            third = ITER2 if cfg.use_iter1_main else ITER1
         c = torch.load(PREDICTIONS_DIR / agent_name / third / f"{split}.pt", weights_only=False)
         w_b = 1.0 - w_gold - w_extra_iter1
         out = [w_gold * ai + w_b * bi + w_extra_iter1 * ci
