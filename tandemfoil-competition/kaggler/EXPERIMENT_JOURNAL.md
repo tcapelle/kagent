@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13: 4th warm-restart (lr=2e-5, pw=12, sw=15)
+- **Hypothesis:** Push surface weight further (sw=12→15) and warm-restart to escape iter12 plateau.
+- **Change:** Resume iter12; --lr 2e-5 --p_weight 12 --surf_weight 15.
+- **Result:** **surf_p 46.58 → 45.53** (~2.3% gain). Per-split: rc=4.31, single=3.11 (val_loss inflated by sw=15). Still descending. W&B `78ltz16v`.
+- **Verdict:** Kept (best). Pattern continues — 4 warm-restart cycles each yielded 2-3%.
+- **Notes:** Within ~8% of frieren's apr27 score (42.11). Two more cycles should be enough to top them. iter14 polish, iter15 5th warm-restart.
+
 ### 2026-04-27 — iter12: polish iter11 (lr=3e-6, pw=12, sw=12)
 - **Hypothesis:** Standard polish-after-warm-restart with the new sw=12 weighting.
 - **Change:** Resume iter11; --lr 3e-6 --p_weight 12 --surf_weight 12.
