@@ -39,14 +39,14 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 4
     grad_accum: int = 1
     surf_weight: float = 20.0
     p_channel_weight: float = 2.0  # channel weight for pressure (metric)
     huber_delta: float = 0.1
-    seed: int = 42
+    seed: int = 0  # 0 disables explicit seeding (matches iter 8's default behavior)
     grad_clip: float = 1.0
     warmup_epochs: int = 1
     epochs: int = 80
@@ -65,8 +65,9 @@ class Config:
 cfg = sp.parse(Config)
 MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
 
-torch.manual_seed(cfg.seed)
-torch.cuda.manual_seed_all(cfg.seed)
+if cfg.seed > 0:
+    torch.manual_seed(cfg.seed)
+    torch.cuda.manual_seed_all(cfg.seed)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device} [seed={cfg.seed}]" + (" [DEBUG]" if cfg.debug else ""))
 
