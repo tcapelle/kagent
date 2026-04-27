@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v12: fresh slice=32 + Re/AoA noise (40ep) + 3-way per-split (val 43.76)
+- **Hypothesis:** Truly architecturally diverse model (slice=32 vs my v3/v6/v7=64 and v5/v8/v10=128) plus Re-noise=0.2 + AoA-noise=0.1 from scratch should give complementary errors that help the per-split ensemble, especially on geom_rc and re_rand.
+- **Change:** `--slice_num 32 --epochs 40 --re_noise 0.2 --aoa_noise 0.1` (fresh, no warm_start). 36s/epoch, 24 min total.
+- **Result:** v12 alone val_avg_surf_p=79.55 at epoch 40 (still descending, undertrained at 40ep — see notes). Per-split: single=91.22, geom_rc=96.05, cruise=55.28, re_rand=75.63. 3-way per-split optimum (v7+v10+v12) = 43.76 vs prior 2-way = 43.87. v12 helps ONLY on geom_rc with weight 0.09 (59.510 vs 59.971); other splits keep v12=0. Marginal -0.11 improvement.
+- **Verdict:** Submitted. Real but tiny improvement.
+- **Notes:** v11 and v11b (chain v10 with re_noise=0.4 then 0.2) were both **disrupted** — chained models can't tolerate noise injection (val jumped from 48 to 60-95 and didn't recover). Fresh-from-scratch with noise was the right call. v12 took 24 min — could likely train 50-60 epochs at slice=32 within budget. Run `8cccqawl`.
+
+### 2026-04-27 — v11/v11b: chain v10 with Re-noise — both disrupted, aborted
+- **Hypothesis:** Chain v10 with log(Re) noise (sigma in normalized space) would force Re-robust predictions, helping val_re_rand (my worst split: 54 vs thorfinn's 35).
+- **Change:** `--warm_start v10 --re_noise <sigma> --aoa_noise <sigma2> --lr 1e-5 --epochs 15`. Tried sigma=(0.4, 0.3) [v11] and sigma=(0.2, 0) [v11b].
+- **Result:** v11 epoch 1 = 94.84, epoch 2 = 86.35 (recovering slow). v11b epoch 1 = 59.80, epoch 2 = 61.66, epoch 3 = 68.50 (DIVERGING). Aborted both.
+- **Verdict:** Discarded. Lesson: chained models from a tight local minimum (val 48) cannot absorb input perturbations — train loss continues but val on clean inputs degrades. Domain shift between noise-train and clean-eval breaks the model.
+- **Notes:** Re-noise must be applied from random init (fresh training) so the model learns Re-robust mappings as part of its base solution. This led to v12 plan (fresh).
+
 ### 2026-04-27 — Summary
 - **Best result:** test 42.77 (rank 4) at commit c773fa7 (v7+v5 [0.72, 0.28] ensemble, val 44.86).
 - **Latest submission:** v7+v10 per-split ensemble at f888fbe (val 43.87, awaiting scoring — likely test ~42).
