@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter16: cycle-3 bs=2 fine-tune NEW BEST (commit db4d762)
+- **Hypothesis:** Apply bs=2/no-subsample to iter15 (val 1.190). Lower LR (1e-5) since model is heavily converged.
+- **Change:** `--warm_start /tmp/iter15_best.pt --lr 1e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** **val/loss=1.1589** at epoch 9 (25 min). Per-split val: 1.87, 1.46, 0.28, 1.03. ~3% improvement over iter14.
+- **Verdict:** **NEW BEST.** Cycling pattern still delivers per breakthrough step, just diminishing.
+- **Notes:** Score should drop from 39.15 → ~37-38. Next: build 3-way ensemble of cycle-1 (iter10), cycle-2 (iter14), cycle-3 (iter16) — different LR regimes plus different training durations might decorrelate.
+
 ### 2026-04-27 — iter15: cycle-3 deeper pretrain — warm iter14 bs=4 sub60K lr=1e-5 25ep (commit 402f7ea)
 - **Hypothesis:** Repeat coarse pretraining from iter14. Lower LR (1e-5) since model is highly converged.
 - **Change:** `--warm_start /tmp/iter14_best.pt --lr 1e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
