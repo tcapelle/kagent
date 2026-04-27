@@ -22,6 +22,21 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v10 polish chain from v9 at lr=1e-6
+- **Hypothesis:** v9 (val 39.27) was still at the basin floor; lr=1e-6 (half of v9's 2e-6) for 10
+  epochs would extract one more 0.1-0.3 of polish without unstable kicks.
+- **Change:** no code changes. Run: `--warm_start v9 --train_subsample 0 --batch_size 2 --lr 1e-6
+  --p_weight 5 --surf_weight 10 --epochs 10`.
+- **Result:** wandb run, 10 epochs in 24.8 min. Best at epoch 8 → **val/avg_surf_p = 39.28**
+  (single 39.31 / geom_rc 52.89 / cruise 24.49 / re_rand 40.43). Essentially flat vs v9 (39.27).
+  Predictions at `/mnt/new-pvc/predictions/apr27-5/alphonse/2941146/`.
+- **Verdict:** marginal — kept anyway since the ckpt is interchangeable with v9 and is mirrored.
+- **Notes:** the 192/6/6/64 architecture has reached its data-limited basin floor at this LR.
+  Output-space ensembles I evaluated earlier (v9 + irysplar; v9 + irysplar + h3y73gp9) were all
+  *worse* than v9 alone — averaging models that share v9's parent does not help. Real next move
+  is a from-scratch second model (different seed/arch, e.g. 256/8/8/64 or 192/8/6/64) so an
+  output-space ensemble has a chance of adding diversity.
+
 ### 2026-04-27 — v9 chain from frieren's newest irysplar ckpt
 - **Hypothesis:** v8 took the leaderboard at 33.43 but frieren (still iterating) saved an even
   newer ckpt `irysplar` at 19:07. Direct val on it gave 39.54 (vs my v8's 39.81), so it's a
