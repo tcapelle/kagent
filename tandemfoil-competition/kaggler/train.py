@@ -36,14 +36,16 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 8e-4
+    lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 4
+    val_batch_size: int = 2  # validation runs on full meshes — keep small to fit in VRAM
     surf_weight: float = 15.0
     p_weight: float = 1.0  # extra weight on the pressure channel (the leaderboard metric).
     epochs: int = 8  # cosine anneals over this many epochs; pick to roughly match wall-clock budget
     grad_clip: float = 1.0
     bf16: bool = True
+    train_subsample: int = 40000  # subsample non-surface nodes per training sample; surfaces always kept
     warm_start: str | None = None  # path to a previous checkpoint.pt to resume from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -73,7 +75,7 @@ else:
                               sampler=sampler, **loader_kwargs)
 
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=cfg.val_batch_size, shuffle=False, **loader_kwargs)
     for name, ds in val_splits.items()
 }
 
@@ -162,6 +164,23 @@ for epoch in range(MAX_EPOCHS):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
+
+        # Per-sample point subsampling. Always keep all surface nodes; randomly drop volume nodes
+        # until each sample has at most `train_subsample` real points. Padding stays masked out.
+        if cfg.train_subsample and cfg.train_subsample > 0:
+            B, N, _ = x.shape
+            # Importance: surface and real (mask) nodes get high score; padding gets very low score.
+            # Top-k preserves all surface nodes when train_subsample >= n_surface for any sample.
+            score = torch.rand(B, N, device=device)
+            score = score + is_surface.float() * 10.0  # surfaces always selected first
+            score = score + mask.float() * 1.0         # then real volume nodes, then padding (lowest)
+            k = min(cfg.train_subsample, N)
+            keep_idx = score.topk(k, dim=1).indices  # [B, k]
+            gather_xy = keep_idx.unsqueeze(-1).expand(-1, -1, x.shape[-1])
+            x = x.gather(1, gather_xy)
+            y = y.gather(1, keep_idx.unsqueeze(-1).expand(-1, -1, y.shape[-1]))
+            is_surface = is_surface.gather(1, keep_idx)
+            mask = mask.gather(1, keep_idx)
 
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
