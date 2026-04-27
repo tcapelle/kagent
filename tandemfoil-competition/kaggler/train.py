@@ -163,9 +163,8 @@ print(f"Params: {n_params/1e6:.2f}M")
 if cfg.resume:
     state = torch.load(cfg.resume, map_location=device, weights_only=True)
     if cfg.num_pos_freqs > 0:
-        # Pad the preprocess input weight matrix with zeros for the new Fourier dims
-        # so iter11's behavior is preserved at init.
         target_state = model.state_dict()
+        # Pad preprocess weight: keep old features in front, zero-init new Fourier dims.
         pre_w_key = "preprocess.linear_pre.0.weight"
         old_w = state[pre_w_key]
         new_w_shape = target_state[pre_w_key].shape
@@ -174,6 +173,10 @@ if cfg.resume:
             padded = torch.zeros(new_w_shape, dtype=old_w.dtype)
             padded[:, :old_w.shape[1]] = old_w
             state[pre_w_key] = padded
+        # Drop fourier_freqs buffer if shape differs — current buffer has the right freqs.
+        if "fourier_freqs" in state and state["fourier_freqs"].shape != target_state["fourier_freqs"].shape:
+            print("Dropping mismatched fourier_freqs buffer (new model has fresh frequencies)")
+            del state["fourier_freqs"]
     model.load_state_dict(state, strict=False)
     print(f"Resumed from {cfg.resume}")
 
