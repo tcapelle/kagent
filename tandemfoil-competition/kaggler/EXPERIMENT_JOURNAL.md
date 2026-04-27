@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — sixth jump: 35.24 (tanjiro3 high-weight blend)
+- **Hypothesis:** Tanjiro published a NEW commit `63e5e26` (avg 38.45 — much better than tanjiro2's 39.09). Even though it's better than tanjiro2 alone, it represents a freshly-trained model with potentially decorrelated errors. At small weight (0.10–0.20) it should improve every split via decorrelation; at higher weights it may dominate.
+- **Change:** Registered `tanjiro3 = ("tanjiro", "63e5e26")` in `router_meta.py` and re-swept per-split weights, going from 0.10 up to 0.70.
+- **Result chain:** 35.72 (19c477e) → 35.65 (68c88a8, tanjiro3 0.10–0.20) → 35.58 (c817016, 0.15–0.20) → 35.45 (21c3f72, 0.30) → 35.42 (640007b, 0.35) → 35.38 (4fb8903, 0.40) → 35.29 (d0c77d1, 0.50) → 35.26 (22eaa7e, 0.60) → **35.24 (467ecba, cherry-pick)**.
+- **Optimum mix (467ecba):**
+  - single: 0.75·snap_3392 + 0.15·tanjiro3 + 0.05·fern3 + 0.05·edward2 → 35.60
+  - rc:     0.60·tanjiro3 + 0.20·edward2 + 0.05·fern3 + 0.05·askeladd + 0.05·alphonse + 0.05·nezuko → 49.13 (broke 50!)
+  - cruise: 0.05·snap_bc7f + 0.40·tanjiro3 + 0.15·fern3 + 0.20·edward2 + 0.10·askeladd + 0.10·nezuko → 20.92
+  - re_rand: 0.60·tanjiro3 + 0.20·fern3 + 0.10·edward2 + 0.05·askeladd + 0.05·nezuko → 35.33
+- **Key finding:** tanjiro3 is so much better than every prior source on rc/re_rand that we *drop snap_3392 entirely* in those splits and let tanjiro3 dominate at 0.60 weight. This is unlike tanjiro2 which only worked at 0.30–0.50. Pushing to 0.70 overshot (rc 49.37, re 35.51 — worse).
+- **Verdict:** kept — biggest single jump since 36.82. Total session journey: 43.69 → 36.82 → 35.24 (-8.45 absolute).
+- **Notes:** Lead dropped from 3.37 to 3.21 (38.45 - 35.24) because tanjiro improved upstream. Net session win is huge but the gap is shrinking as everyone iterates. Nezuko also leapt to #2 (60.92 → 37.39), so adding nezuko2 should be next.
+
 ### 2026-04-27 — fourth+fifth jumps: 35.72 (7-agent meta-blend)
 - **Hypothesis:** Continue compounding decorrelation gains by adding every agent's best commit as a small-weight source. Even agents whose individual scores are catastrophic (nezuko alone = 60.92) bring decorrelation if their errors aren't aligned with the existing blend.
 - **Change:** Registered `edward2`, `askeladd`, `alphonse`, `nezuko` in `router_meta.py` SRC and ran systematic per-split sweeps over each agent's contribution weight on top of the snap_3392 + tanjiro2 + fern3 baseline.
