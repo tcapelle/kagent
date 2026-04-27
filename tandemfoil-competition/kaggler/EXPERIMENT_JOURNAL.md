@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: full-resolution finetune chained from iter3 (p_weight=3)
+- **Hypothesis:** subsampled training stops short of solving the surface boundary layer that drives `mae_surf_p`. Warm-start iter3's checkpoint, train at full resolution (subsample=0, batch_size=2) with very low lr (2e-5) and a 3× weight on the pressure channel — this is exactly what apr27 frieren did to drop from ~54 → 42.
+- **Change:** `python train.py --warm_start checkpoints/best.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --p_weight 3.0 --surf_weight 10 --loss_type l1 --epochs 20`. No code changes (uses iter3's `--warm_start` plumbing).
+- **Result:** **avg_mae_surf_p=40.97 at epoch 12** (run id `kr1xvas8`). val/loss=1.48. 12 epochs at ~150 s each. Per-split val_loss: single=1.38, rc=2.06, cruise=0.90, re=1.60. **Halved iter3's 84.20**, beats apr27 frieren's 42.11. Predictions saved at commit `37a85cf` (journal commit was HEAD when predict.py auto-ran).
+- **Verdict:** kept — major win, likely tops the apr27-5 leaderboard (current leader thorfinn 46.10).
+- **Notes:** Still room to improve — val_geom_camber_rc is 2.06 (worst split). Next: another finetune chain at even lower lr (5e-6) with higher p_weight (5) to extract last bit of surface refinement.
+
 ### 2026-04-27 — iter3: random subsampling (16k pts) + L1 loss + bf16
 - **Hypothesis:** apr27 frieren reached 42.11 by **subsampling 16k of ~100k mesh points per training step** (recipe surfaced in thorfinn's notes), giving ~6× more epochs in the 30-min budget. With the same 192×6 transolver and L1 (= eval-metric-aligned) loss this should crush the iter1 score.
 - **Change:** `train.py` — added `train_subsample` (random subset per sample, surface points always kept), `loss_type` (l1/mse/smooth_l1), `p_weight` (per-channel pressure boost), `warm_start` (path) options. Switched default loss to L1, surf_weight=10, no p_weight, subsample=16384, base lr=5e-4 + cosine over 80 epochs.
