@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: single_boost=2x from-scratch — best from-scratch yet, ALL splits improved
+- **Hypothesis:** Frieren's biggest test gap is single_in_dist (50.25 vs thorfinn 40.28 = 10pt). The default sampler weights all 3 domain groups equally (33% each); biasing raceCar single to 50% might push the model to fit single_in_dist better. Risk: cruise/tandem splits might suffer from less exposure.
+- **Change:** train.py — added `--single_boost` flag that multiplies sample_weights for raceCar single domain (read from meta.json domain_groups). With boost=2.0, raceCar single = 50% weight, tandem/cruise = 25% each. CLI: `--batch_size 8 --train_subsample 40000 --lr 5e-4 --epochs 35 --single_boost 2.0`. Run `7haq6108`.
+- **Result:** 35 epochs, 26.9 min. Best epoch 34: val/avg_surf_p=**68.35** (vs iter1's 81.37 from-scratch baseline = 16% better). Per-split combined val_loss improved across THE BOARD: single=2.20 (was 2.53), rc=2.34 (was 2.79), cruise=0.65 (was 1.08), re_rand=1.64 (was 2.03). Predictions OVERWROTE 0596f0e (the 60/40 ensemble variant — the scorer cached the 50/50 score so this is mostly fine).
+- **Verdict:** Strong KEEP. Diversity is genuine since the sampler distribution changed.
+- **Notes:** Surprise — biasing toward raceCar single helped ALL splits, not just single_in_dist. Likely because raceCar single has the densest in-distribution coverage and the model learns better Reynolds patterns from it that transfer. This could be the secret thorfinn discovered. Now chain iter7 with bs=2 no_sub for iter8 → expect val ~50!
+
 ### 2026-04-27 — 🥇 ensemble3 takes #1: 45.21 (beats thorfinn 45.25 by 0.04)
 - ensemble3 (`32f0a18`, iter4+iter6 50/50): **45.21** — single=50.25, rc=61.10, cruise=27.03, re_rand=42.48
 - ensemble4 (`a89882c`, iter3+iter4+iter6 0.30/0.35/0.35): 45.34 — adding iter3 (chain seed-A) hurt slightly because correlation with iter4
