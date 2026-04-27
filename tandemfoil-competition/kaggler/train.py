@@ -107,24 +107,30 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 1e-3
+    lr: float = 1.5e-3
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 20.0
     epochs: int = 60
     warmup_steps: int = 200
-    train_subsample: int = 60000
+    train_subsample: int = 50000
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    hidden: int = 512
-    n_blocks: int = 8
+    hidden: int = 384
+    n_blocks: int = 6
     expansion: int = 4
     dropout: float = 0.0
     n_freqs: int = 32
     fourier_sigma: float = 4.0
+    # bf16 autocast
+    amp: bool = True
+    # validate every N epochs (after epoch 1)
+    val_every: int = 2
+    # cosine LR target ~= this many epochs
+    cosine_epochs: int = 30
 
 
 def subsample_batch(x, y, is_surface, mask, k_vol):
@@ -157,11 +163,12 @@ def subsample_batch(x, y, is_surface, mask, k_vol):
     return out_x, out_y, out_s, out_m
 
 
-def _validate(model, val_loaders, stats, device, surf_weight):
+def _validate(model, val_loaders, stats, device, surf_weight, amp=False):
     model.eval()
     val_loss_sum = 0.0
     surf_p_sum = 0.0
     split_metrics: dict[str, dict] = {}
+    amp_dtype = torch.bfloat16 if amp else torch.float32
 
     for split_name, vloader in val_loaders.items():
         val_vol = val_surf = 0.0
@@ -178,7 +185,9 @@ def _validate(model, val_loaders, stats, device, surf_weight):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
+                with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=amp):
+                    pred = model({"x": x})["preds"]
+                pred = pred.float()
                 sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
@@ -265,7 +274,7 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
     steps_per_epoch = max(1, len(train_loader))
-    total_steps = steps_per_epoch * MAX_EPOCHS
+    total_steps = steps_per_epoch * (cfg.cosine_epochs if not cfg.debug else MAX_EPOCHS)
     warmup = cfg.warmup_steps if not cfg.debug else 5
 
     def lr_lambda(step):
@@ -321,6 +330,7 @@ def main():
         epoch_vol = epoch_surf = 0.0
         n_batches = 0
 
+        amp_dtype = torch.bfloat16 if cfg.amp else torch.float32
         for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             is_surface = is_surface.to(device, non_blocking=True)
@@ -332,14 +342,15 @@ def main():
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-            pred = model({"x": x})["preds"]
-            sq_err = (pred - y_norm) ** 2
+            with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.amp):
+                pred = model({"x": x})["preds"]
+                sq_err = (pred.float() - y_norm) ** 2
 
-            vol_mask = mask & ~is_surface
-            surf_mask = mask & is_surface
-            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-            loss = vol_loss + cfg.surf_weight * surf_loss
+                vol_mask = mask & ~is_surface
+                surf_mask = mask & is_surface
+                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+                loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -362,25 +373,31 @@ def main():
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
-        mean_val_loss, mean_surf_p, split_metrics = _validate(
-            model, val_loaders, stats, device, cfg.surf_weight,
-        )
+        # Validate on epoch 1 always, then every val_every epochs, and last epoch.
+        do_val = (epoch == 0) or ((epoch + 1) % cfg.val_every == 0)
+        if do_val:
+            mean_val_loss, mean_surf_p, split_metrics = _validate(
+                model, val_loaders, stats, device, cfg.surf_weight, amp=cfg.amp,
+            )
+        else:
+            mean_val_loss, mean_surf_p, split_metrics = float("nan"), float("nan"), {}
+
         dt = time.time() - t0
 
         metrics = {
             "train/vol_loss": epoch_vol,
             "train/surf_loss": epoch_surf,
-            "val/loss": mean_val_loss,
-            "val/mean_surf_p": mean_surf_p,
             "epoch_time_s": dt,
             "global_step": global_step,
         }
-        for sm in split_metrics.values():
-            metrics.update(sm)
+        if do_val:
+            metrics.update({"val/loss": mean_val_loss, "val/mean_surf_p": mean_surf_p})
+            for sm in split_metrics.values():
+                metrics.update(sm)
         wandb.log(metrics)
 
         tag = ""
-        if mean_surf_p < best_surf_p:
+        if do_val and mean_surf_p < best_surf_p:
             best_surf_p = mean_surf_p
             best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "mean_surf_p": mean_surf_p}
             for sm in split_metrics.values():
@@ -389,15 +406,21 @@ def main():
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
-        split_summary = "  ".join(
-            f"{name.replace('val_', '')}_p={split_metrics[name][f'{name}/mae_surf_p']:.2f}"
-            for name in VAL_SPLIT_NAMES
-        )
-        print(
-            f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
-            f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  "
-            f"surf_p[{split_summary}] mean={mean_surf_p:.2f}{tag}"
-        )
+        if do_val:
+            split_summary = "  ".join(
+                f"{name.replace('val_', '')}_p={split_metrics[name][f'{name}/mae_surf_p']:.2f}"
+                for name in VAL_SPLIT_NAMES
+            )
+            print(
+                f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
+                f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  "
+                f"surf_p[{split_summary}] mean={mean_surf_p:.2f}{tag}"
+            )
+        else:
+            print(
+                f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
+                f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  (no val)"
+            )
 
     total_time = (time.time() - train_start) / 60.0
     print(f"\nDone ({total_time:.1f} min)")
@@ -432,6 +455,13 @@ def main():
         print(f"Mirrored checkpoint to {pvc_dir}")
 
     if best_metrics and not cfg.debug:
+        # Free GPU memory before spawning predict.py subprocess (otherwise both
+        # processes try to fit on one GPU and the child OOMs).
+        import gc
+        del model, optimizer, scheduler
+        gc.collect()
+        torch.cuda.empty_cache()
+
         print("\nGenerating test predictions...")
         pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
         if cfg.agent:
