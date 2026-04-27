@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — warmstart-finetune (DISCARDED)
+- **Hypothesis:** iter6 was still descending; warm-start from iter6 ckpt (98.53), lower LR (8e-4 → 2e-4), short warmup, sub25k. Squeeze more convergence.
+- **Change:** added `--resume_from` to load checkpoint into both model and EMA at start. Ran with lr=2e-4 warmup_epochs=1 train_max_nodes=25000 epochs=60.
+- **Result:** best epoch 1 (98.64 — basically the resumed weights). Then val_geom_camber_rc steadily worsened (2.47 → 3.33) as train loss dropped to vol=0.11/surf=0.04 — pure overfit. Final 33 epochs at avg_surf_p=100.24.
+- **Verdict:** discarded — `git reset --hard HEAD~1`. Continued training without changing data/regularization just memorizes harder. Confirms train data is the bottleneck, not optimization.
+- **Notes:** the previously-best ckpt is already near a local minimum w.r.t this loss/data; pushing further with same setup overfits. Need either augmentation, stronger regularization, or different architecture. Predictions still saved at `apr27-4/fern/f20ab62`.
+
 ### 2026-04-27 — sub20k-ema
 - **Hypothesis:** iter5 was still descending at epoch 29; halving subsample 30k→20k buys more epochs.
 - **Change:** train.py — `train_max_nodes=20000`.
