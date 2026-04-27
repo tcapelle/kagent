@@ -34,7 +34,8 @@ class Config:
     p_weight: float = 3.0  # extra multiplier on surface pressure (primary metric)
     epochs: int = 30
     grad_clip: float = 1.0
-    loss_type: str = "l1"  # mse | l1 | smoothl1
+    loss_type: str = "l1"  # mse | l1 | smoothl1 | huber
+    huber_delta: float = 0.1  # only used when loss_type=huber (askeladd's iter8 trick: 0.1 ≈ sharp L1)
     slice_num: int = 64
     n_hidden: int = 192
     n_layers: int = 6
@@ -228,6 +229,10 @@ def loss_fn(pred, target):
         return diff.abs()
     if cfg.loss_type == "smoothl1":
         return torch.where(diff.abs() < 1.0, 0.5 * diff**2, diff.abs() - 0.5)
+    if cfg.loss_type == "huber":
+        d = cfg.huber_delta
+        a = diff.abs()
+        return torch.where(a < d, 0.5 * diff**2 / d, a - 0.5 * d)
     return diff ** 2
 
 
