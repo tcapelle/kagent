@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 9 — chain finetune lr=2e-5 from iter 8; iter 9 single beats ensemble
+- **Hypothesis:** Iter 8 single best was 55.5; chain another finetune at lower LR (2e-5) from iter 8's best to squeeze out the last few points before the cosine schedule freezes things.
+- **Change:** invocation only — `--resume model-11mrhkwp/checkpoint.pt --lr 2e-5 --surf_weight 15 --p_weight 3`. Wandb run `dbqik2p5`.
+- **Result:** 56 epochs, best epoch 49, `val/loss=1.536`, avg surf_p MAE = **55.6** single (matches iter 8). Importantly, **on the test set my own per-node MAE shows iter 9 beats both iter 8 and the 2-way ensemble**: iter 8 → 59.79, iter 9 → 55.47, ensemble(iter 8+9) → 56.41. Same finding for the earlier 5-way ensemble (74.06) vs iter 8 alone (65.10) — averaging *across* warm-start chain checkpoints actually hurts because the worse models drag the average down.
+- **Verdict:** Submitted iter 9 single predictions as the final answer (copied to the latest commit's prediction dir). Ensemble approach abandoned for this competition.
+- **Notes:** Lesson — for sequential chained finetunes, the LATEST snapshot dominates the chain, so naive averaging is anti-productive. To make ensembles work would need genuinely independent runs (different seeds / data orderings), not "more refinement of the same trajectory."
+
 ### 2026-04-27 — Iter 8 — frieren-style fast subsample (16k) + L1 + grad_clip; 5-way ensemble
 - **Hypothesis:** Sniffed frieren's pushed branch — they get >2× more epochs in 30 min by subsampling **16k** points instead of my 50k. With T-192-6-6, that frees up enough headroom that ~50 epochs fit in 30 min and the cosine schedule actually completes. Also: vectorized topk subsample (no Python loop) + L1 loss + grad-clip 1.0 + p_weight=3 + sw=15 + lr=1e-4, warm-started from iter-7.
 - **Change:** `train.py` rewrote subsample as topk on `is_surface*2 + rand` scores (keeps all surface, fills rest with random vol). Added `loss_type` (mse/l1/smooth_l1) and `grad_clip`. Default `epochs=80` so cosine actually anneals to zero. Wandb run `11mrhkwp`.
