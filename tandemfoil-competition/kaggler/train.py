@@ -1,222 +1,56 @@
 """Train Transolver on TandemFoilSet.
 
-Structured benchmark with four validation tracks:
-  val_in_dist          — interpolation (raceCar single holdout)
-  val_tandem_transfer  — unseen tandem front foil (Part2)
-  val_ood_cond         — extreme conditions (frontier 20%)
-  val_ood_re           — OOD Reynolds number (cruise Part2)
+Validation tracks (4):
+  val_single_in_dist        — single-foil random holdout
+  val_geom_camber_rc        — unseen front foil camber M=6-8 (raceCar)
+  val_geom_camber_cruise    — unseen front foil camber M=2-4 (cruise)
+  val_re_rand               — stratified Re holdout across tandem domains
 
 Run:
-  uv run train.py [--debug]
+  python train.py --agent <name> --wandb_name "<name>/<desc>"
 """
 
+import contextlib
+import gc
 import os
 import time
-from collections.abc import Mapping
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
 import simple_parsing as sp
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import wandb
 import yaml
-from einops import rearrange
-from timm.layers import trunc_normal_
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
 from data import X_DIM, VAL_SPLIT_NAMES, pad_collate, load_data
+from model import Transolver
 from viz import visualize
 
 
-# ---------------------------------------------------------------------------
-# Transolver model
-# ---------------------------------------------------------------------------
-
-ACTIVATION = {
-    "gelu": nn.GELU,
-    "tanh": nn.Tanh,
-    "sigmoid": nn.Sigmoid,
-    "relu": nn.ReLU,
-    "leaky_relu": nn.LeakyReLU(0.1),
-    "softplus": nn.Softplus,
-    "ELU": nn.ELU,
-    "silu": nn.SiLU,
-}
-
-
-class MLP(nn.Module):
-    def __init__(self, n_input, n_hidden, n_output, n_layers=1, act="gelu", res=True):
-        super().__init__()
-        act_fn = ACTIVATION[act]
-        self.n_layers = n_layers
-        self.res = res
-        self.linear_pre = nn.Sequential(nn.Linear(n_input, n_hidden), act_fn())
-        self.linear_post = nn.Linear(n_hidden, n_output)
-        self.linears = nn.ModuleList(
-            [nn.Sequential(nn.Linear(n_hidden, n_hidden), act_fn()) for _ in range(n_layers)]
-        )
-
-    def forward(self, x):
-        x = self.linear_pre(x)
-        for i in range(self.n_layers):
-            x = self.linears[i](x) + x if self.res else self.linears[i](x)
-        return self.linear_post(x)
-
-
-class PhysicsAttention(nn.Module):
-    """Physics-aware attention for irregular meshes."""
-
-    def __init__(self, dim, heads=8, dim_head=64, dropout=0.0, slice_num=64):
-        super().__init__()
-        inner_dim = dim_head * heads
-        self.dim_head = dim_head
-        self.heads = heads
-        self.softmax = nn.Softmax(dim=-1)
-        self.dropout = nn.Dropout(dropout)
-        self.temperature = nn.Parameter(torch.ones([1, heads, 1, 1]) * 0.5)
-
-        self.in_project_x = nn.Linear(dim, inner_dim)
-        self.in_project_fx = nn.Linear(dim, inner_dim)
-        self.in_project_slice = nn.Linear(dim_head, slice_num)
-        torch.nn.init.orthogonal_(self.in_project_slice.weight)
-        self.to_q = nn.Linear(dim_head, dim_head, bias=False)
-        self.to_k = nn.Linear(dim_head, dim_head, bias=False)
-        self.to_v = nn.Linear(dim_head, dim_head, bias=False)
-        self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout))
-
-    def forward(self, x):
-        B, N, _ = x.shape
-
-        fx_mid = (
-            self.in_project_fx(x)
-            .reshape(B, N, self.heads, self.dim_head)
-            .permute(0, 2, 1, 3)
-            .contiguous()
-        )
-        x_mid = (
-            self.in_project_x(x)
-            .reshape(B, N, self.heads, self.dim_head)
-            .permute(0, 2, 1, 3)
-            .contiguous()
-        )
-        slice_weights = self.softmax(self.in_project_slice(x_mid) / self.temperature)
-        slice_norm = slice_weights.sum(2)
-        slice_token = torch.einsum("bhnc,bhng->bhgc", fx_mid, slice_weights)
-        slice_token = slice_token / ((slice_norm + 1e-5)[:, :, :, None].repeat(1, 1, 1, self.dim_head))
-
-        q = self.to_q(slice_token)
-        k = self.to_k(slice_token)
-        v = self.to_v(slice_token)
-        out_slice = F.scaled_dot_product_attention(
-            q, k, v,
-            dropout_p=self.dropout.p if self.training else 0.0,
-            is_causal=False,
-        )
-
-        out_x = torch.einsum("bhgc,bhng->bhnc", out_slice, slice_weights)
-        out_x = rearrange(out_x, "b h n d -> b n (h d)")
-        return self.to_out(out_x)
-
-
-class TransolverBlock(nn.Module):
-    def __init__(self, num_heads, hidden_dim, dropout, act="gelu",
-                 mlp_ratio=4, last_layer=False, out_dim=1, slice_num=32):
-        super().__init__()
-        self.last_layer = last_layer
-        self.ln_1 = nn.LayerNorm(hidden_dim)
-        self.attn = PhysicsAttention(
-            hidden_dim, heads=num_heads, dim_head=hidden_dim // num_heads,
-            dropout=dropout, slice_num=slice_num,
-        )
-        self.ln_2 = nn.LayerNorm(hidden_dim)
-        self.mlp = MLP(hidden_dim, hidden_dim * mlp_ratio, hidden_dim,
-                        n_layers=0, res=False, act=act)
-        if self.last_layer:
-            self.ln_3 = nn.LayerNorm(hidden_dim)
-            self.mlp2 = nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim), nn.GELU(),
-                nn.Linear(hidden_dim, out_dim),
-            )
-
-    def forward(self, fx):
-        fx = self.attn(self.ln_1(fx)) + fx
-        fx = self.mlp(self.ln_2(fx)) + fx
-        if self.last_layer:
-            return self.mlp2(self.ln_3(fx))
-        return fx
-
-
-class Transolver(nn.Module):
-    def __init__(self, space_dim=1, n_layers=5, n_hidden=256, dropout=0.0,
-                 n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
-                 slice_num=32, ref=8, unified_pos=False,
-                 output_fields: list[str] | None = None,
-                 output_dims: list[int] | None = None):
-        super().__init__()
-        self.ref = ref
-        self.unified_pos = unified_pos
-        self.output_fields = output_fields or []
-        self.output_dims = output_dims or []
-
-        if self.unified_pos:
-            self.preprocess = MLP(fun_dim + ref**3, n_hidden * 2, n_hidden,
-                                   n_layers=0, res=False, act=act)
-        else:
-            self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
-                                   n_layers=0, res=False, act=act)
-
-        self.n_hidden = n_hidden
-        self.space_dim = space_dim
-        self.blocks = nn.ModuleList([
-            TransolverBlock(
-                num_heads=n_head, hidden_dim=n_hidden, dropout=dropout,
-                act=act, mlp_ratio=mlp_ratio, out_dim=out_dim,
-                slice_num=slice_num, last_layer=(i == n_layers - 1),
-            )
-            for i in range(n_layers)
-        ])
-        self.placeholder = nn.Parameter((1 / n_hidden) * torch.rand(n_hidden))
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=0.02)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm1d)):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-
-    def forward(self, data, **kwargs):
-        x = data["x"]
-        fx = self.preprocess(x) + self.placeholder[None, None, :]
-        for block in self.blocks:
-            fx = block(fx)
-        return {"preds": fx}
-
-
-# ---------------------------------------------------------------------------
-# Training
-# ---------------------------------------------------------------------------
-
-MAX_TIMEOUT = 30.0  # minutes
+MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))  # minutes
 
 
 @dataclass
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 8
     surf_weight: float = 10.0
-    epochs: int = 50
+    epochs: int = 30
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    n_hidden: int = 192
+    n_layers: int = 6
+    n_head: int = 6
+    slice_num: int = 64
+    mlp_ratio: int = 2
+    use_bf16: bool = True
+    subsample_n: int = 40000  # nodes/sample during training; 0 disables
 
 
 cfg = sp.parse(Config)
@@ -239,28 +73,75 @@ else:
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                               sampler=sampler, **loader_kwargs)
 
+# Validation uses full mesh; smaller batch to avoid OOM on big meshes.
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=4, shuffle=False, **loader_kwargs)
     for name, ds in val_splits.items()
 }
+
+
+def subsample(x, y, is_surface, mask, n_target: int):
+    """Random per-sample subsample to ~n_target nodes; surface nodes always kept.
+
+    Returns padded tensors of shape [B, n_target, ...] with mask updated.
+    """
+    B, N, D = x.shape
+    if N <= n_target:
+        return x, y, is_surface, mask
+    new_N = n_target
+    out_x = torch.zeros(B, new_N, D, device=x.device, dtype=x.dtype)
+    out_y = torch.zeros(B, new_N, y.shape[-1], device=y.device, dtype=y.dtype)
+    out_surf = torch.zeros(B, new_N, device=is_surface.device, dtype=is_surface.dtype)
+    out_mask = torch.zeros(B, new_N, device=mask.device, dtype=mask.dtype)
+    for i in range(B):
+        valid = mask[i].nonzero(as_tuple=True)[0]
+        n_valid = valid.numel()
+        if n_valid <= new_N:
+            sel = valid
+        else:
+            surf_local = valid[is_surface[i, valid]]
+            n_surf = surf_local.numel()
+            if n_surf >= new_N:
+                perm = surf_local[torch.randperm(n_surf, device=x.device)[:new_N]]
+                sel = perm
+            else:
+                vol_local = valid[~is_surface[i, valid]]
+                n_keep = new_N - n_surf
+                vol_perm = vol_local[torch.randperm(vol_local.numel(), device=x.device)[:n_keep]]
+                sel = torch.cat([surf_local, vol_perm])
+        n_sel = sel.numel()
+        out_x[i, :n_sel] = x[i, sel]
+        out_y[i, :n_sel] = y[i, sel]
+        out_surf[i, :n_sel] = is_surface[i, sel]
+        out_mask[i, :n_sel] = True
+    return out_x, out_y, out_surf, out_mask
+
 
 model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=128,
-    n_layers=5,
-    n_head=4,
-    slice_num=64,
-    mlp_ratio=2,
+    n_hidden=cfg.n_hidden,
+    n_layers=cfg.n_layers,
+    n_head=cfg.n_head,
+    slice_num=cfg.slice_num,
+    mlp_ratio=cfg.mlp_ratio,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
 
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
+print(f"Model params: {n_params/1e6:.1f}M")
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+
+def autocast_ctx():
+    if cfg.use_bf16 and device.type == "cuda":
+        return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    return contextlib.nullcontext()
+
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -311,16 +192,20 @@ for epoch in range(MAX_EPOCHS):
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
+        if cfg.subsample_n > 0:
+            x, y, is_surface, mask = subsample(x, y, is_surface, mask, cfg.subsample_n)
+
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2
+        with autocast_ctx():
+            pred = model({"x": x})["preds"]
+        diff = (pred.float() - y_norm).abs()  # L1 loss in normalized space
 
         vol_mask = mask & ~is_surface
         surf_mask = mask & is_surface
-        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+        vol_loss = (diff * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+        surf_loss = (diff * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
         loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
@@ -334,10 +219,10 @@ for epoch in range(MAX_EPOCHS):
         n_batches += 1
 
     scheduler.step()
-    epoch_vol /= n_batches
-    epoch_surf /= n_batches
+    epoch_vol /= max(n_batches, 1)
+    epoch_surf /= max(n_batches, 1)
 
-    # --- Validate ---
+    # --- Validate (full mesh, no subsampling) ---
     model.eval()
     val_loss_sum = 0.0
     split_metrics: dict[str, dict] = {}
@@ -357,13 +242,15 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+                with autocast_ctx():
+                    pred = model({"x": x})["preds"]
+                pred = pred.float()
+                diff = (pred - y_norm).abs()
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                val_vol += (sq_err * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
-                val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
+                val_vol += (diff * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
+                val_surf += (diff * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
@@ -393,12 +280,14 @@ for epoch in range(MAX_EPOCHS):
         val_loss_sum += split_loss
 
     mean_val_loss = val_loss_sum / len(val_loaders)
+    avg_mae_surf_p = sum(sm[f"{n}/mae_surf_p"] for n, sm in zip(VAL_SPLIT_NAMES, split_metrics.values())) / len(split_metrics)
     dt = time.time() - t0
 
     metrics = {
         "train/vol_loss": epoch_vol,
         "train/surf_loss": epoch_surf,
         "val/loss": mean_val_loss,
+        "val/avg_mae_surf_p": avg_mae_surf_p,
         "lr": scheduler.get_last_lr()[0],
         "epoch_time_s": dt,
         "global_step": global_step,
@@ -408,12 +297,30 @@ for epoch in range(MAX_EPOCHS):
     wandb.log(metrics)
 
     tag = ""
-    if mean_val_loss < best_val:
-        best_val = mean_val_loss
-        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
+    # Select on avg surface pressure MAE — the leaderboard ranks by this.
+    if avg_mae_surf_p < best_val:
+        best_val = avg_mae_surf_p
+        best_metrics = {
+            "epoch": epoch + 1,
+            "val_loss": mean_val_loss,
+            "avg_mae_surf_p": avg_mae_surf_p,
+        }
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
         torch.save(model.state_dict(), model_path)
+
+        local_best = Path("checkpoints/best.pt")
+        local_best.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(model.state_dict(), local_best)
+
+        research_tag = os.environ.get("RESEARCH_TAG", "default")
+        agent_name = cfg.agent or os.environ.get("KAGGLER_NAME", "unknown")
+        pvc_dir = Path(f"/mnt/new-pvc/kagent/{research_tag}/{agent_name}/checkpoints/model-{run.id}")
+        pvc_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(model.state_dict(), pvc_dir / "checkpoint.pt")
+        with open(pvc_dir / "config.yaml", "w") as f:
+            yaml.dump(model_config, f)
+
         tag = " *"
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
@@ -423,7 +330,7 @@ for epoch in range(MAX_EPOCHS):
     print(
         f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
         f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  "
-        f"val[{split_summary}]{tag}"
+        f"val[avg_surf_p={avg_mae_surf_p:.2f} {split_summary}]{tag}"
     )
 
 # --- Final ---
@@ -431,7 +338,11 @@ total_time = (time.time() - train_start) / 60.0
 print(f"\nDone ({total_time:.1f} min)")
 
 if best_metrics:
-    print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
+    print(
+        f"Best: epoch {best_metrics['epoch']}, "
+        f"avg_mae_surf_p={best_metrics['avg_mae_surf_p']:.3f}, "
+        f"val/loss={best_metrics['val_loss']:.4f}"
+    )
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
     model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
@@ -446,16 +357,20 @@ if best_metrics:
                 "global_step": global_step,
             })
 
-# --- Auto-submit predictions ---
+wandb.finish()
+
+# --- Auto-submit predictions (separate process; free GPU memory first) ---
 if best_metrics and not cfg.debug:
+    del model, optimizer, scheduler
+    gc.collect()
+    torch.cuda.empty_cache()
+
     import subprocess
     print("\nGenerating test predictions...")
     pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
     if cfg.agent:
         pred_cmd += ["--agent", cfg.agent]
     result = subprocess.run(pred_cmd, capture_output=True, text=True)
-    print(result.stdout)
+    print(result.stdout[-2000:])
     if result.returncode != 0:
-        print(f"predict.py failed:\n{result.stderr[-500:]}")
-
-wandb.finish()
+        print(f"predict.py failed:\n{result.stderr[-1000:]}")
