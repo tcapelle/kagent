@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter2: bf16 + 256/6 model with warmup (discarded)
+- **Hypothesis:** bigger model (256-d, 6 layers) + bf16 mixed precision should fit in 30 min and beat iter1.
+- **Change:** `train.py` model_config `n_hidden=192→256, n_layers=5→6`; `surf_weight=20→30`; `lr=5e-4→8e-4`; added 200-step warmup + cosine; bf16 autocast; grad clip 1.0.
+- **Result:** 8 epochs in 32 min, best at epoch 7 with val/loss=10.97 (vs iter1's 7.71). bf16 only saved ~10% time (240s vs 261s/epoch); peak GPU 89.5GB (vs iter1's 82.9). Auto-submit predict.py OOM'd because train.py held GPU memory.
+- **Verdict:** discarded — bigger model converged slower; given the 30-min cap, iter1's smaller model finishes more useful epochs.
+- **Notes:** warmup hurts when only 7-8 epochs fit total; surf_weight=30 didn't obviously help. **Lesson:** time-bounded runs reward fast convergence, not capacity. Need either (a) faster training (mesh subsampling) or (b) skip warmup entirely. Also need to free GPU memory between train + predict (or run predict separately).
+
 ### 2026-04-27 — iter1: bigger Transolver baseline (kept)
 - **Hypothesis:** the template defaults (n_hidden=128, n_head=4, mlp_ratio=2) underfit; a larger Transolver with stronger surface weighting should make the leaderboard.
 - **Change:** `train.py` model_config → `n_hidden=192, n_head=8, mlp_ratio=4` (slice_num=64, n_layers=5 unchanged); `surf_weight: 10→20`; `epochs: 50→12`. Refactored Transolver into `models.py` so `predict.py` can import without re-running train's argparse.
