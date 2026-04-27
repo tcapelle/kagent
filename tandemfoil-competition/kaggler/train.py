@@ -224,6 +224,7 @@ class Config:
     warmup_frac: float = 0.05
     ema_decay: float = 0.999
     epochs: int = 50
+    loss_beta: float = 1.0  # smooth_l1 beta; set to 0.0 for pure L1
     subsample_n: int = 60000  # subsample N points per training sample (full mesh at val)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -398,7 +399,10 @@ def main():
             with torch.amp.autocast("cuda", dtype=torch.bfloat16):
                 pred = model({"x": x_n, "mask": mask})["preds"]
             pred = pred.float()
-            err = smooth_l1(pred, y_norm, beta=1.0)  # [B, N, 3]
+            if cfg.loss_beta > 0:
+                err = smooth_l1(pred, y_norm, beta=cfg.loss_beta)
+            else:
+                err = (pred - y_norm).abs()
 
             vol_mask = (mask & ~is_surface).unsqueeze(-1).float()
             surf_mask = (mask & is_surface).unsqueeze(-1).float()
