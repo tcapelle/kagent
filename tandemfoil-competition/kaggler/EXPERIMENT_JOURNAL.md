@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 5 — third warm-start (lr=2e-5, sw=30, pw=3) + 3-way ensemble
+- **Hypothesis:** Iter 4 plateaued at avg surf_p ≈ 86.4. Push the surface objective harder (`sw=30`, `pw=3`) and drop LR another step (`2e-5`). Even if the single model only gains a few points, averaging predictions from three different `(lr, sw, pw)` snapshots should lower variance further.
+- **Change:** invocation only (no code) — `--resume model-2v94v7an/checkpoint.pt --lr 2e-5 --surf_weight 30 --p_weight 3`. After it finished, ran new `predict_ensemble.py` to average predictions of iter-3 (`aglmomxf`), iter-4 (`2v94v7an`) and iter-5 (`q5ckvos5`) checkpoints. Wandb run `q5ckvos5`.
+- **Result:** Best epoch 6/11, single-model `val/loss=4.09`, avg surf_p MAE = **82.6** (vs iter 4 `86.4`), surf_Ux = 1.24. Three-way ensemble predictions saved to `nezuko/<commit>/`. Train 32.5 min, 58 GB peak.
+- **Verdict:** Kept as the single-model best; ensemble submission pending scorer.
+- **Notes:** Two new code files: `predict_ensemble.py` averages model outputs in normalized space then denormalizes once. Speed: ~1.5–4 it/s per split (slower than single because we forward through 3 models). Single-model val curve still bouncy even at lr=2e-5, so further LR drops alone unlikely to help — capacity is now likely the bottleneck.
+
 ### 2026-04-27 — Iter 4 — second warm-start, lr=5e-5, surf_w=20
 - **Hypothesis:** Iter 3 plateaued around `avg_surf_p≈100` with `val/loss` bouncing between 3.20 and 4.85; cosine LR from 2e-4 still seems to overshoot. Drop initial LR to 5e-5 and bump `surf_weight` from 15→20 to push the surface objective harder.
 - **Change:** invocation only — `--resume model-aglmomxf/checkpoint.pt --lr 5e-5 --surf_weight 20`. No code changes. Wandb run `2v94v7an`.
