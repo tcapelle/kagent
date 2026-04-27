@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: drop subsampling, bs=2, lr=5e-6 (frieren's chain trick)
+- **Hypothesis:** frieren's W&B trace (now 2nd at 46.87) showed iter3+iter4 ditched `train_subsample=40000` and switched to `bs=2, lr=5e-6` then `lr=2e-6`. Subsampling during training and validating on full meshes is a distribution shift — once the model is well-trained, this shift hurts more than the speed helps. Switching to no-sub + tiny LR for the final fine-tune should close that gap.
+- **Change:** `--lr 5e-6 --train_subsample 0 --batch_size 2 --epochs 8` (rest of 4-weight loss unchanged).
+- **Result:** 6 epochs in 30 min (full-mesh epochs are ~5 min vs ~1.3 min subsampled). best `val/avg_surf_p=63.80` at epoch 5. Trajectory: 75.05 → 71.23 → 65.17 → 67.21 → 63.80 → 63.92. **Epoch 1 alone dropped from 87 (iter4 final) to 75** — the subsample distribution shift was real and immediately costly. Predictions at `askeladd/3dd4327`. W&B: askeladd/iter5-nosub-bs2-lr5e6.
+- **Verdict:** kept (-24 surf_p vs iter4, the biggest jump in the chain). Should jump several places on the leaderboard.
+- **Notes:** Big lesson: subsampling is a useful **early-stage** tool to amortize compute and grow batch size, but it should be turned off for the final fine-tune. iter6: chain again at lr=2e-6 to follow frieren's pattern, see how much further the no-sub regime can go.
+
 ### 2026-04-27 — iter4: chain warm-start lr=2e-5 + surf_p_weight=10
 - **Hypothesis:** With the loss now in thorfinn's 4-weight form and a usable iter3 base (99.84), continue the chain: drop LR another 2.5x to 2e-5, push `surf_p_weight` 6→10 (and `vol_p_weight` 0.5→0.3 since it's not the metric) to focus capacity on the leaderboard objective.
 - **Change:** No code changes. Just `--lr 2e-5 --surf_p_weight 10 --vol_p_weight 0.3 --vol_uv_weight 0.3 --epochs 20`.
