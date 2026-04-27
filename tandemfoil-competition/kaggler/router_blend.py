@@ -34,6 +34,8 @@ class Config:
     extra_w_cruise: float = 0.0   # weight on ITER1 for cruise
     rc_blend_w: float = 1.0       # 1=gold only (default)
     re_blend_w: float = 1.0       # 1=gold only
+    extra_w_rc: float = 0.0       # weight on ITER1 for rc
+    extra_w_re: float = 0.0       # weight on ITER1 for re_rand
     use_iter1_main: bool = False  # if true, ITER2 -> ITER1 in blend
 
 
@@ -73,8 +75,8 @@ def blend(split: str, w_gold: float, w_extra_iter1: float = 0.0):
 
 
 # rc and re_rand: blend with iter2 too (default w=1.0 = gold only)
-blend("test_geom_camber_rc", cfg.rc_blend_w)
-blend("test_re_rand", cfg.re_blend_w)
+blend("test_geom_camber_rc", cfg.rc_blend_w, cfg.extra_w_rc)
+blend("test_re_rand", cfg.re_blend_w, cfg.extra_w_re)
 
 # single and cruise: blend
 blend("test_single_in_dist", cfg.single_blend_w, cfg.extra_w_single)
