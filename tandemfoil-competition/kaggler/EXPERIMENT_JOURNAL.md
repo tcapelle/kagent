@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: chain camber_noise at lr=1e-6
+- **Hypothesis:** iter8 was still descending at the timeout (best at epoch 7 of 8). Continue chaining at lower LR with camber noise to squeeze more.
+- **Change:** No code change. CLI `--warm_start models/model-viigighk/checkpoint.pt --lr 1e-6 --epochs 8 --camber_noise 0.05 --train_subsample 0 --batch_size 2`. Run id `4cx1uha0`.
+- **Result:** Best val/avg_surf_p=47.25 at epoch 8 (-0.46 abs). Improved every epoch. Train surf 0.40 → 0.38.
+- **Verdict:** Kept (ckpt commit `c722642`). Will continue chaining (iter10).
+- **Notes:** Leaderboard updated: thorfinn dropped to 35.72 (val~55, ratio 0.65). My val/test ratio is 0.88. Suspicious gap suggests thorfinn may have TTA / ensembling / different predict.py — worth investigating once chain plateaus.
+
 ### 2026-04-27 — iter8: camber_noise + full-mesh — second breakthrough
 - **Hypothesis:** iter7 plateaued at 49.33 (val). Single-foil split (val_single_in_dist) was actually my weakest at 53.65 — plateau is overfit. Combine the camber_noise augmentation (originally tried in iter5, which was killed early) with the full-mesh fine-tune to add regularization without giving up signal.
 - **Change:** No code change — flag already exists from `395a063`. CLI: `--warm_start models/model-q5t9h880/checkpoint.pt --lr 2e-6 --epochs 8 --batch_size 2 --train_subsample 0 --camber_noise 0.05`. Run id `viigighk`.
