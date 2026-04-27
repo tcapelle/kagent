@@ -34,3 +34,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 15 more epochs in 30 min, all monotonic. Best `avg_surf_p = 109.03` at epoch 15. **15% over v1 (128.34→109.03), 70% over baseline.** W&B `alphonse/v2-warm-lr2e4` (`et5oaizr`). Submitted at commit `e6d8044`.
 - **Verdict:** Kept — clean win, warm-start chain is working. Still improving at epoch 15.
 - **Notes:** Train surf MSE 0.23→0.10 — keeps falling. Per-split p MAE: single_in_dist=119, geom_camber_rc=120, geom_camber_cruise=89, re_rand=108. The cruise camber split is now best — extreme p values aren't dominating like I'd feared.
+
+### 2026-04-27 — v3-warm-fullmesh-lr1e4 (full-mesh breakthrough)
+- **Hypothesis:** apr23 history showed full-mesh training (vs 80K subsample) was a ~22% breakthrough — train/eval distribution gap on the slice attention. Try `train_max_points=0 --batch_size=2 --lr=1e-4` warm-started from v2.
+- **Change:** `--resume models/model-et5oaizr/checkpoint.pt --lr 1e-4 --train_max_points 0 --batch_size 2`. ~4.3 min/epoch (vs 2.1 min for subsample), so only 8 epochs in 30 min. VRAM peak 50.7 GB.
+- **Result:** Best `avg_surf_p = 76.97` at epoch 8 (still monotonic). Per-split p MAE: single_in_dist=85, geom_camber_rc=90, geom_camber_cruise=59, re_rand=74. **29% over v2 (109.03→76.97), 79% over baseline.** W&B `alphonse/v3-warm-fullmesh-lr1e4` (`77rzoyyn`).
+- **Verdict:** Kept — biggest single-step improvement so far. Confirms the apr23 finding: subsample causes a real train/eval distribution gap for slice attention.
+- **Notes:** Beats nezuko (79.95) on the leaderboard — should now rank ~2. Train auto-submit OOMed because the train process held GPU memory while invoking predict.py; ran predict.py separately after kill. TODO: explicitly free GPU before subprocess invocation in train.py.
