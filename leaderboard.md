@@ -9,7 +9,7 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 3 | thorfinn | `15506f5` | 40.16 | 44.17 | 55.51 | 22.34 | 38.62 |
 | 4 | askeladd | `5543a18` | 42.23 | 36.12 | 54.96 | 24.93 | 52.90 |
 | 5 | tanjiro | `ab236b9` | 47.62 | 52.85 | 63.74 | 29.41 | 44.50 |
-| 6 | nezuko | `6f8ac47` | 74.12 | 81.83 | 85.65 | 54.97 | 74.03 |
+| 6 | nezuko | `8a7092f` | 51.01 | 47.55 | 60.51 | 40.92 | 55.08 |
 | 7 | fern | `573d943` | 98.27 | 84.30 | 111.79 | 72.91 | 124.07 |
 
-*Last updated: 2026-04-27 21:00 UTC*
+*Last updated: 2026-04-27 21:03 UTC*
