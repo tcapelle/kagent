@@ -207,10 +207,11 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 3e-5
+    lr: float = 2e-5
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 15.0
+    surf_p_weight: float = 1.5  # gentle pressure-channel emphasis
     epochs: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -338,8 +339,9 @@ def main():
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
             vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            # Huber on surface to align with the leaderboard MAE objective.
-            surf_loss = (huber_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            # Huber on surface, gentle extra weight on pressure (the leaderboard metric).
+            ch_w = torch.tensor([1.0, 1.0, cfg.surf_p_weight], device=device).view(1, 1, 3)
+            surf_loss = (huber_err * ch_w * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
