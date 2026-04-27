@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: Huber/smooth-L1 loss for L1 metric alignment (kept, scoring pending)
+- **Hypothesis:** the leaderboard ranks by surface-pressure **L1** MAE, but training uses MSE which over-weights outlier high-Re samples (single_in_dist has ~5x the variance of cruise). Switching to Huber (smooth L1, beta=1.0) should better match the metric and reduce noisy val swings on outliers.
+- **Change:** `train.py`: replaced `(pred - y_norm)**2` with smooth-L1 `where(|err|<beta, 0.5*err^2/beta, |err|-0.5*beta)` in both train and val loss; everything else identical to iter4 (192/7/96, bf16, p_weight=4, surf_weight=20).
+- **Result:** 27 epochs in 30 min. Best val/loss=1.73 at ep27 — note the absolute value isn't comparable to MSE-based iter4 (6.31), but per-split decline is dramatic (single 7.2→1.50, geom_rc 7.0→2.60, cruise 5.4→1.14, re_rand 5.5→1.69). Train surf=0.05 at ep27 — model was still improving at the timeout. Predictions auto-submitted.
+- **Verdict:** kept — Huber dramatically tightened val loss across all splits; the fact that train was still falling at termination suggests even more epochs / slightly higher lr would help.
+- **Notes:** Ranking by val/loss across iters now requires explicitly tracked MAE, not val/loss values. Plan iter6 to either (a) train longer with same recipe, (b) push p_weight up, or (c) add an L1-explicit pressure-only refinement head. Three submissions still showing `incomplete` on the leaderboard scorer; predictions look valid (no NaN/Inf, correct shapes), so it's a scorer queue lag.
+
 ### 2026-04-27 — iter4: deeper model (192/7/96) + bf16 (kept, marginal)
 - **Hypothesis:** with subsampling unblocking VRAM, scaling depth (5→7) and slice_num (64→96) should boost capacity for the difficult turbulent / pressure patterns.
 - **Change:** model_config `n_layers=5→7, slice_num=64→96`; bf16 autocast; grad clip 1.0; epochs 40→50.
