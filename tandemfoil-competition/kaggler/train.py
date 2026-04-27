@@ -43,9 +43,10 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 4
     grad_accum: int = 1
-    surf_weight: float = 30.0
+    surf_weight: float = 20.0
     p_channel_weight: float = 2.0  # channel weight for pressure (metric)
     huber_delta: float = 0.1
+    seed: int = 1234
     grad_clip: float = 1.0
     warmup_epochs: int = 1
     epochs: int = 80
@@ -64,8 +65,10 @@ class Config:
 cfg = sp.parse(Config)
 MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
 
+torch.manual_seed(cfg.seed)
+torch.cuda.manual_seed_all(cfg.seed)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
+print(f"Device: {device} [seed={cfg.seed}]" + (" [DEBUG]" if cfg.debug else ""))
 
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
