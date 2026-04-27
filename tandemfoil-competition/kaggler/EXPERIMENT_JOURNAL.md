@@ -22,6 +22,10 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — SWA + 4-way attempts (8e1218a is SWA only — 4-way overwritten)
+- 4-way ensemble {iter4, iter6, iter9, iter13} 0.30/0.30/0.20/0.20 saved to 8e1218a then overwritten by SWA predict.
+- Re-running 4-way at next HEAD; SWA at HEAD after that.
+
 ### 2026-04-27 — iter12+iter13: tandem_boost specialist
 - iter12 (`xlq8hnlq`): tandem_boost=2 from-scratch 35ep. Val 77.81 (vs iter1 baseline 81.37 — modest gain). Per-split val_loss: single=2.94 rc=2.38 cr=0.85 rer=1.85.
 - iter13 (`d14cda4f`): chain iter12 bs=2 no_sub lr=2e-5 + tandem_boost=2, 10ep. Val 55.03. Per-split val_loss: single=2.81 rc=1.74 (slightly best!) cr=0.32 (best!) rer=1.33.
