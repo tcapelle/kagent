@@ -59,7 +59,7 @@ class Config:
     surf_weight: float = 1.5  # legacy; only used if balanced=False
     surf_p_weight: float = 2.5  # weight on per-sample-balanced surface pressure loss
     surf_uv_weight: float = 0.5  # weight on per-sample-balanced surface velocity loss
-    var_floor: float = 0.001  # tighter floor since Cp-space variance is O(0.05-0.5), not O(0.0006-0.12)
+    var_floor: float = 1.0  # Cp-space variance is naturally O(0.05-0.5), so a large floor effectively disables per-sample balancing — relying on Cp normalization for regime balance
     use_cp_norm: bool = True  # train targets in Cp / U_inf-normalized space
     epochs: int = 14
     n_hidden: int = 128
