@@ -19,8 +19,10 @@ import numpy as np
 import simple_parsing as sp
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import wandb
 import yaml
+from einops import rearrange
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
@@ -60,16 +62,77 @@ class ResMLPBlock(nn.Module):
         return x + self.mlp(self.ln(x))
 
 
-class ResMLP(nn.Module):
-    def __init__(self, in_dim: int = 24, hidden: int = 512, n_blocks: int = 8,
-                 out_dim: int = 3, expansion: int = 4, dropout: float = 0.0,
+class SliceAttention(nn.Module):
+    """Transolver-style physics attention via learned slice tokens.
+
+    Each node is softly assigned to S slices; we self-attend on slice tokens,
+    then redistribute back. Cost is O(N*S + S^2) instead of O(N^2).
+    """
+
+    def __init__(self, dim: int, heads: int = 8, dim_head: int = 32, slice_num: int = 64):
+        super().__init__()
+        inner = heads * dim_head
+        self.heads = heads
+        self.dim_head = dim_head
+        self.temperature = nn.Parameter(torch.ones(1, heads, 1, 1) * 0.5)
+        self.in_project_x = nn.Linear(dim, inner)
+        self.in_project_fx = nn.Linear(dim, inner)
+        self.in_project_slice = nn.Linear(dim_head, slice_num)
+        nn.init.orthogonal_(self.in_project_slice.weight)
+        self.to_q = nn.Linear(dim_head, dim_head, bias=False)
+        self.to_k = nn.Linear(dim_head, dim_head, bias=False)
+        self.to_v = nn.Linear(dim_head, dim_head, bias=False)
+        self.to_out = nn.Linear(inner, dim)
+
+    def forward(self, x):
+        B, N, _ = x.shape
+        x_mid = self.in_project_x(x).reshape(B, N, self.heads, self.dim_head).permute(0, 2, 1, 3).contiguous()
+        fx_mid = self.in_project_fx(x).reshape(B, N, self.heads, self.dim_head).permute(0, 2, 1, 3).contiguous()
+        slice_w = (self.in_project_slice(x_mid) / self.temperature).softmax(dim=-1)  # [B, h, N, S]
+        slice_n = slice_w.sum(dim=2)  # [B, h, S]
+        slice_t = torch.einsum("bhnc,bhns->bhsc", fx_mid, slice_w)
+        slice_t = slice_t / (slice_n.unsqueeze(-1) + 1e-5)
+        q = self.to_q(slice_t)
+        k = self.to_k(slice_t)
+        v = self.to_v(slice_t)
+        out_s = F.scaled_dot_product_attention(q, k, v, is_causal=False)
+        out_x = torch.einsum("bhsc,bhns->bhnc", out_s, slice_w)
+        out_x = rearrange(out_x, "b h n d -> b n (h d)")
+        return self.to_out(out_x)
+
+
+class TransolverBlock(nn.Module):
+    def __init__(self, dim: int, heads: int, dim_head: int, slice_num: int,
+                 mlp_ratio: int = 2, dropout: float = 0.0):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(dim)
+        self.attn = SliceAttention(dim, heads, dim_head, slice_num)
+        self.ln2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, dim * mlp_ratio),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim * mlp_ratio, dim),
+        )
+
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))
+        x = x + self.mlp(self.ln2(x))
+        return x
+
+
+class TransolverNet(nn.Module):
+    def __init__(self, in_dim: int = 24, hidden: int = 256, n_layers: int = 8,
+                 heads: int = 8, dim_head: int = 32, slice_num: int = 64,
+                 mlp_ratio: int = 2, out_dim: int = 3, dropout: float = 0.0,
                  n_freqs: int = 32, fourier_sigma: float = 4.0):
         super().__init__()
         self.fourier = FourierFeatures(n_freqs=n_freqs, sigma=fourier_sigma)
         embed_in = in_dim + 2 * n_freqs
-        self.embed = nn.Sequential(nn.Linear(embed_in, hidden), nn.GELU())
+        self.embed = nn.Sequential(nn.Linear(embed_in, hidden), nn.GELU(), nn.Linear(hidden, hidden))
         self.blocks = nn.ModuleList([
-            ResMLPBlock(hidden, expansion, dropout) for _ in range(n_blocks)
+            TransolverBlock(hidden, heads, dim_head, slice_num, mlp_ratio, dropout)
+            for _ in range(n_layers)
         ])
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
@@ -98,6 +161,34 @@ class ResMLP(nn.Module):
         return {"preds": self.head(h)}
 
 
+# Backwards-compat alias so old checkpoints / predict.py keep loading.
+class ResMLP(nn.Module):
+    def __init__(self, in_dim: int = 24, hidden: int = 512, n_blocks: int = 8,
+                 out_dim: int = 3, expansion: int = 4, dropout: float = 0.0,
+                 n_freqs: int = 32, fourier_sigma: float = 4.0):
+        super().__init__()
+        self.fourier = FourierFeatures(n_freqs=n_freqs, sigma=fourier_sigma)
+        embed_in = in_dim + 2 * n_freqs
+        self.embed = nn.Sequential(nn.Linear(embed_in, hidden), nn.GELU())
+        self.blocks = nn.ModuleList([
+            ResMLPBlock(hidden, expansion, dropout) for _ in range(n_blocks)
+        ])
+        self.head = nn.Sequential(
+            nn.LayerNorm(hidden),
+            nn.Linear(hidden, hidden), nn.GELU(),
+            nn.Linear(hidden, out_dim),
+        )
+
+    def forward(self, data):
+        x = data["x"]
+        ff = self.fourier(x[..., :2])
+        h = torch.cat([x, ff], dim=-1)
+        h = self.embed(h)
+        for block in self.blocks:
+            h = block(h)
+        return {"preds": self.head(h)}
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -107,21 +198,26 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", "30"))
 
 @dataclass
 class Config:
-    lr: float = 1.5e-3
+    lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 20.0
     epochs: int = 60
-    warmup_steps: int = 200
-    train_subsample: int = 50000
+    warmup_steps: int = 300
+    train_subsample: int = 40000
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    hidden: int = 384
-    n_blocks: int = 6
-    expansion: int = 4
+    # model
+    arch: str = "transolver"  # "transolver" or "resmlp"
+    hidden: int = 320
+    n_layers: int = 8
+    heads: int = 8
+    dim_head: int = 40
+    slice_num: int = 64
+    mlp_ratio: int = 2
     dropout: float = 0.0
     n_freqs: int = 32
     fourier_sigma: float = 4.0
@@ -129,8 +225,9 @@ class Config:
     amp: bool = True
     # validate every N epochs (after epoch 1)
     val_every: int = 2
-    # cosine LR target ~= this many epochs
-    cosine_epochs: int = 30
+    # cosine LR target ~= this many epochs (set higher than expected actual epochs
+    # so LR doesn't decay to zero mid-run)
+    cosine_epochs: int = 80
 
 
 def subsample_batch(x, y, is_surface, mask, k_vol):
@@ -256,18 +353,37 @@ def main():
         for name, ds in val_splits.items()
     }
 
-    model_config = dict(
-        in_dim=X_DIM,
-        hidden=cfg.hidden,
-        n_blocks=cfg.n_blocks,
-        out_dim=3,
-        expansion=cfg.expansion,
-        dropout=cfg.dropout,
-        n_freqs=cfg.n_freqs,
-        fourier_sigma=cfg.fourier_sigma,
-    )
-
-    model = ResMLP(**model_config).to(device)
+    if cfg.arch == "transolver":
+        model_config = dict(
+            arch="transolver",
+            in_dim=X_DIM,
+            hidden=cfg.hidden,
+            n_layers=cfg.n_layers,
+            heads=cfg.heads,
+            dim_head=cfg.dim_head,
+            slice_num=cfg.slice_num,
+            mlp_ratio=cfg.mlp_ratio,
+            out_dim=3,
+            dropout=cfg.dropout,
+            n_freqs=cfg.n_freqs,
+            fourier_sigma=cfg.fourier_sigma,
+        )
+        model_kwargs = {k: v for k, v in model_config.items() if k != "arch"}
+        model = TransolverNet(**model_kwargs).to(device)
+    else:
+        model_config = dict(
+            arch="resmlp",
+            in_dim=X_DIM,
+            hidden=cfg.hidden,
+            n_blocks=cfg.n_layers,
+            out_dim=3,
+            expansion=cfg.mlp_ratio,
+            dropout=cfg.dropout,
+            n_freqs=cfg.n_freqs,
+            fourier_sigma=cfg.fourier_sigma,
+        )
+        model_kwargs = {k: v for k, v in model_config.items() if k != "arch"}
+        model = ResMLP(**model_kwargs).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params/1e6:.2f}M")
 

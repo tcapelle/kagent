@@ -22,7 +22,7 @@ import yaml
 from tqdm import tqdm
 
 from data import X_DIM
-from train import ResMLP
+from train import ResMLP, TransolverNet
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -56,10 +56,14 @@ if model_cfg_path.exists():
     with open(model_cfg_path) as f:
         model_config = yaml.safe_load(f)
 else:
-    model_config = dict(in_dim=X_DIM, hidden=512, n_blocks=8, out_dim=3,
+    model_config = dict(arch="resmlp", in_dim=X_DIM, hidden=512, n_blocks=8, out_dim=3,
                         expansion=4, dropout=0.0, n_freqs=32, fourier_sigma=4.0)
 
-model = ResMLP(**model_config).to(device)
+arch = model_config.pop("arch", "resmlp")
+if arch == "transolver":
+    model = TransolverNet(**model_config).to(device)
+else:
+    model = ResMLP(**model_config).to(device)
 model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 model.eval()
 print(f"Loaded model from {cfg.checkpoint} ({sum(p.numel() for p in model.parameters())/1e6:.2f}M params)")
