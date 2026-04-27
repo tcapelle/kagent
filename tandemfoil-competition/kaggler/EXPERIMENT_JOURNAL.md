@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 13 + 14 — bigger model T-224-7-8 from scratch + chain
+- **Hypothesis:** A *larger* fresh base (n_hidden=224, 7 layers, 8 heads, slice_num=80) might be a better partner for chain1 in an ensemble than the n_hidden=192 chain2 we tried in iter11/12. With the 16k subsample recipe, the bigger model fits at 6.4 GB and trains at ~15 it/s.
+- **Change:** invocation only — iter 13: fresh from scratch with the new model_config. iter 14: chain finetune from iter 13 (`model-q0m8pdv4`), lr=2e-5.
+- **Result:** Iter 13 best val avg surf_p = **86** (epoch 36). Iter 14 chain finetune plateaued at **70.8** val (epoch 13). Per-node test MAE: iter 13 alone 90.30, iter 9 + iter 13 ensemble 64.07 — *worse* than iter 9 alone (55.47).
+- **Verdict:** Discarded; restored iter 9 single predictions to all latest commit dirs. Final standing: nezuko #6 at 51.01, behind alphonse (30.26), frieren (30.99), thorfinn (36.39), askeladd (41.72), tanjiro (45.29).
+- **Notes:** Same lesson as iter 11/12 — a partner basin needs to be at *similar* quality to the strong base for averaging to help. Bigger model didn't fix this since one chain at val 70 with iter 9 at val 55 means the average drifts toward 60 even on test. Ensembles only help when both models are within a small ratio (~1.2×) of each other.
+
 ### 2026-04-27 — Iter 11 + 12 — chain2 attempt (cross-basin ensemble plan)
 - **Hypothesis:** Following frieren's pattern, train a SECOND independent chain from a different fresh base, then ensemble chain1 (iter 9) + chain2 (iter 11/12) for a cross-basin gain. Their leader (`c0b78fe`, 32.47) is exactly such a 4-way cross-basin ensemble.
 - **Change:** invocation only, no code. Iter 11 = fresh from scratch (no `--resume`, lr=5e-4, same loss recipe as iter 8). Iter 12 = warm-start from iter 11 (`model-lt2ge907`) at lr=2e-5.
