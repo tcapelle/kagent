@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14 chain w_p=8, LR=2e-5 (KEPT — rank 3)
+- **Hypothesis:** Push pressure weighting harder (w_p=8) since w_p=5 was still helping.
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 2e-5 --w_p 8.0`.
+- **Result:** Best epoch 11 (last), **val avg_surf_p=43.04** (Δ -0.77 vs iter13), **test avg_surf_p=37.48** (Δ -2.34 vs iter11). 27.5 min.
+- **Verdict:** Kept (commit `8bd2c99`). **Rank 3** now: askeladd 32.07, frieren 36.09, thorfinn 37.48, alphonse 38.13, tanjiro 38.60.
+- **Notes:** Big jump on test despite small val Δ — suggests channel weighting is over-correcting on val_geom_camber_rc, but test mix is favourable. Iter15 try **w_p=12** then likely switch to a structural lever (Re-aware scaling).
+
 ### 2026-04-27 — iter13 chain w_p=5, LR=1e-5 (KEPT, plateauing)
 - **Hypothesis:** Same recipe as iter12 with lower LR cosine to squeeze more from the heavier pressure weighting.
 - **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 1e-5 --w_p 5.0`.
