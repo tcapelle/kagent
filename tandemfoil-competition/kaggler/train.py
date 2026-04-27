@@ -71,6 +71,8 @@ class Config:
     epochs: int = 50
     train_n_volume: int = 32000
     bf16: bool = True
+    huber_beta: float = 1.0  # smooth L1 transition; the metric is L1 so we
+    # want optimization tied to L1, but smooth near zero for stable gradients
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -183,12 +185,16 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.bf16):
             pred = model({"x": x})["preds"]
-            sq_err = (pred.float() - y_norm) ** 2  # [B,N,3]
-            sq_err_w = sq_err * ch_weights  # weight pressure channel
+            err = (pred.float() - y_norm)
+            abs_err = err.abs()
+            beta = cfg.huber_beta
+            # smooth L1 / Huber: 0.5*x^2/beta for |x|<beta, |x|-0.5*beta otherwise
+            huber = torch.where(abs_err < beta, 0.5 * err * err / beta, abs_err - 0.5 * beta)
+            huber_w = huber * ch_weights  # weight pressure channel
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
-            vol_loss = (sq_err_w * vol_mask.unsqueeze(-1)).sum() / (vol_mask.sum().clamp(min=1) * 3)
-            surf_loss = (sq_err_w * surf_mask.unsqueeze(-1)).sum() / (surf_mask.sum().clamp(min=1) * 3)
+            vol_loss = (huber_w * vol_mask.unsqueeze(-1)).sum() / (vol_mask.sum().clamp(min=1) * 3)
+            surf_loss = (huber_w * surf_mask.unsqueeze(-1)).sum() / (surf_mask.sum().clamp(min=1) * 3)
             loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
@@ -229,13 +235,16 @@ for epoch in range(MAX_EPOCHS):
                 with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.bf16):
                     pred = model({"x": x})["preds"]
                 pred = pred.float()
-                sq_err = (pred - y_norm) ** 2
-                sq_err_w = sq_err * ch_weights
+                err = pred - y_norm
+                abs_err = err.abs()
+                beta = cfg.huber_beta
+                huber = torch.where(abs_err < beta, 0.5 * err * err / beta, abs_err - 0.5 * beta)
+                huber_w = huber * ch_weights
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                val_vol += (sq_err_w * vol_mask.unsqueeze(-1)).sum().item() / (vol_mask.sum().clamp(min=1).item() * 3)
-                val_surf += (sq_err_w * surf_mask.unsqueeze(-1)).sum().item() / (surf_mask.sum().clamp(min=1).item() * 3)
+                val_vol += (huber_w * vol_mask.unsqueeze(-1)).sum().item() / (vol_mask.sum().clamp(min=1).item() * 3)
+                val_surf += (huber_w * surf_mask.unsqueeze(-1)).sum().item() / (surf_mask.sum().clamp(min=1).item() * 3)
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
