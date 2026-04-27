@@ -57,6 +57,10 @@ SRC = {
     "snap_1f9": ("thorfinn", "1f9db55"),  # MY 35.198 frozen blend
     "snap_ca32": ("thorfinn", "ca32e09"),  # MY 35.197 frozen blend
     "nezuko_top": ("nezuko",  "f23f935"),  # nezuko 35.196 (current ahead)
+    "nezuko_85":  ("nezuko",  "85845f4"),  # 35.195693
+    "nezuko_abe": ("nezuko",  "abe700a"),  # 35.195697
+    "nezuko_42":  ("nezuko",  "42bd8fb"),  # 35.195699
+    "nezuko_57":  ("nezuko",  "57ff762"),  # 35.195703
     "askeladd2": ("askeladd", "b977533"),  # NEW askeladd 48.83
     "frieren":  ("frieren",  "32f0a18"),  # re 42.48 (best frieren)
     "frieren2": ("frieren",  "0596f0e"),  # re 42.53
