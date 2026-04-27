@@ -1,6 +1,8 @@
 """Transolver model classes (kept separate so predict.py can import them
 without triggering train.py's CLI parsing)."""
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -126,6 +128,7 @@ class Transolver(nn.Module):
     def __init__(self, space_dim=1, n_layers=5, n_hidden=256, dropout=0.0,
                  n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
                  slice_num=32, ref=8, unified_pos=False,
+                 n_pos_freqs: int = 0, max_pos_freq: float = 8.0,
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None):
         super().__init__()
@@ -133,16 +136,25 @@ class Transolver(nn.Module):
         self.unified_pos = unified_pos
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
+        self.space_dim = space_dim
+        self.n_pos_freqs = n_pos_freqs
+
+        if n_pos_freqs > 0:
+            # Log-spaced frequencies in cycles per coordinate-unit.
+            freqs = torch.exp(torch.linspace(0.0, math.log(max_pos_freq), n_pos_freqs))
+            self.register_buffer("pos_freqs", freqs)
+            ff_dim = space_dim * 2 * n_pos_freqs
+        else:
+            ff_dim = 0
 
         if self.unified_pos:
-            self.preprocess = MLP(fun_dim + ref**3, n_hidden * 2, n_hidden,
-                                   n_layers=0, res=False, act=act)
+            in_dim = fun_dim + ref**3 + ff_dim
         else:
-            self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
-                                   n_layers=0, res=False, act=act)
+            in_dim = fun_dim + space_dim + ff_dim
+        self.preprocess = MLP(in_dim, n_hidden * 2, n_hidden,
+                              n_layers=0, res=False, act=act)
 
         self.n_hidden = n_hidden
-        self.space_dim = space_dim
         self.blocks = nn.ModuleList([
             TransolverBlock(
                 num_heads=n_head, hidden_dim=n_hidden, dropout=dropout,
@@ -165,6 +177,13 @@ class Transolver(nn.Module):
 
     def forward(self, data, **kwargs):
         x = data["x"]
+        if self.n_pos_freqs > 0:
+            # Fourier-encode the first `space_dim` channels (already-normalized positions).
+            pos = x[..., :self.space_dim]
+            proj = pos.unsqueeze(-1) * self.pos_freqs
+            proj = proj.flatten(-2)
+            ff = torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)
+            x = torch.cat([x, ff], dim=-1)
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for block in self.blocks:
             fx = block(fx)
