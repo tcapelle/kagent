@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: continue iter2 ckpt at lr=3e-5 (kept)
+- **Hypothesis:** Iter2's curve was still descending at epoch 8. Continue training from the iter2 checkpoint at a 3x lower LR (3e-5 vs 1e-4), no other loss changes, would shave more avg_surf_p before saturating.
+- **Change:** train.py — `init_checkpoint = "checkpoints/best.pt"` (the iter2 ckpt), lr 1e-4→3e-5; also persist warm-start as initial ckpt at start of training so auto-predict always has a valid file even if no epoch beats the warm-start.
+- **Result:** Best epoch 8 with **val avg_surf_p=48.02** (vs iter2 48.61 → -0.59). Trajectory: ep1=49.83, ep2=49.77, ep3=49.48, ep4=50.43 (wobble), ep5=49.02, ep6=48.51, ep7=48.20, ep8=48.02. Wall time 32.1 min. WandB run 3inh5kj2. Predictions at `/mnt/new-pvc/predictions/apr27-4/thorfinn/664daac/`.
+- **Verdict:** Kept. Marginal but real improvement; checkpoint promoted to `checkpoints/best.pt`.
+- **Notes:** Even at lr=3e-5 the warm-start still drifts in early epochs (49.83 ep1 > 48.61 baseline) before recovering. The cosine decay is what makes the late epochs compound; the early epochs are mostly wasted "re-converging." For iter5, consider an even gentler approach: warmup (very low LR) then peak.
+
+### 2026-04-27 — iter3: per-channel surf weight on pressure (aborted)
+- **Hypothesis:** Leaderboard ranks by surface pressure MAE only. Up-weighting the pressure channel 5x in the surface loss should trade velocity accuracy for pressure accuracy and lower avg_surf_p.
+- **Change:** train.py — added `surf_p_weight=5.0` cfg, multiplied huber_err by `[1, 1, 5]` per-channel weights in surface loss; warm-start from iter2 ckpt at lr=5e-5.
+- **Result:** ep1=50.85, ep2=52.68 (regressed!), ep3=50.88. Killed at epoch 3 — diverging from iter2's 48.61, no signs of crossover.
+- **Verdict:** Discarded. p_weight=5 is too aggressive: the warm-started weights were already a balanced optimum, and 5x reweight pushed the model far enough to require many epochs to recover, which we don't have.
+- **Notes:** A gentler p_weight (1.5–2.0) might still be net positive but the budget didn't allow another bake-off.
+
 ### 2026-04-27 — iter2: warm-start from sae8usmw + Huber surf loss (kept)
 - **Hypothesis:** Warm-start from the prior best thorfinn checkpoint (`apr27/model-sae8usmw`, 49.78 val avg_surf_p) and fine-tune with lower LR (1e-4), Huber surface loss, T_max=8 cosine schedule. Goal: drive val avg_surf_p below 49.78 within the 30-min budget.
 - **Change:** train.py — added `init_checkpoint` cfg field that defaults to sae8usmw, switched surface loss to SmoothL1 (Huber, beta=1), surf_weight=15, lr=1e-4, epochs=8, T_max=8, ckpt selected by avg_surf_p (not combined val/loss), grad clip 1.0, `__main__` guard so predict.py can import. predict.py — load Transolver via `from train import Transolver` and read config.yaml from checkpoint dir.
