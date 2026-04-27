@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12: bump single_boost 3.5 → 5.0
+- **Hypothesis:** val_single_in_dist is still my worst-relative split. iter7's `single_boost=2.5` and iter8's 3.5 both gave small wins; try 5.0.
+- **Change:** `--single_boost 5.0`. Keep lr=1e-6, single_boost was the only knob moved.
+- **Result:** 7 epochs, best val/avg_surf_p=55.26 at epoch 7 (-0.45 vs iter11). val_single_in_dist 2.42 → 2.37; geom_camber_rc, geom_cruise, re_rand all improved a hair too. Trajectory: 56.51 → 56.40 → 56.03 → 55.65 → 55.40 → 55.49 → 55.26. Predictions at `askeladd/3aa93a7`. W&B: askeladd/iter12-singleboost5-lr1e6.
+- **Verdict:** kept (-0.45). Higher single_boost wins without hurting tandem/cruise — racecar_single domain is just data-poor at the standard 1/3 weight.
+- **Notes:** Each iter at this stage gives ~0.5 surf_p. iter13: continue same recipe (sb=5, lr=1e-6) to consolidate.
+
 ### 2026-04-27 — iter11: bump LR back from 5e-7 to 1e-6
 - **Hypothesis:** iter10 at lr=5e-7 was almost flat (-0.23). LR may now be too low to make further progress; bump back to iter9's level (1e-6) and see if there's still room.
 - **Change:** `--lr 1e-6`. Same recipe.
