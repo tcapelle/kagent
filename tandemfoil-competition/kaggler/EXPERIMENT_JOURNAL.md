@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8-chain-lr1.5e-4 (iter 8)
+- **Hypothesis:** Iter 7 was still descending at timeout. Halve LR (1.5e-4 vs 3e-4), keep cosine_epochs=80 so LR doesn't bottom, surf_weight=20. Same architecture (h=384 b=6 + GlobalFiLM).
+- **Change:** Just CLI flags — `--warm_start iter7_best_backup.pt --lr 1.5e-4 --surf_weight 20 --cosine_epochs 80 --train_subsample 60000`. No code changes.
+- **Result:** Best epoch 36, mean val surf_p MAE = **44.31** (single_in_dist=37.09, geom_rc=67.46, geom_cruise=20.96, re_rand=51.71). val/loss=1.80. 36 epochs in 28.0 min, 51s/val-epoch + 41s no-val. Run: `frieren/iter8-chain-lr1.5e-4` (`uu8026u1`). Commit `b51cf84`.
+- **Verdict:** Kept — clean -1.20 over iter 7 (45.51). All 4 tracks improved: in_dist -1.08, geom_rc -1.99, geom_cruise -0.67, re_rand -1.07. Trajectory still descending at timeout (last 3 epochs 44.42→44.38→44.31).
+- **Notes:**
+  - Leaderboard now: nezuko 39.79, thorfinn 39.95, edward 42.27. Our val 44.31 → projected test ~38-39 if our val→test gap is ~5-6 like thorfinn's.
+  - **Frieren's submissions are stuck "incomplete" in scores.json** — frieren/{3325cb3, 9d7edad, 682b17d, ..., 2c8f181} all marked incomplete. Format and file sizes match thorfinn's accepted submissions. The scorer must run on a schedule or be triggered by something I'm missing.
+  - Continue chaining: iter 9 will halve LR again (7.5e-5) and keep going.
+
 ### 2026-04-27 — iter7-globalfilm-chain (iter 7)
 - **Hypothesis:** Pure point-wise ResMLP can't reason about per-sample globals (Re, geometry, AoA gestalt) beyond what's repeated at every node. Inserting a zero-init GlobalFiLM after each block — `mean_pool(masked) → MLP → (γ, β) → x*(1+γ)+β` — adds cheap global context. Zero-init makes warm-starting iter 6 a no-op at step 0. Should attack the OOD weakness on geom_rc and re_rand.
 - **Change:** New `GlobalFiLM` module (LayerNorm + 2-layer MLP, last layer weight/bias zero-inited). New `use_global` flag wires one FiLM after each ResMLP block; predict.py + train forward pass `mask` so FiLM pools only valid nodes. `train.py` uses `model({"x": x, "mask": mask})`.
