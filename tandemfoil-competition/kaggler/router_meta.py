@@ -49,6 +49,7 @@ SRC = {
     "nezuko5":  ("nezuko",   "15ec154"),  # JUMP! 35.30 (single 35.87, rc 49.05, cr 20.90, re 35.39)
     "nezuko6":  ("nezuko",   "9a31553"),  # 35.24 (single 35.68, rc 49.04, cr 20.88, re 35.36)
     "nezuko7":  ("nezuko",   "3305937"),  # 35.24 (single 35.63, rc 49.07, cr 20.92, re 35.34)
+    "nezuko8":  ("nezuko",   "c01fda9"),  # TIES! 35.21 (single 35.60, rc 49.04, cr 20.88, re 35.33)
     "askeladd2": ("askeladd", "b977533"),  # NEW askeladd 48.83
     "frieren":  ("frieren",  "32f0a18"),  # re 42.48 (best frieren)
     "frieren2": ("frieren",  "0596f0e"),  # re 42.53
