@@ -22,6 +22,34 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: Fourier features for spatial coords (running)
+- **Hypothesis:** Tancik's coordinate-MLP spectral-bias result + every NeurIPS 2024 ML4CFD top-4 method using positional encodings → vanilla Transolver feeding raw (x,z) into the preprocess MLP underrepresents the high-frequency Cp curvature near the LE stagnation point. Adding random Fourier features (n_freqs=32, sigma=2.0) before preprocess should let the model represent the LE pressure peak and reduce surface-p MAE.
+- **Change:** `models.py`: new `FourierFeatures` class; `Transolver` now takes `ff_n_freqs/ff_sigma` and concatenates `[B, N, 2*n_freqs]` sin/cos features to the input of `preprocess`; `train.py` model_config sets `ff_n_freqs=32, ff_sigma=2.0`. Everything else identical to iter8 (pure-L1 Huber beta=0.05, surf_weight=20, p_weight=4).
+- **Result:** RUNNING.
+- **Verdict:** TBD.
+- **Notes:** other research-recommended levers queued for follow-up: inlet-velocity canonicalization + flip aug, panel-method Cp prior, AB-UPT-style surface-volume cross-attention, log-pressure target.
+
+### 2026-04-27 — iter8: pure-L1 loss (huber_beta=0.05) (kept, scoring pending)
+- **Hypothesis:** Huber beta=1.0 is still mostly quadratic for typical normalized errors; the leaderboard metric is **L1**, so dropping beta to 0.05 makes the loss essentially pure L1 with only a tiny stable-gradient region near zero. Should reduce val MAE compared to iter5's beta=1.0.
+- **Change:** `train.py` `huber_beta=1.0→0.05`; reverted iter7's surf_weight=30/p_weight=8 back to iter5's 20/4 (one variable change).
+- **Result:** 27 epochs in 30 min. Best val/loss=4.32 at ep27, val surf_p=94.7. Per-split val: single=95.9 / geom_rc=116.4 / cruise=77.1 / re_rand=89.3. Predictions auto-submitted (commit 67f9572). Test scoring queued.
+- **Verdict:** kept — first val surf_p clearly under 100 (vs iter5's val ~110-120 at similar epoch). Matches the metric directly.
+- **Notes:** when val_loss is L1, train loss is also L1 — magnitudes are not comparable to Huber beta=1 numbers in earlier iters. Keep checkpoint selection on val surf_p (added in iter7).
+
+### 2026-04-27 — iter7: surf_weight=30, p_weight=8 (discarded → reverted in iter8)
+- **Hypothesis:** push surface and pressure even harder in the loss to drive surface-p MAE down faster.
+- **Change:** `train.py` `surf_weight 20→30`, `p_weight 4→8`; switched checkpoint selection from val/loss to surf_p_avg.
+- **Result:** 27 epochs. Best val surf_p=116.8 at ep27. Train surf=0.10 (vs iter5 0.05) — heavier surface weighting kept the volume part undertrained.
+- **Verdict:** discarded — heavier weighting hurt. Kept the surf_p checkpoint selection (carried into iter8).
+- **Notes:** with 99%+ of nodes being volume and surface squared error already 20× weighted, pushing further drowned out the volume signal and slowed convergence.
+
+### 2026-04-27 — iter6: longer training + smaller subsample (24K) (discarded)
+- **Hypothesis:** smaller subsample → faster epochs → fit more passes through the data.
+- **Change:** `train_n_volume=32K→24K, epochs=50→60`. Same loss/architecture as iter5.
+- **Result:** 32 epochs, val/loss=1.73 at ep30, val surf_p=112. Test surf_p=101.75 (vs iter5's 98.27).
+- **Verdict:** discarded — slightly worse on test. The smaller subsample added noise without enough additional passes to compensate.
+- **Notes:** there's a sweet spot for subsample size; 24K is too small. 32K is the right ballpark.
+
 ### 2026-04-27 — iter5: Huber/smooth-L1 loss for L1 metric alignment (kept, scoring pending)
 - **Hypothesis:** the leaderboard ranks by surface-pressure **L1** MAE, but training uses MSE which over-weights outlier high-Re samples (single_in_dist has ~5x the variance of cruise). Switching to Huber (smooth L1, beta=1.0) should better match the metric and reduce noisy val swings on outliers.
 - **Change:** `train.py`: replaced `(pred - y_norm)**2` with smooth-L1 `where(|err|<beta, 0.5*err^2/beta, |err|-0.5*beta)` in both train and val loss; everything else identical to iter4 (192/7/96, bf16, p_weight=4, surf_weight=20).
