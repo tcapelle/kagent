@@ -53,7 +53,7 @@ class Config:
     epochs: int = 80
     warmup_epochs: int = 3
     grad_clip: float = 1.0
-    train_max_nodes: int = 30000   # per-sample subsample target during training
+    train_max_nodes: int = 20000   # per-sample subsample target during training
     ema_decay: float = 0.999       # EMA decay for evaluation; set 0.0 to disable
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
