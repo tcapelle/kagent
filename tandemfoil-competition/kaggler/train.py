@@ -84,6 +84,12 @@ class Config:
     train_subsample: int = 40000  # subsample volume nodes (keeps all surface). 0 = full mesh
     loss_type: str = "l1"   # l1 or l2
     warm_start: str | None = None
+    n_hidden: int = 192
+    n_layers: int = 6
+    n_head: int = 6
+    slice_num: int = 64
+    fourier_scales: int = 8
+    fourier_max_freq: float = 16.0
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -121,13 +127,13 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=192,
-    n_layers=6,
-    n_head=6,
-    slice_num=64,
+    n_hidden=cfg.n_hidden,
+    n_layers=cfg.n_layers,
+    n_head=cfg.n_head,
+    slice_num=cfg.slice_num,
     mlp_ratio=2,
-    fourier_scales=8,
-    fourier_max_freq=16.0,
+    fourier_scales=cfg.fourier_scales,
+    fourier_max_freq=cfg.fourier_max_freq,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
