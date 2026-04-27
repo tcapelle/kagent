@@ -36,8 +36,8 @@ TEST_SPLITS = [
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str
+    """Generate test predictions from a trained checkpoint (or comma-separated list for ensemble)."""
+    checkpoint: str  # path or comma-separated paths for ensemble averaging
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 2
@@ -47,16 +47,23 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-ckpt_path = Path(cfg.checkpoint)
-config_path = ckpt_path.parent / "config.yaml"
-with open(config_path) as f:
-    model_config = yaml.safe_load(f)
 
-model = Transolver(**model_config).to(device)
-state = torch.load(ckpt_path, map_location=device, weights_only=True)
-model.load_state_dict(state)
-model.eval()
-print(f"Loaded model from {ckpt_path}")
+def load_model(ckpt_path: Path) -> Transolver:
+    config_path = ckpt_path.parent / "config.yaml"
+    with open(config_path) as f:
+        model_config = yaml.safe_load(f)
+    m = Transolver(**model_config).to(device)
+    state = torch.load(ckpt_path, map_location=device, weights_only=True)
+    m.load_state_dict(state)
+    m.eval()
+    return m
+
+
+ckpt_paths = [Path(p.strip()) for p in cfg.checkpoint.split(",") if p.strip()]
+models = [load_model(p) for p in ckpt_paths]
+for p in ckpt_paths:
+    print(f"Loaded: {p}")
+print(f"Ensemble size: {len(models)}")
 
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
@@ -91,8 +98,12 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"].float()
+            x_norm = (x_pad - x_mean) / x_std
+            preds_norm = []
+            for m in models:
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    preds_norm.append(m({"x": x_norm})["preds"].float())
+            pred_norm = torch.stack(preds_norm).mean(0)
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
