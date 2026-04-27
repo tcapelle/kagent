@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5-ema (FAILED, discarded)
+- **Hypothesis:** EMA decay 0.999 with 200-step warmup applied to model weights for eval+save would dampen late-training noise (~3-8% gain).
+- **Change:** `train.py` — `copy.deepcopy(model)` for EMA, `ema_update` after each optimizer step (warmup→hard copy, then exponential update). Validation and ckpt save use EMA model.
+- **Result:** 13/14 epochs. **avg val surf_p MAE 85.18 → 89.88 (+5.5%, WORSE).** Test 78.99 (vs iter3 75.06). All splits worse. W&B run 8w0vdx91 (or similar — see latest with ema name).
+- **Verdict:** discarded. Reset code to iter4 (`19e74ee`).
+- **Notes:** Same failure mode as apr23 v6: with cosine LR decaying to 0 over 14 epochs, the live model is the post-convergence model. EMA averages back over the previous ~1000 steps including high-LR transients → a worse-than-current model. EMA only helps when training continues past convergence and oscillates around the minimum. Don't retry under cosine-LR + short epoch budget.
+
+### 2026-04-27 — iter4-fourier-pushed (KEPT, marginal)
+- **Hypothesis:** push Fourier features (n=32 → 64, sigma=8 → 12) to capture even higher spatial frequencies for stagnation peaks.
+- **Change:** `train.py` — `n_fourier=64, fourier_sigma=12.0`.
+- **Result:** 13/14 epochs. **avg val surf_p MAE 85.71 → 85.18 (-0.6%, marginal).** Per-split mixed: in_dist -2.0%, rc +3.3% (REGRESSED), cruise -2.2%, re_rand -2.3%. W&B `kagent-tandemfoil3/zm5udrdj`.
+- **Verdict:** kept (marginally better) but the sigma=12 hurts the OOD-camber split — likely overfitting high-freq modes that don't transfer.
+- **Notes:** sigma controls frequency scale; sigma=8 had cleaner generalization. If iter6 regresses, consider rolling Fourier back to (n=32, sigma=8).
+
 ### 2026-04-27 — iter3-fourier-features (BIG WIN, KEPT)
 - **Hypothesis:** Pressure spikes at airfoil leading-edge stagnation are high-frequency in space; an MLP-only Transolver underfits them. Random Fourier features on the 2-D position (Tancik et al. / Aero-Nef recipe) provide a high-frequency basis that the model can blend.
 - **Change:** new `FourierEmbedding` in `model.py`; `Transolver` accepts `use_fourier=True, n_fourier=32, fourier_sigma=8.0` and concatenates `[sin(B·pos), cos(B·pos)]` (64 extra features) into the preprocess input. Wired through `train.py`'s config.
