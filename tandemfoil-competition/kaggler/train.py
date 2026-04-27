@@ -393,6 +393,8 @@ class Config:
     # Per-sample context FiLM (Re, AoA, NACA, gap, stagger from input dims 13-23)
     use_ctx: bool = False
     ctx_dim: int = 11
+    # Input noise augmentation (in normalised feature space) — regulariser for OOD
+    noise_std: float = 0.0
 
 
 def subsample_batch(x, y, is_surface, mask, k_vol):
@@ -652,6 +654,14 @@ def main():
 
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
+
+            if cfg.noise_std > 0:
+                # Inject Gaussian noise into normalised features (regulariser).
+                # Don't perturb the per-sample context channels (13-23) since they
+                # encode physical conditions that shouldn't drift.
+                noise = torch.randn_like(x) * cfg.noise_std
+                noise[..., 13:] = 0.0
+                x = x + noise
 
             with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.amp):
                 pred = model({"x": x, "mask": mask})["preds"]
