@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8 p_weight=20, lr=8e-5
+- **Hypothesis:** Continue chain at p_weight=20 with slightly lower LR (8e-5) — still gaining at p_weight=15.
+- **Change:** No code change; flags `--lr 8e-5 --resume /tmp/iter7_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 20.0`.
+- **Result:** Best epoch 28/30, val/loss=0.8533, avg_surf_p=**43.20** (val splits: in_dist=0.87, geom_rc=1.32, geom_cruise=0.27, re_rand=0.96). Run `cg7alo9z`.
+- **Verdict:** Kept (commit 7191e47). −1.03 vs iter7. Within 1.09 of frieren leader (42.11). val_single_in_dist still dropping (0.87 from 1.03), but geom_camber_rc now firmly stuck at 1.32 across iters 6-8 — pure p_weight scaling cannot crack OOD camber.
+- **Notes:** Diminishing returns from p_weight chain. Time to address generalization directly. Plan: input-feature noise on NACA + AoA dims to encourage robustness to small geometry perturbations.
+
 ### 2026-04-27 — iter7 p_weight=15
 - **Hypothesis:** Continue scaling p_weight (10 → 15) — gains were still present at p_weight=10.
 - **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter6_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 15.0`.
