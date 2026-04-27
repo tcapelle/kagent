@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Surface-aware subsampling (iter 3) — KEPT
+- **Hypothesis:** Most compute is wasted on volume nodes (~95% of mesh) while metric is 100% on surface (~3% of mesh). Keep all surface, subsample volume to 12K → ~7x faster per batch + 10x effective surface upweighting → far more training epochs converging on the right thing.
+- **Change:** train.py — added `subsample_collate` (keeps surface, samples K=12000 volume points) for train loader; val loaders still use full-mesh `pad_collate` for fair comparison. Bumped epochs to 60.
+- **Result:** 60 epochs in 17 min (vs 15 epochs in iter 2). Best val avg_surf_p=70.96 at epoch 55. **Test avg_surf_p=64.12** (single=61.35, geom_rc=79.87, geom_cruise=46.30, re_rand=68.94). Down from baseline 79.12 — about 19% improvement.
+- **Verdict:** **Kept.** Single biggest unlock so far; freed ~13 min of budget (used in iter 4).
+- **Notes:** Memory dropped to 3.7GB peak (vs 45GB before) — plenty of room for bigger model now. Cosine LR finishes by epoch 60; later epochs flat. Cruise track still cleanest (val_geom_c=53), single_in_dist hardest (val_single=78). Top of leaderboard is ~42; still a ~22 gap.
+
 ### 2026-04-27 — h128-l6 huber + AMP + channel-weighted loss (iter 2)
 - **Hypothesis:** Smaller, faster-converging Transolver (n_hidden=128, n_layers=6, slice_num=32, mlp_ratio=4) with bf16 AMP, Huber loss, channel weight 2x on pressure, surf_weight=20 should outperform iter 1.
 - **Change:** train.py — smaller model (1.16M params), Huber loss with channel weights, lr=1e-3 + 1-epoch warmup + cosine; predict.py wired up via shared model.py.
