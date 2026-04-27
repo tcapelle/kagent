@@ -56,6 +56,7 @@ class Config:
     fourier_sigma: float = 5.0      # std of Fourier-feature frequencies (chord units ≈ 1)
     film_re: bool = False           # FiLM (AdaLN) conditioning on log(Re), zero-init
     film_emb_dim: int = 64
+    snap_every: int = 0             # save snapshot every N epochs (after warmup); 0=off
     warm_start: str | None = None   # path to checkpoint to load (e.g. checkpoints/best.pt)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -355,6 +356,13 @@ for epoch in range(MAX_EPOCHS):
         torch.save(model.state_dict(), model_path)
         torch.save(model.state_dict(), ckpt_dir / "best.pt")
         tag = " *"
+
+    # Periodic snapshots for SWA / snapshot ensembling. Save every snap_every epochs
+    # (after warmup), so predict.py can later average predictions across them.
+    if cfg.snap_every and epoch + 1 > cfg.warmup_epochs and (epoch + 1) % cfg.snap_every == 0:
+        snap_dir = ckpt_dir / "snaps"
+        snap_dir.mkdir(exist_ok=True)
+        torch.save(model.state_dict(), snap_dir / f"snap_e{epoch + 1:02d}.pt")
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     split_summary = "  ".join(
