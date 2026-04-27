@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: 256x8 slice=64 fresh-train (commit 5b181c5)
+- **Hypothesis:** Bigger Transolver (n_hidden=256, n_layers=8, n_head=8) for ensemble diversity. Frieren's best apr27 ckpt (model-9f4m2qmm) used the same shape.
+- **Change:** `--n_hidden 256 --n_layers 8 --n_head 8 --slice_num 64 --epochs 25 --batch_size 4 --train_subsample 60000 --lr 5e-4 --warmup_epochs 3`. Fresh init.
+- **Result:** **val/loss=2.3131 at epoch 17** (30.3 min, 26.6GB) — hit MAX_TIMEOUT before epoch 25. Per-split val: single=3.61, rc=2.93, cruise=0.82, re_rand=1.90. Still descending but undertrained.
+- **Verdict:** kept as warm-start base for iter6 (apply bs=2 no-subsample breakthrough).
+- **Notes:** Larger arch (3.94M params) is slower (107s/ep at bs=4 sub=60K vs 63s for 192x6). Predictions at commit `5b181c5` (HEAD when predict ran, not the iter5 placeholder). Next: iter6 = warm iter5 bs=2 no-subsample lr=2e-5 10ep — bigger capacity model after breakthrough recipe.
+
 ### 2026-04-27 — iter4: 2-way ensemble iter2 0.4 + iter3 0.6 (commit a00c6ea)
 - **Hypothesis:** iter2 (val 1.532) and iter3 (val 1.516) are sequentially-trained chain links — adding their predictions with iter3 weighted higher (since it's stronger) should reduce variance like SWA. Free win, no training.
 - **Change:** `python ensemble.py --sources 381bc71 e352f58 --weights 0.4 0.6`. Predictions written to `apr27/tanjiro/a00c6ea/`.
