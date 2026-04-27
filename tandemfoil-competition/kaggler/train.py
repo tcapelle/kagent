@@ -154,6 +154,28 @@ class SliceAttention(nn.Module):
         return self.to_out(out_x)
 
 
+class ContextFiLM(nn.Module):
+    """FiLM modulation conditioned on a per-sample context vector.
+
+    The context is the input feature slice that's constant within a sample
+    (Re, AoA, NACA params, gap, stagger). Last layer is zero-initialised so
+    the layer is identity at construction time.
+    """
+    def __init__(self, ctx_dim: int, hidden: int):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(ctx_dim, hidden), nn.GELU(),
+            nn.Linear(hidden, 2 * hidden),
+        )
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+
+    def forward(self, x, ctx):
+        gb = self.mlp(ctx)  # [B, 2*hidden]
+        gamma, beta = gb.chunk(2, dim=-1)
+        return x * (1.0 + gamma.unsqueeze(1)) + beta.unsqueeze(1)
+
+
 class GatedSliceAttn(nn.Module):
     """Slice attention with a learnable per-channel gate γ initialised to 0.
     At init time the residual contribution is exactly zero, so this layer is
@@ -246,10 +268,13 @@ class ResMLP(nn.Module):
                  fourier_scales: int = 8, fourier_max_freq: float = 16.0,
                  use_global: bool = False,
                  n_attn_layers: int = 0, attn_heads: int = 8,
-                 attn_dim_head: int = 48, attn_slice_num: int = 64):
+                 attn_dim_head: int = 48, attn_slice_num: int = 64,
+                 use_ctx: bool = False, ctx_dim: int = 11):
         super().__init__()
         self.ff_kind = ff_kind
         self.use_global = use_global
+        self.use_ctx = use_ctx
+        self.ctx_dim = ctx_dim
         self.n_attn_layers = n_attn_layers
         if ff_kind == "multiscale":
             self.fourier = MultiScaleFourier(num_scales=fourier_scales,
@@ -266,6 +291,10 @@ class ResMLP(nn.Module):
             self.globals = nn.ModuleList([GlobalFiLM(hidden) for _ in range(n_blocks)])
         else:
             self.globals = None
+        if use_ctx:
+            self.ctx_films = nn.ModuleList([ContextFiLM(ctx_dim, hidden) for _ in range(n_blocks)])
+        else:
+            self.ctx_films = None
         # Optional gated slice-attention layers, evenly spaced across blocks.
         if n_attn_layers > 0:
             stride = max(1, n_blocks // n_attn_layers)
@@ -287,6 +316,9 @@ class ResMLP(nn.Module):
     def forward(self, data):
         x = data["x"]
         mask = data.get("mask")
+        # Per-sample context: input dims 13-23 (Re, AoA1, NACA1, AoA2, NACA2, gap, stagger).
+        # These are constant within a sample; take from position 0 (always real).
+        ctx = x[:, 0, 13:13 + self.ctx_dim] if self.use_ctx else None
         ff = self.fourier(x[..., :2])
         h = torch.cat([x, ff], dim=-1)
         h = self.embed(h)
@@ -295,6 +327,8 @@ class ResMLP(nn.Module):
             h = block(h)
             if self.globals is not None:
                 h = self.globals[i](h, mask)
+            if self.ctx_films is not None:
+                h = self.ctx_films[i](h, ctx)
             if self.attns is not None and i in self.attn_positions:
                 h = self.attns[attn_idx](h, mask=mask)
                 attn_idx += 1
@@ -356,6 +390,9 @@ class Config:
     attn_heads: int = 8
     attn_dim_head: int = 48
     attn_slice_num: int = 64
+    # Per-sample context FiLM (Re, AoA, NACA, gap, stagger from input dims 13-23)
+    use_ctx: bool = False
+    ctx_dim: int = 11
 
 
 def subsample_batch(x, y, is_surface, mask, k_vol):
@@ -517,6 +554,8 @@ def main():
             attn_heads=cfg.attn_heads,
             attn_dim_head=cfg.attn_dim_head,
             attn_slice_num=cfg.attn_slice_num,
+            use_ctx=cfg.use_ctx,
+            ctx_dim=cfg.ctx_dim,
         )
         model_kwargs = {k: v for k, v in model_config.items() if k != "arch"}
         model = ResMLP(**model_kwargs).to(device)
