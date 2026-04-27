@@ -39,6 +39,7 @@ SRC = {
     "fern":     ("fern",     "0f7f9e0"),  # cruise 24.85, rc 59.08, single 48.29, re 44.04
     "fern2":    ("fern",     "cc186e5"),  # cruise 25.14, rc 59.79
     "fern3":    ("fern",     "36e8feb"),  # NEW! cruise 23.88, rc 58.12, re 41.48 (worse alone but different agent)
+    "fern4":    ("fern",     "3457e5a"),  # FERN JUMP 40.59
     "askeladd": ("askeladd", "01851f9"),  # cruise 26.59, re 45.79 (worse alone but different model)
     "alphonse": ("alphonse", "5aa9393"),  # 52.89 alone, different model
     "alphonse2": ("alphonse", "7992b5c"),  # NEW alphonse 48.23
