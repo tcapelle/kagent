@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter17: 6th warm-restart (lr=2.5e-5, pw=18, sw=15)
+- **Hypothesis:** 6th warm-restart; bump pw 15→18 to push pressure focus harder. Target: drop below frieren's 42.11.
+- **Change:** Resume iter16; --lr 2.5e-5 --p_weight 18 --surf_weight 15.
+- **Result:** **surf_p 43.51 → 42.73** (~1.8% gain). Per-split: rc=4.19, single=2.97, cruise=1.69, re_rand=3.25. Still descending. W&B `1sdlp4d5`.
+- **Verdict:** Kept (best). Now within 1.5% of frieren's apr27 score (42.11). One more cycle should put me ahead.
+- **Notes:** Cycle gain dropped from 2.8% (cycle 5) to 1.8% (cycle 6) — diminishing but still meaningful. iter18 polish, iter19 7th warm-restart at pw=18 lr=2.5e-5 (or higher).
+
 ### 2026-04-27 — iter16: polish iter15 (lr=4e-6, pw=15, sw=15)
 - **Hypothesis:** Standard polish with slightly higher lr (4e-6 vs 3e-6) to allow more movement in 10 epochs.
 - **Change:** Resume iter15; --lr 4e-6 (other unchanged).
