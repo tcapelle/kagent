@@ -62,15 +62,16 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 1.5e-4
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 25.0
     p_channel_weight: float = 1.0  # equal channel weighting
-    epochs: int = 38
+    epochs: int = 30
     grad_clip: float = 1.0
     train_max_volume: int = 25000  # subsample volume nodes during training (0 = keep all)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
+    init_ckpt: str | None = None  # warm-start from this checkpoint path
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
@@ -111,8 +112,8 @@ model_config = dict(
     n_hidden=192,
     n_layers=6,
     n_head=8,
-    slice_num=64,
-    mlp_ratio=4,
+    slice_num=96,
+    mlp_ratio=2,
     n_pos_freqs=10,
     max_pos_freq=16.0,
     output_fields=["Ux", "Uy", "p"],
@@ -120,6 +121,10 @@ model_config = dict(
 )
 
 model = Transolver(**model_config).to(device)
+if cfg.init_ckpt:
+    state = torch.load(cfg.init_ckpt, map_location=device, weights_only=True)
+    model.load_state_dict(state)
+    print(f"Warm-start from {cfg.init_ckpt}")
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
