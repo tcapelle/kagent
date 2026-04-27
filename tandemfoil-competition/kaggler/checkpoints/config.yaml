@@ -1,3 +1,5 @@
+film_emb_dim: 64
+film_re: true
 fourier_dim: 32
 fourier_sigma: 5.0
 fun_dim: 22
