@@ -99,10 +99,12 @@ for split in TEST_SPLITS:
             max_n = max(x.shape[0] for x in xs)
             B = len(xs)
             x_pad = torch.zeros(B, max_n, X_DIM, device=device)
+            mask = torch.zeros(B, max_n, dtype=torch.bool, device=device)
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
+                mask[j, :x.shape[0]] = True
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            pred_norm = model({"x": (x_pad - x_mean) / x_std, "mask": mask})["preds"]
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):

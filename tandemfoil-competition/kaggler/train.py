@@ -80,6 +80,36 @@ class ResMLPBlock(nn.Module):
         return x + self.mlp(self.ln(x))
 
 
+class GlobalFiLM(nn.Module):
+    """Mean-pool a global descriptor over masked nodes, regress (γ, β) to
+    modulate per-node features. Initialised to identity so adding to a
+    pre-trained network is a no-op at init time.
+    """
+
+    def __init__(self, dim: int, hidden: int | None = None):
+        super().__init__()
+        h = hidden or 2 * dim
+        self.norm = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, h), nn.GELU(),
+            nn.Linear(h, 2 * dim),
+        )
+        # Zero-init the last layer → γ=0, β=0 → output = x at init.
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+
+    def forward(self, x, mask=None):
+        if mask is None:
+            g = x.mean(dim=1)
+        else:
+            mf = mask.unsqueeze(-1).to(x.dtype)
+            g = (x * mf).sum(dim=1) / mf.sum(dim=1).clamp(min=1)
+        g = self.norm(g)
+        gb = self.mlp(g)  # [B, 2D]
+        gamma, beta = gb.chunk(2, dim=-1)
+        return x * (1.0 + gamma.unsqueeze(1)) + beta.unsqueeze(1)
+
+
 class SliceAttention(nn.Module):
     """Transolver-style physics attention via learned slice tokens.
 
@@ -180,20 +210,23 @@ class TransolverNet(nn.Module):
 
 
 class ResMLP(nn.Module):
-    """Per-node MLP with residual blocks. Backwards-compatible with iter 1/2 ckpts.
+    """Per-node MLP with residual blocks.
 
-    Two FF modes:
-      ff_kind="random": random Gaussian Fourier features (n_freqs, sigma)
-      ff_kind="multiscale": multi-scale sin/cos (fourier_scales, fourier_max_freq)
+    If `use_global=True`, every block is followed by a zero-init `GlobalFiLM`
+    that injects a sample-level mean-pooled descriptor via FiLM modulation.
+    Zero-init means the layer is identity at construction, so warm-starting
+    from a checkpoint without these layers (strict=False) is safe.
     """
 
     def __init__(self, in_dim: int = 24, hidden: int = 512, n_blocks: int = 8,
                  out_dim: int = 3, expansion: int = 4, dropout: float = 0.0,
                  n_freqs: int = 32, fourier_sigma: float = 4.0,
                  ff_kind: str = "random",
-                 fourier_scales: int = 8, fourier_max_freq: float = 16.0):
+                 fourier_scales: int = 8, fourier_max_freq: float = 16.0,
+                 use_global: bool = False):
         super().__init__()
         self.ff_kind = ff_kind
+        self.use_global = use_global
         if ff_kind == "multiscale":
             self.fourier = MultiScaleFourier(num_scales=fourier_scales,
                                              max_freq=fourier_max_freq)
@@ -205,6 +238,10 @@ class ResMLP(nn.Module):
         self.blocks = nn.ModuleList([
             ResMLPBlock(hidden, expansion, dropout) for _ in range(n_blocks)
         ])
+        if use_global:
+            self.globals = nn.ModuleList([GlobalFiLM(hidden) for _ in range(n_blocks)])
+        else:
+            self.globals = None
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, hidden), nn.GELU(),
@@ -213,11 +250,14 @@ class ResMLP(nn.Module):
 
     def forward(self, data):
         x = data["x"]
+        mask = data.get("mask")
         ff = self.fourier(x[..., :2])
         h = torch.cat([x, ff], dim=-1)
         h = self.embed(h)
-        for block in self.blocks:
+        for i, block in enumerate(self.blocks):
             h = block(h)
+            if self.globals is not None:
+                h = self.globals[i](h, mask)
         return {"preds": self.head(h)}
 
 
@@ -269,6 +309,8 @@ class Config:
     # EMA
     ema_decay: float = 0.9995
     ema_start_step: int = 500
+    # Global FiLM modulation per block (zero-init, safe to warm-start)
+    use_global: bool = False
 
 
 def subsample_batch(x, y, is_surface, mask, k_vol):
@@ -324,7 +366,7 @@ def _validate(model, val_loaders, stats, device, surf_weight, amp=False):
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
                 with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=amp):
-                    pred = model({"x": x})["preds"]
+                    pred = model({"x": x, "mask": mask})["preds"]
                 pred = pred.float()
                 sq_err = (pred - y_norm) ** 2
 
@@ -425,6 +467,7 @@ def main():
             fourier_max_freq=cfg.fourier_max_freq,
             n_freqs=cfg.n_freqs,
             fourier_sigma=cfg.fourier_sigma,
+            use_global=cfg.use_global,
         )
         model_kwargs = {k: v for k, v in model_config.items() if k != "arch"}
         model = ResMLP(**model_kwargs).to(device)
@@ -523,7 +566,7 @@ def main():
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
             with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.amp):
-                pred = model({"x": x})["preds"]
+                pred = model({"x": x, "mask": mask})["preds"]
             pred = pred.float()
 
             vol_mask = mask & ~is_surface
