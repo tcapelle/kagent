@@ -42,7 +42,7 @@ class Config:
     surf_weight: float = 20.0
     surf_p_weight: float = 16.0  # extra multiplier on surface pressure (primary metric)
     epochs: int = 50
-    train_subsample: int = 60000
+    train_subsample: int = 80000
     warmup_steps: int = 1000
     grad_clip: float = 1.0
     resume_from: str | None = None
