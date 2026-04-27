@@ -41,6 +41,9 @@ SRC = {
     "frieren3": ("frieren",  "a89882c"),  # re 42.67
     "frieren4": ("frieren",  "8a3998f"),  # re 42.64 (leaderboard commit)
     "thorfinn": ("thorfinn", "a4bbc13"),  # current blend (best ours): single 39.13, rc 59.18, cruise 26.14, re 50.33
+    # Frozen snapshots of our own meta-router blends — useful as starting points
+    # since the source files for these commits are immutable on PVC.
+    "snap_3392": ("thorfinn", "3392fb4"),  # our 36.82 #1 blend (single 35.77, rc 51.19, cr 22.32, re 38.01)
 }
 
 
