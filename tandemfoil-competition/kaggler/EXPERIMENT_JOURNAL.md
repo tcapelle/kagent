@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: chain warm-start lr=5e-6 (continue iter2)
+- **Hypothesis:** Same recipe as iter2 but with LR halved-then-some — warm iter2 at lr=5e-6, 1-ep warmup + cosine, 10 epochs. apr23 iter101 got val 1.40→1.00 with this stride; even diminishing returns should still drop val a few tenths.
+- **Change:** No code change. CLI: `--warm_start /tmp/iter2_best.pt --batch_size 2 --train_subsample 0 --lr 5e-6 --epochs 10 --warmup_epochs 1`. Run `knmw6p1d`.
+- **Result:** 10 epochs, 25.0 min. Val curve 54.33→54.42→54.83→53.88→53.94→53.77→53.84→53.73→53.58→**53.53**. Best epoch 10: val/avg_surf_p=**53.53**, val/loss=1.45. Predictions at `8c116e8`.
+- **Verdict:** Kept — small but strictly better gain (-0.84 from iter2). Saved to `/tmp/iter3_best.pt` for subsequent chain step / ensemble.
+- **Notes:** The chain is plateauing. Train loss bottomed at vol=0.37 surf=0.28 (same as iter2). Next: iter4 lr=2e-6 to lock in the chain endpoint, plus an ensemble of {iter1, iter2, iter3} for diversity (apr23 lesson: even chain-correlated ensembles add 0.5-1pt).
+
 ### 2026-04-27 — iter2: bs=2 no-subsample warm-start lr=2e-5 — 🚀 BIG jump
 - **Hypothesis:** Replay the apr23 iter93 breakthrough — warm-start iter1's checkpoint, drop to bs=2 with NO volume subsampling (so the model sees the full 240K-node grid), 1-epoch warmup + cosine, lr=2e-5, p_w=3, L1, 10 epochs. iter93 went val/loss 1.40 → 1.02 with this exact recipe.
 - **Change:** No code change — only CLI flags: `--warm_start /tmp/iter1_best.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --epochs 10 --warmup_epochs 1`. Run `c611mrv5`.
