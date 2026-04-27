@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v8: chain v5 slice128 with lr=3e-5 (18ep) + final-4 ensemble v7+v8 [0.6, 0.4]
+- **Hypothesis:** Chain v5 (slice=128, val 52.00) at lower LR refines it to be a better ensemble partner. Once v8 is closer to v7's quality, the diversity between slice=64 and slice=128 should give a stronger ensemble than v7+v5.
+- **Change:** `--warm_start v5 --slice_num 128 --lr 3e-5 --epochs 18`. Then ensemble eval v7+v8 sweep, found [0.6, 0.4] best.
+- **Result:** v8 alone val=48.56 at epoch 17 (beats v5=52.00 by 3.44). Ensemble v7+v8 [0.6, 0.4] val=44.02 (beats v7+v5 [0.72, 0.28]=44.86 by 0.84).
+- **Verdict:** Kept and submitted as new final ensemble.
+- **Notes:** Per-split improvements vs v7+v5: single 39.77 (was 40.28), geom_rc 60.13 (was 61.37), cruise 29.35 (was 29.85), re_rand 46.83 (was 47.92). All splits improved. Slightly closer weight balance (0.6/0.4) than the v7+v5 case (0.72/0.28) because v8 is much stronger than v5. Run `f3s5vkhf`.
+
 ### 2026-04-27 — v7: deep chain v3 with lr=1e-5 (15ep) + final-3 ensemble v7+v5 [0.72, 0.28]
 - **Hypothesis:** Even gentler chain (1e-5, 6x lower than v3's 3e-5) refines v3's plateau and the result ensembles slightly better with v5 than v3 itself does.
 - **Change:** `--warm_start v3 --lr 1e-5 --epochs 15`. After: ran ensemble eval v7+v5 sweep, found [0.72, 0.28] best.
