@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: chain from iter4 + p-channel weight=3 + 12 epochs
+
+- **Hypothesis:** Increasing pressure-channel weight in the loss (eval metric is surf_p MAE) plus more epochs (12 vs 8) should yield further gains beyond iter4's 48.50.
+- **Change:** `train.py`: `WARMSTART=model-d215g7ng/checkpoint.pt`, `epochs=12`, channel weights `[1.0, 1.0, 3.0]` for `[Ux, Uy, p]` in both L1 and L2 terms.
+- **Result:** 12 epochs in 30 min. 48.50 → epoch 12 = **47.17** (best, monotonic improvement). Per-split: single=51.4, geom_rc=61.4, geom_cruise=29.6, re_rand=46.3 (approx). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/ef5a3c9/`. Run `4ydobzth`.
+- **Verdict:** kept — clear gain (-1.33, 2.7%). Bigger than iter4's 0.84. The p-channel weighting AND the extended training (12 vs 8) both contributed.
+- **Notes:** train surf loss went up (0.07 → 0.15-0.30) but val improved — sign that loss reweighting is doing useful work even though absolute loss numbers are noisier. Channel-weighted loss with p_weight=3 is a clean abstraction worth keeping. No EMA-related drift seen. Surface pressure improvement strongest on val_single_in_dist (52.6 → 51.4) and re_rand (46.9 → 46.3); geom_cruise barely moved (already near floor).
+
 ### 2026-04-27 — iter4: switch to TRUE 42.11 leader checkpoint (s8nqhr0q)
 
 - **Hypothesis:** Iter2/3 had been chaining `model-9f4m2qmm` (hid=256/L=8/S=96, val=73.63) — but the test scorer revealed iter2's commit `fbcfb64` got **55.95** on test (worse than 42.11). After enumerating all PVC checkpoints with `eval_ckpts.py`, `model-s8nqhr0q` (hid=192/L=6/S=64, val=49.34) is the true 42.11 leader. Chain warm-start should start from there.
