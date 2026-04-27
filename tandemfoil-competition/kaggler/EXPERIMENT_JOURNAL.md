@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14+iter15: 256-hidden BIG model + chain — best chain endpoint yet
+- **iter14** (`u30i6ovu`): 256-hidden 6-layer 6-head slice=64 mlp_ratio=2, bs=4 sub40K 30ep + single_boost=2. Val **57.06** at epoch 30 (vs 192-hidden iter1=81.37, iter7=68.35). Per-split val_loss: single=1.93, rc=1.77, cruise=0.49, re_rand=1.41 — beats every 192-hidden chain endpoint on single_in_dist.
+- **iter15** (`4cuo7s5w`): chain iter14 bs=2 no_sub lr=2e-5 8ep + single_boost=2. Val **52.33** — better than iter4 (53.32) and iter6 (53.87). Single=1.93 rc=1.69 cruise=0.42 re_rand=1.37.
+- **Verdict:** iter15 is the new strongest chain checkpoint. Use it as a heavy weight in the 5-way ensemble.
+- **Notes:** Capacity matters! 256-hidden squeezes more performance from same training budget. Will dominate if we can chain longer next time.
+
 ### 2026-04-27 — SWA + 4-way attempts (8e1218a is SWA only — 4-way overwritten)
 - 4-way ensemble {iter4, iter6, iter9, iter13} 0.30/0.30/0.20/0.20 saved to 8e1218a then overwritten by SWA predict.
 - Re-running 4-way at next HEAD; SWA at HEAD after that.
