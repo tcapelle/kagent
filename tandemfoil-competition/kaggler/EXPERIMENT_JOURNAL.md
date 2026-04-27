@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: warm-start iter4 + camber-noise augmentation
+- **Hypothesis:** `val_geom_camber_rc` surf_p MAE is stuck at ~122 across all iters — that split tests OOD camber (M=7,8 unseen for tandem). Adding small Gaussian noise on the foil1 camber/position/thickness inputs during training should make the model interpolate between training camber values rather than memorize the discrete set.
+- **Change:** train.py: added `camber_noise` flag, applied in subsample collate as shared per-sample raw-scale noise on dims 15/16/17. Run `--warm_start iter4 --slice_num 128 --lr 2e-5 --camber_noise 0.1 --epochs 50`. Code commit `395a063`.
+- **Result:** TBD.
+
+### 2026-04-27 — iter4: warm-start fine-tune of slice_num=128 cold-start
+- **Hypothesis:** iter3's slice_num=128 cold-start undertrained at 30 min (val 90.50). Warm-starting the slice_num=128 model with iter2's loss recipe should let the bigger arch beat slice_num=64 + warm-start (iter2's 79.12).
+- **Change:** No code change; CLI `--slice_num 128 --warm_start models/model-65tgozcw/checkpoint.pt --lr 5e-5 --epochs 50`. Run id `kjb26vxt`.
+- **Result:** Best val/avg_surf_p=**73.21** at epoch 28/30. Per-split: cruise=41.6, rc=121.75, re_rand=76.1, single=53.4 — main gain on `single_in_dist` (-17 from iter2). geom_camber_rc still bottleneck at ~122.
+- **Verdict:** Kept (predictions in `fern/5e79ba8`, ckpt commit `2f0eba4`). Best fern submission so far.
+- **Notes:** Ensembling tried (iter1+iter2+iter4, etc.) — all worse than iter4 alone on val. Cross-arch averaging drags iter4 down on in-distribution splits even though it slightly helps geom_rc. iter4's plateau suggests we should attack OOD camber directly (→ iter5).
+
 ### 2026-04-27 — iter3: cold-start slice_num=128 with thorfinn loss
 - **Hypothesis:** Thorfinn's leader checkpoint uses slice_num=128 (vs my 64). Maybe more slice tokens help capture fine-grained physics. Cold-start with slice_num=128 + balanced thorfinn loss to set up a stronger base for warm-start fine-tune.
 - **Change:** No code change; just CLI `--slice_num 128 --epochs 200`. Run id `65tgozcw`. Epoch time 61s (vs 42s for slice_num=64). VRAM 14.0 GB (vs 9.7).
