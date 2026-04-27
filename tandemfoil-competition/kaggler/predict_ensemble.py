@@ -60,7 +60,10 @@ SRC = {
     "thorfinnO": ("thorfinn", "c9af0cd"),  # avg 34.9081 — cruise 20.6251 (close to N), re 34.9485
     # NEW (23:34): thorfinn jumped to 34.8179 with new source — HUGE gains on rc, cruise, re
     "thorfinnP": ("thorfinn", "93c954f"),  # avg 34.8179 — rc=48.6275, cruise=20.5935, re=34.8257
-    "thorfinnQ": ("thorfinn", "2ce0b4f"),  # avg 34.8014 — best rc (48.5926), cruise (20.5841), re (34.7652)!
+    "thorfinnQ": ("thorfinn", "2ce0b4f"),  # avg 34.8014 — rc=48.5926 cruise=20.5841 re=34.7652
+    "thorfinnR": ("thorfinn", "b855963"),  # avg 34.7645 — best rc (48.5713), cruise (20.5841), best re (34.6881)
+    "thorfinnS": ("thorfinn", "918b0af"),  # avg 34.8228 — same rc/re as R (likely sibling)
+    "thorfinnT": ("thorfinn", "18b4c1c"),  # avg 34.8031 — rc=48.5736 cruise=20.5873 re=34.7196
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -86,12 +89,13 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter31: re-submit iter30's blend (got overwritten by predict.py auto-launch).
-    # Same per-split-best routing: single=4-way (35.2140), rc/cruise/re=Q (2ce0b4f best).
+    # iter32: thorfinn pushed to 34.7645 with b855963. Route to it for rc/re bests.
+    # Per-split bests: single=4-way 35.2140, rc=R/S 48.5713, cruise=Q/R 20.5841, re=R/S 34.6881.
+    # Floor: (35.2140 + 48.5713 + 20.5841 + 34.6881)/4 = 34.7644
     single: str = "thorfinnL:0.30,thorfinnM:0.30,thorfinnK:0.20,thorfinnI:0.20"
-    rc: str = "thorfinnQ:1.0"
-    cruise: str = "thorfinnQ:1.0"
-    re_rand: str = "thorfinnQ:1.0"
+    rc: str = "thorfinnR:1.0"
+    cruise: str = "thorfinnR:1.0"
+    re_rand: str = "thorfinnR:1.0"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
