@@ -50,7 +50,11 @@ class Config:
     slice_num: int = 64
     mlp_ratio: int = 2
     use_bf16: bool = True
-    subsample_n: int = 40000  # nodes/sample during training; 0 disables
+    subsample_n: int = 40000   # nodes/sample during base training; 0 disables
+    load_from: str | None = None  # path to checkpoint to warm-start from
+    finetune_epochs: int = 0   # number of full-mesh fine-tune epochs at the end
+    finetune_batch_size: int = 2
+    finetune_lr: float = 5e-5
 
 
 cfg = sp.parse(Config)
@@ -68,10 +72,18 @@ loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
 if cfg.debug:
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                               shuffle=True, **loader_kwargs)
+    finetune_loader = train_loader
 else:
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                               sampler=sampler, **loader_kwargs)
+    # Full-mesh fine-tune loader: smaller batch, no subsample.
+    if cfg.finetune_epochs > 0:
+        ft_sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
+        finetune_loader = DataLoader(train_ds, batch_size=cfg.finetune_batch_size,
+                                     sampler=ft_sampler, **loader_kwargs)
+    else:
+        finetune_loader = None
 
 # Validation uses full mesh; smaller batch to avoid OOM on big meshes.
 val_loaders = {
@@ -133,8 +145,17 @@ model_config = dict(
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 print(f"Model params: {n_params/1e6:.1f}M")
+
+if cfg.load_from:
+    state = torch.load(cfg.load_from, map_location=device, weights_only=True)
+    model.load_state_dict(state)
+    print(f"Warm-started from {cfg.load_from}")
+
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+# Cosine over base epochs only; fine-tune phase uses fixed lower LR.
+base_epochs = MAX_EPOCHS - cfg.finetune_epochs if not cfg.debug else MAX_EPOCHS
+base_epochs = max(base_epochs, 1)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=base_epochs)
 
 
 def autocast_ctx():
@@ -182,17 +203,32 @@ for epoch in range(MAX_EPOCHS):
         print(f"Timeout ({MAX_TIMEOUT} min). Stopping.")
         break
 
+    in_finetune = (cfg.finetune_epochs > 0
+                    and not cfg.debug
+                    and epoch >= base_epochs)
+    if in_finetune:
+        active_loader = finetune_loader
+        # Switch to fixed lower LR for fine-tune phase.
+        for pg in optimizer.param_groups:
+            pg["lr"] = cfg.finetune_lr
+        do_subsample = False
+        phase_tag = "FT"
+    else:
+        active_loader = train_loader
+        do_subsample = (cfg.subsample_n > 0)
+        phase_tag = "BASE"
+
     t0 = time.time()
     model.train()
     epoch_vol = epoch_surf = 0.0
     n_batches = 0
 
-    for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
+    for x, y, is_surface, mask in tqdm(active_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS} [{phase_tag}]", leave=False):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
-        if cfg.subsample_n > 0:
+        if do_subsample:
             x, y, is_surface, mask = subsample(x, y, is_surface, mask, cfg.subsample_n)
 
         x = (x - stats["x_mean"]) / stats["x_std"]
@@ -218,7 +254,8 @@ for epoch in range(MAX_EPOCHS):
         epoch_surf += surf_loss.item()
         n_batches += 1
 
-    scheduler.step()
+    if not in_finetune:
+        scheduler.step()
     epoch_vol /= max(n_batches, 1)
     epoch_surf /= max(n_batches, 1)
 
