@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: add Fourier features (32 freqs, σ=5) + warm-start
+
+- **Hypothesis:** Iters 2–4 plateaued around 86. The preprocess MLP only sees raw spatial coords (x, z) — adding random Fourier features should help the network represent high-frequency turbulent pressure features. Architecture grows by 64 input dims; pad the preprocess weight with zeros so warm-start preserves iter4 behavior, then let SGD learn to use the new features.
+- **Change:** model.py: added `fourier_dim` and `fourier_sigma` to `Transolver`, registers a fixed `[2, fourier_dim]` random buffer; concatenates `[sin(2π Bx), cos(2π Bx)]` to model input. train.py: pads `preprocess.linear_pre.0.weight` from `[512, 24]` → `[512, 88]` when warm-starting an old model into a new one with extra Fourier columns. Run with `--fourier_dim 32 --fourier_sigma 5.0 --lr 1e-4 --p_weight 3 --weight_decay 1e-4`.
+- **Result:** 21 epochs, best val avg_mae_surf_p=**84.66 at E11** (1.7% better than iter4's 86.09). Splits: single=57, geom_rc=135, cruise=58, re_rand=88. After E11 the model overfits again, geom_rc bouncing 135–150.
+- **Verdict:** kept — small but real improvement on a plateau.
+- **Notes:** Fourier features moved the needle a bit but didn't break the geom_camber_rc bottleneck (still ~135). The whole pattern looks like a generalization ceiling on M=6–8 unseen camber. Possible next moves: bigger σ for finer freqs, more Fourier dims (64), or just keep stacking warm-starts.
+
 ### 2026-04-27 — iter4: warm-start iter3 @ lr=5e-5, p_weight=5
 
 - **Hypothesis:** Push pressure-channel weight from 3 → 5 to focus the model harder on the leaderboard metric, with even lower LR to fine-tune.
