@@ -62,9 +62,9 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # Push to 90% 8ce7299 to see if heavy single bias keeps improving.
-    single: str = "thorfinn5:0.9,thorfinn6:0.10"
-    rc: str = "thorfinn0:0.85,tanjiro:0.10,thorfinn:0.05"
+    # Try rc with thorfinn6 (90567b5) for diversity instead of 1f9db55.
+    single: str = "thorfinn5:0.7,thorfinn:0.15,thorfinn6:0.15"
+    rc: str = "thorfinn0:0.85,tanjiro:0.10,thorfinn6:0.05"
     cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
 
