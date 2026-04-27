@@ -66,8 +66,8 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 8
-    surf_weight: float = 20.0
-    p_weight: float = 4.0
+    surf_weight: float = 30.0
+    p_weight: float = 8.0
     epochs: int = 50
     train_n_volume: int = 32000
     bf16: bool = True
@@ -288,10 +288,13 @@ for epoch in range(MAX_EPOCHS):
         metrics.update(sm)
     wandb.log(metrics)
 
+    # Select checkpoint by surface-pressure MAE (the leaderboard metric)
+    # rather than the combined val/loss. They usually agree but not always.
+    surf_p_avg = sum(split_metrics[name][f"{name}/mae_surf_p"] for name in VAL_SPLIT_NAMES) / len(VAL_SPLIT_NAMES)
     tag = ""
-    if mean_val_loss < best_val:
-        best_val = mean_val_loss
-        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
+    if surf_p_avg < best_val:
+        best_val = surf_p_avg
+        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "surf_p_avg": surf_p_avg}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
         torch.save(model.state_dict(), model_path)
@@ -299,12 +302,13 @@ for epoch in range(MAX_EPOCHS):
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     split_summary = "  ".join(
-        f"{name}={split_metrics[name][f'{name}/loss']:.4f}" for name in VAL_SPLIT_NAMES
+        f"{name}={split_metrics[name][f'{name}/mae_surf_p']:.1f}" for name in VAL_SPLIT_NAMES
     )
     print(
         f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
-        f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  "
-        f"val[{split_summary}]{tag}"
+        f"train[v={epoch_vol:.3f} s={epoch_surf:.3f}]  "
+        f"val_loss={mean_val_loss:.3f}  surf_p={surf_p_avg:.1f}  "
+        f"surf_p[{split_summary}]{tag}"
     )
 
 # --- Final ---
