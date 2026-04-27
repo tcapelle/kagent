@@ -49,11 +49,12 @@ SRC = {
     "thorfinnE": ("thorfinn", "afabff7"),  # single G2 distinct, rc G1 same as 0e56f78
     "thorfinnF": ("thorfinn", "847a2f4"),  # single G3 distinct, rc G3 distinct (49.0415), re G3
     "thorfinnG": ("thorfinn", "889c2a0"),  # single G0 (=0e56f78), rc G2 distinct (=9379993), re G2 distinct
-    # NEW (23:10-23:12): thorfinn pushed below floor with new blends — substantial improvements on s/rc/re
+    # NEW (23:10-23:16): thorfinn pushed below floor with new blends — substantial improvements on s/rc/re
     "thorfinnH": ("thorfinn", "311dacc"),  # avg 35.0905
-    "thorfinnI": ("thorfinn", "55cc0ab"),  # avg 34.9361
+    "thorfinnI": ("thorfinn", "55cc0ab"),  # avg 34.9361 — best cruise (20.7336)
     "thorfinnJ": ("thorfinn", "63bacc5"),  # avg 35.0335
-    "thorfinnK": ("thorfinn", "644f1c4"),  # avg 34.9300 — current best
+    "thorfinnK": ("thorfinn", "644f1c4"),  # avg 34.9300
+    "thorfinnL": ("thorfinn", "03652c4"),  # avg 34.9022 — best s/rc/re — current #1
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -79,13 +80,13 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter17b: 4-way blend across all NEW thorfinn commits (~5-13 MAE diff between them).
-    # Weights inverse to per-split MAE: best-on-split gets most weight, others smaller.
-    # Sources: H=311dacc I=55cc0ab J=63bacc5 K=644f1c4
-    single: str = "thorfinnI:0.30,thorfinnK:0.30,thorfinnJ:0.20,thorfinnH:0.20"
-    rc: str = "thorfinnK:0.40,thorfinnI:0.30,thorfinnJ:0.15,thorfinnH:0.15"
-    cruise: str = "thorfinnI:0.40,thorfinnJ:0.30,thorfinnH:0.20,thorfinnK:0.10"
-    re_rand: str = "thorfinnK:0.40,thorfinnI:0.30,thorfinnJ:0.20,thorfinnH:0.10"
+    # iter17c: per-split-best routing including thorfinn's newest 03652c4 (best s/rc/re).
+    # Per-split bests: single=03652c4=35.2169, rc=03652c4=48.6820, cruise=55cc0ab=20.7336, re=03652c4=34.9644
+    # Floor (route): (35.2169 + 48.6820 + 20.7336 + 34.9644)/4 = 34.8992
+    single: str = "thorfinnL:1.0"
+    rc: str = "thorfinnL:1.0"
+    cruise: str = "thorfinnI:1.0"
+    re_rand: str = "thorfinnL:1.0"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
