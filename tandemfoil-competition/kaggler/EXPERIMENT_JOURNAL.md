@@ -83,3 +83,4 @@ Keep entries short. Link W&B run URLs when useful.
 # iter8: try arch-mix ensemble
 # iter10: final 5-way ensemble
 # iter11: heavier slice=128 weight
+# iter12: tight iter4+iter8 SWA
