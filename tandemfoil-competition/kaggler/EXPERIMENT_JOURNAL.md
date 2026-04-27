@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v6: fresh slice=64 different seed (35ep)
+- **Hypothesis:** Another fresh slice=64 model (different random init) provides ensemble diversity beyond what slice=128 (v5) gave us.
+- **Change:** `--epochs 35` (no warm_start, no special args; just different random seed via fresh init).
+- **Result:** Best val avg_surf_p=58.99 at epoch 35 (last epoch — still descending). 27 min total. Per-split: single_in_dist=54.16, geom_rc=77.62, geom_cruise=42.95, re_rand=61.22.
+- **Verdict:** Kept as ensemble component — undertrained alone (58.99 vs v3 46.26) but contributes seed diversity.
+- **Notes:** 35 epochs vs v1's 40 — got cosine LR slightly less decayed. Still useful for ensemble. Run `pnn6ips2`.
+
 ### 2026-04-27 — final: ensemble v3 (slice=64) + v5 (slice=128)
 - **Hypothesis:** Averaging predictions from architecturally-diverse models (slice_num=64 vs 128) reduces variance and improves test MAE. Different slice counts capture different physics-mode partitions, so their errors should be partially decorrelated.
 - **Change:** Added `predict_ensemble.py` that loads N checkpoints, runs each, and averages predictions (in physical units) with optional weights. Used equal weights for v3+v5.
