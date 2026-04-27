@@ -19,12 +19,39 @@ import simple_parsing as sp
 import torch
 import wandb
 import yaml
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from tqdm import tqdm
 
 from data import X_DIM, VAL_SPLIT_NAMES, pad_collate, load_data
 from models import Transolver
 from viz import visualize
+
+
+class SubsampleDataset(Dataset):
+    """Wrapper that randomly subsamples volume nodes; surface nodes are always kept.
+
+    Speeds up training on large meshes (cruise ~210K nodes) without losing the
+    surface, where most of the loss weight is. The full mesh is still used at
+    val/test time."""
+
+    def __init__(self, base, n_volume: int):
+        self.base = base
+        self.n_volume = n_volume
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        x, y, sf = self.base[idx]
+        if sf.dtype != torch.bool:
+            sf = sf.bool()
+        surf_idx = torch.nonzero(sf, as_tuple=False).squeeze(-1)
+        vol_idx = torch.nonzero(~sf, as_tuple=False).squeeze(-1)
+        if vol_idx.numel() > self.n_volume:
+            perm = torch.randperm(vol_idx.numel())[: self.n_volume]
+            vol_idx = vol_idx[perm]
+        keep = torch.cat([surf_idx, vol_idx])
+        return x[keep], y[keep], sf[keep]
 
 
 # ---------------------------------------------------------------------------
@@ -38,9 +65,11 @@ MAX_TIMEOUT = 30.0  # minutes
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 8
     surf_weight: float = 20.0
-    epochs: int = 12
+    p_weight: float = 4.0
+    epochs: int = 40
+    train_n_volume: int = 32000
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -57,15 +86,18 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
 
+# Wrap training dataset with mesh subsampling for speed (val/test stay full).
+train_ds_sub = SubsampleDataset(train_ds, n_volume=cfg.train_n_volume)
+
 loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
 
 if cfg.debug:
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+    train_loader = DataLoader(train_ds_sub, batch_size=cfg.batch_size,
                               shuffle=True, **loader_kwargs)
 else:
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
+    train_loader = DataLoader(train_ds_sub, batch_size=cfg.batch_size,
                               sampler=sampler, **loader_kwargs)
 
 val_loaders = {
@@ -90,6 +122,10 @@ model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+# Per-channel weights (Ux, Uy, p) — emphasize pressure since the leaderboard
+# ranks by surface-pressure MAE.
+ch_weights = torch.tensor([1.0, 1.0, cfg.p_weight], device=device).view(1, 1, 3)
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -144,12 +180,14 @@ for epoch in range(MAX_EPOCHS):
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
         pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2
+        sq_err = (pred - y_norm) ** 2  # [B,N,3]
+        sq_err_w = sq_err * ch_weights  # weight pressure channel
 
         vol_mask = mask & ~is_surface
         surf_mask = mask & is_surface
-        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+        # mean over (nodes, channels) — sum/(count*3) since ch_weights normalized
+        vol_loss = (sq_err_w * vol_mask.unsqueeze(-1)).sum() / (vol_mask.sum().clamp(min=1) * 3)
+        surf_loss = (sq_err_w * surf_mask.unsqueeze(-1)).sum() / (surf_mask.sum().clamp(min=1) * 3)
         loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
@@ -188,11 +226,12 @@ for epoch in range(MAX_EPOCHS):
 
                 pred = model({"x": x})["preds"]
                 sq_err = (pred - y_norm) ** 2
+                sq_err_w = sq_err * ch_weights
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                val_vol += (sq_err * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
-                val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
+                val_vol += (sq_err_w * vol_mask.unsqueeze(-1)).sum().item() / (vol_mask.sum().clamp(min=1).item() * 3)
+                val_surf += (sq_err_w * surf_mask.unsqueeze(-1)).sum().item() / (surf_mask.sum().clamp(min=1).item() * 3)
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
@@ -278,6 +317,9 @@ if best_metrics:
 # --- Auto-submit predictions ---
 if best_metrics and not cfg.debug:
     import subprocess
+    # Free GPU memory before launching predict.py subprocess (otherwise OOM).
+    del model
+    torch.cuda.empty_cache()
     print("\nGenerating test predictions...")
     pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
     if cfg.agent:
