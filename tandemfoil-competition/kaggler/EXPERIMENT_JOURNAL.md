@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6 pure full-mesh chain fine-tune from iter5 (KEPT)
+- **Hypothesis:** Iter5's full-mesh FT phase was the load-bearing step. Skip the base subsample phase entirely; do 11 epochs of full-mesh batch=2 with cosine LR from 5e-5 → 0. Should push val below 60.
+- **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 5e-5`. Uses cosine over all 11 epochs.
+- **Result:** **val avg_surf_p=52.68** (best epoch 11, last). 27.5 min. Trajectory: 62 → 60 → 56 → 53 → 52.7 — still improving at the final epoch.
+- **Verdict:** Kept (commit `ad7313b`).
+- **Notes:** Improvement is monotonic and not plateauing within budget. Iter7 should chain again (probably with slightly lower LR, e.g., 2e-5, since we're deeper into convergence). Reading scores: pending scoring service refresh.
+
 ### 2026-04-27 — iter5 chain fine-tune + full-mesh fine-tune phase (KEPT)
 - **Hypothesis:** Continue training from iter4 ckpt (warm start) and add a 5-epoch full-mesh batch=2 fine-tune phase at the end. Subsample-trained model never sees the dense per-sample node distribution it's evaluated on; a brief full-mesh pass should close that gap.
 - **Change:** train.py — `load_from`, `finetune_epochs`, `finetune_batch_size=2`, `finetune_lr=5e-5`. After base epochs, switch to a no-subsample loader and a fixed lower LR. Cosine schedule covers base epochs only; FT phase is fixed-LR.
