@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: deeper warm-start chain (lr=5e-6) → val/loss=0.728, avg_surf_p=51.27 (-1%)
+- **Hypothesis:** iter2's warm-start chain dropped surf_p only ~3% (53.46→51.87). Frieren's chain dropped ~5 surf_p per iter; mine is converging faster. Try one more chain step at `lr=5e-6` (4x lower) for 10 epochs to squeeze the last gains before pivoting.
+- **Change:** `python train.py --warm_start /mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-yqqu10sg/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 5e-6 --p_weight 3.0 --epochs 10 --warmup_epochs 1`. Run `w2qvsfx1`.
+- **Result:** epoch 10/10, val/loss=**0.7280**, **avg_surf_p=51.27** (single=0.70, rc=1.00, cruise=0.45, re_rand=0.77). 26.2 min wall, 29.3GB peak. Predictions at `/mnt/new-pvc/predictions/apr27-4/edward/5d05ebb/`. Auto-submit failed mid-run with OOM (something else briefly took 88GB on the GPU); ran predict.py manually after killing the orphan train workers.
+- **Verdict:** kept — marginal 1% gain, chain has plateaued.
+- **Notes:** Likely the Fourier features made iter1 already extract spatial info that frieren's chain unlocked between iters. To get to leaderboard-leader territory (~42 surf_p, possibly 35 with ensembles), need a fundamentally different angle. Plan iter4 = try a fresh, larger model (n_hidden=256, slice_num=128, n_layers=8) trained from scratch. If it lands near iter3, switch to ensembling iter1+iter2+iter3 predictions.
+
 ### 2026-04-27 — iter2: warm-start bs=2 full-mesh chain → val/loss=0.74, avg_surf_p=51.87 (-3%)
 - **Hypothesis:** Frieren's apr27 iter2 found that warm-starting iter1 with `batch_size=2 + train_subsample=0` + `lr=2e-5` + `p_weight=3` for 10 epochs got 49.34 surf_p (from 54.26). The hypothesis is that the 40k subsample drops 60% of the volume mesh — refining on the full mesh at low LR teaches the model the spatial structure it missed.
 - **Change:** `python train.py --warm_start /mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-77aydpcl/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --p_weight 3.0 --epochs 12 --warmup_epochs 1`. Run `yqqu10sg`.
