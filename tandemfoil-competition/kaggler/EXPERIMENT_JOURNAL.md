@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — scale-256x8-do10 (DISCARDED)
+- **Hypothesis:** iter3 still showed train/val gap; bigger model (n_hidden=192→256, n_head=6→8) with stronger dropout (0.05→0.1) should improve generalization.
+- **Change:** train.py model_config: n_hidden=256, n_head=8, dropout=0.1 (Fourier and slice_num kept).
+- **Result:** epoch time 102s (vs 78s in iter3), only 18 epochs fit. Best epoch 18: avg_surf_p=115.84 (slightly worse than iter3's 111.34).
+- **Verdict:** discarded — `git reset --hard HEAD~1`. Slight regression mainly because the bigger model needs more epochs but we're capped at 30 min; the extra dropout slowed convergence too much for the budget.
+- **Notes:** Per-split: val_geom_camber_rc actually improved (1.95-2.03 vs 2.13). The bigger model has potential but the budget is the bottleneck. Next ideas: (a) keep iter3 base, add EMA for evaluation; (b) try wider but fewer-layer (n_hidden=256, n_layers=6) to keep epoch time near 78s; (c) train_max_nodes=30k to claw back more epochs.
+
 ### 2026-04-27 — fourier-do05
 - **Hypothesis:** training curve plateaued in iter2 with ~3x train/val gap on val_geom_camber_rc — generalization is the bottleneck. Add multi-scale Fourier positional encoding for (x, z) (8 frequencies, 32 features) so the model gets richer spatial inductive bias; bump slice_num 64→96 for more attention capacity; small dropout 0.05.
 - **Change:** model.py — `FourierPosEnc` module (sin/cos at log-spaced freqs up to 32π) wired into Transolver (`pos_freqs=8`); train.py — slice_num=96, dropout=0.05 in model_config.
