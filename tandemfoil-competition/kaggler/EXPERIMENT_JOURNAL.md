@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3 EMA + warm-start chain
+- **Hypothesis:** Add EMA(0.999) over weights, validate/checkpoint on EMA shadow. Warm-start from iter2 ckpt at even lower LR (2e-4) to extend the fine-tune chain. Frieren reportedly used EMA — expected to smooth val curve and trim a few points.
+- **Change:** `train.py` (commit 97dd212): added `EMA` class; in train loop, update shadow after each optimizer step; before validation, swap shadow→model; save state_dict (which is EMA weights at that moment) on improvement; restore real weights after val. Added `--ema_decay` flag. Ran with `--lr 2e-4 --warmup_epochs 1 --resume /tmp/iter2_best.pt --epochs 30 --ema_decay 0.999`.
+- **Result:** Best epoch 28/30, val/loss=1.1557, avg_surf_p=**50.97** (val splits: in_dist=1.78, geom_rc=1.45, geom_cruise=0.34, re_rand=1.06). 66s/epoch. Run `g9ar78uj`.
+- **Verdict:** Kept (commit cfb480e). Strict monotone improvement every single epoch (56.24 → 50.97), no oscillation — EMA produces a much smoother loss curve than the noisy iter1/iter2 trajectories. ~9% better than iter2.
+- **Notes:** Now ahead of thorfinn's apr27-bis (45.94 was best, mine 50.97 — wait, thorfinn at 45 is still better; I'm 5 behind). Curve still descending so another warm-start chain at lr=1e-4 should help. After that, may need to break out of the local basin via bigger model or new features.
+
 ### 2026-04-27 — iter2 warm-start fine-tune
 - **Hypothesis:** Iter1 timed out at epoch 28/60 with cosine LR only halfway through — train another 30 epochs warm-started from iter1's ckpt at lower LR (5e-4) so the cosine schedule completes properly within budget.
 - **Change:** `train.py` (commit 7b1be64): added `--resume` flag to load a pre-trained state_dict; default `epochs` 60 → 30. Same architecture (192/6/6/128), same loss, same subsampling. Ran with `--lr 5e-4 --warmup_epochs 1 --resume /tmp/iter1_best.pt --epochs 30`.
