@@ -43,6 +43,8 @@ SRC = {
     "thorfinn9": ("thorfinn", "9379993"),  # rc 49.04154 (LOWEST), re 35.32366
     "thorfinnA": ("thorfinn", "0ce97d2"),  # single 35.58553, rc 49.04155, re 35.32366
     "thorfinnB": ("thorfinn", "0e56f78"),  # single 35.58551 (matches my floor)
+    # My own per-split-best blend (avg 35.19569, used as source for self-blending)
+    "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # External models — best per split (non-thorfinn)
     "edward":   ("edward",   "c773fa7"),  # single 36.25, cruise 23.73
     "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08
@@ -65,10 +67,9 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # Use 9379993 (best rc), 0e56f78 (best single), 0ce97d2 — all are thorfinn's blends already
-    # incorporating the rc-tanjiro mix. So 9379993 alone might already be the floor.
-    single: str = "thorfinnB:1.0"
-    rc: str = "thorfinn9:1.0"
+    # Blend my own with thorfinn's per-split-best (potential decorrelation).
+    single: str = "thorfinnB:0.5,nezuko_best:0.5"
+    rc: str = "thorfinn9:0.5,nezuko_best:0.5"
     cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn9:1.0"
 
