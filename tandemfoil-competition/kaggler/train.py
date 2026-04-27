@@ -230,14 +230,13 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter15: warm-restart cycle from iter14 best (wwki4ao9, val=42.26) with
-# bigger boosts + bigger LR.
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-wwki4ao9/checkpoint.pt"
+# Iter16: chain from iter15 best (er3i0nfe, val=41.12), lower LR to settle.
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-er3i0nfe/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 2e-5
+    lr: float = 5e-6
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
