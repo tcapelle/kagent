@@ -210,10 +210,11 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 20.0
-    p_weight: float = 4.0  # extra weight on pressure channel inside loss
-    train_max_points: int = 50000  # subsample volume points during training
+    surf_weight: float = 15.0
+    p_weight: float = 2.0  # extra weight on pressure channel inside loss
+    train_max_points: int = 0  # 0 = no subsample
     epochs: int = 50
+    resume: str = ""  # path to checkpoint to warm-start from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -252,16 +253,20 @@ def main():
         space_dim=2,
         fun_dim=X_DIM - 2,
         out_dim=3,
-        n_hidden=224,
-        n_layers=7,
-        n_head=8,
-        slice_num=80,
+        n_hidden=192,
+        n_layers=6,
+        n_head=6,
+        slice_num=64,
         mlp_ratio=2,
         output_fields=["Ux", "Uy", "p"],
         output_dims=[1, 1, 1],
     )
 
     model = Transolver(**model_config).to(device)
+    if cfg.resume:
+        sd = torch.load(cfg.resume, map_location=device, weights_only=True)
+        model.load_state_dict(sd)
+        print(f"Resumed from {cfg.resume}")
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
