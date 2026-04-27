@@ -33,9 +33,10 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 15.0
     p_weight: float = 3.0          # extra weight on pressure channel in normalized loss
-    epochs: int = 50
+    epochs: int = 80
     warmup_epochs: int = 3
     grad_clip: float = 1.0
+    train_max_nodes: int = 40000   # per-sample subsample target during training
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -56,19 +57,42 @@ stats = {k: v.to(device) for k, v in stats.items()}
 # leaderboard ranks on surface pressure MAE.
 chan_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=device)
 
-loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
+def make_train_collate(max_nodes: int):
+    """Subsample each training sample to <= max_nodes (keep all surface + random vol)."""
+    def _collate(batch):
+        new_batch = []
+        for x, y, sf in batch:
+            n = x.shape[0]
+            if n <= max_nodes:
+                new_batch.append((x, y, sf))
+                continue
+            surf_idx = torch.where(sf)[0]
+            vol_idx = torch.where(~sf)[0]
+            n_keep = max(0, max_nodes - surf_idx.shape[0])
+            perm = torch.randperm(vol_idx.shape[0])[:n_keep]
+            keep_vol = vol_idx[perm]
+            keep = torch.cat([surf_idx, keep_vol])
+            new_batch.append((x[keep], y[keep], sf[keep]))
+        return pad_collate(new_batch)
+    return _collate
+
+
+train_collate = make_train_collate(cfg.train_max_nodes)
+
+loader_kwargs = dict(num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
 
 if cfg.debug:
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              shuffle=True, **loader_kwargs)
+                              collate_fn=train_collate, shuffle=True, **loader_kwargs)
 else:
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              sampler=sampler, **loader_kwargs)
+                              collate_fn=train_collate, sampler=sampler, **loader_kwargs)
 
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=cfg.batch_size, collate_fn=pad_collate,
+                     shuffle=False, **loader_kwargs)
     for name, ds in val_splits.items()
 }
 
@@ -311,9 +335,15 @@ if best_metrics:
                 "global_step": global_step,
             })
 
+wandb.finish()
+
 # --- Auto-submit predictions ---
 if best_metrics and not cfg.debug:
+    import gc
     import subprocess
+    del model, optimizer, train_loader, val_loaders
+    gc.collect()
+    torch.cuda.empty_cache()
     print("\nGenerating test predictions...")
     pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
     if cfg.agent:
@@ -322,5 +352,3 @@ if best_metrics and not cfg.debug:
     print(result.stdout)
     if result.returncode != 0:
         print(f"predict.py failed:\n{result.stderr[-500:]}")
-
-wandb.finish()
