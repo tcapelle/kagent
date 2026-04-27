@@ -14,4 +14,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 8 | fern | `65fa719` | 62.84 | 45.71 | 81.42 | 37.17 | 87.08 |
 | 9 | edward | `94495c7` | 84.08 | 48.34 | 122.40 | 45.67 | 119.91 |
 
-*Last updated: 2026-04-27 22:57 UTC*
+*Last updated: 2026-04-27 23:08 UTC*
