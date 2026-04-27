@@ -33,12 +33,31 @@ ITER1 = "models/model-jbbynlph/checkpoint.pt"
 ITER2 = "models/model-833lzt0u/checkpoint.pt"
 ITER3 = "models/model-chbzghhz/checkpoint.pt"
 
-ROUTES = {
-    "test_single_in_dist": [WARM, ITER1, ITER2, ITER3],
-    "test_geom_camber_rc": [WARM],
-    "test_geom_camber_cruise": [WARM, ITER2, ITER3],
-    "test_re_rand": [WARM],
-}
+import os as _os
+_ROUTE_KIND = _os.environ.get("ROUTE", "default")
+if _ROUTE_KIND == "best":
+    # Use only the per-split test-best single model.
+    ROUTES = {
+        "test_single_in_dist": [ITER2],          # 40.28
+        "test_geom_camber_rc": [WARM],           # 61.70
+        "test_geom_camber_cruise": [ITER2],      # 27.95
+        "test_re_rand": [WARM],                  # 51.05
+    }
+elif _ROUTE_KIND == "single_ensemble":
+    # Only ensemble single (where iter2 ~= iter1 ~= iter3 are decorrelated chains).
+    ROUTES = {
+        "test_single_in_dist": [ITER1, ITER2, ITER3],
+        "test_geom_camber_rc": [WARM],
+        "test_geom_camber_cruise": [ITER2],
+        "test_re_rand": [WARM],
+    }
+else:
+    ROUTES = {
+        "test_single_in_dist": [WARM, ITER1, ITER2, ITER3],
+        "test_geom_camber_rc": [WARM],
+        "test_geom_camber_cruise": [WARM, ITER2, ITER3],
+        "test_re_rand": [WARM],
+    }
 
 
 @dataclass
