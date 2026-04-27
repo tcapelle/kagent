@@ -20,7 +20,6 @@ from tqdm import tqdm
 
 from data import X_DIM, VAL_SPLIT_NAMES, pad_collate, load_data
 from model import Transolver
-from viz import visualize
 
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
@@ -317,19 +316,7 @@ if best_metrics:
     print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
-    plot_dir = Path("plots") / run.id
-    n = 1 if cfg.debug else 4
-    for split_name, split_ds in val_splits.items():
-        images = visualize(model, split_ds, stats, device, n_samples=n,
-                           out_dir=plot_dir / split_name)
-        if images:
-            wandb.log({
-                f"val_predictions/{split_name}": [wandb.Image(str(p)) for p in images],
-                "global_step": global_step,
-            })
-
-# --- Auto-submit predictions ---
+# --- Auto-submit predictions FIRST (before slow viz) so kills are safe ---
 if best_metrics and not cfg.debug:
     import subprocess
     print("\nGenerating test predictions...")
@@ -340,5 +327,14 @@ if best_metrics and not cfg.debug:
     print(result.stdout)
     if result.returncode != 0:
         print(f"predict.py failed:\n{result.stderr[-500:]}")
+
+# --- Mirror checkpoint to PVC for durability ---
+if best_metrics:
+    pvc_dir = Path(f"/mnt/new-pvc/kagent/{os.environ.get('RESEARCH_TAG','default')}/{cfg.agent or 'unknown'}/checkpoints/model-{run.id}")
+    pvc_dir.mkdir(parents=True, exist_ok=True)
+    import shutil
+    shutil.copy(model_path, pvc_dir / "checkpoint.pt")
+    shutil.copy(model_dir / "config.yaml", pvc_dir / "config.yaml")
+    print(f"Mirrored checkpoint to {pvc_dir}")
 
 wandb.finish()
