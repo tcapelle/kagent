@@ -67,11 +67,11 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # Blend two thorfinn rc-floor commits for residual decorrelation.
-    single: str = "thorfinnB:0.5,thorfinnA:0.5"
-    rc: str = "thorfinn9:0.5,thorfinnA:0.5"
+    # 3-way blend of all thorfinn floor commits (9379993 + 0ce97d2 + 889c2a0)
+    single: str = "thorfinnB:0.4,thorfinnA:0.3,thorfinn9:0.3"
+    rc: str = "thorfinn9:0.4,thorfinnA:0.3,thorfinnB:0.3"
     cruise: str = "thorfinn:1.0"
-    re_rand: str = "thorfinn9:0.5,thorfinnA:0.5"
+    re_rand: str = "thorfinn9:0.4,thorfinnA:0.3,thorfinnB:0.3"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
