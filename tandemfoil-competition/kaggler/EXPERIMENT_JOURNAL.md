@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9 constant-lr-2e5 + per-epoch SWA (continuation from iter6)
+
+- **Hypothesis:** With cosine fully consumed by iter6, switching to constant LR (2e-5) and continuing 9 more epochs lets the model keep walking the basin floor. Save per-epoch ckpts and SWA the last 6 to smooth out late-epoch noise.
+- **Change:** New `--constant_lr` and `--save_per_epoch` flags in `train.py`; post-training SWA done in-process. CLI: `--lr 2e-5 --constant_lr --epochs 9 --warmup_steps 0 --save_per_epoch --swa_last_n 6` (resume iter6 ckpt).
+- **Result:** Best epoch 9 (EMA) mean=71.29 (-0.9% vs iter6 71.94). SWA mean=71.30 — basically tied with best, *no* SWA gain. Submission `apr27/fern/89e07bd`.
+- **Verdict:** kept — small but real continuation gain. SWA itself didn't help (the constant-LR trajectory is too tight for averaging to denoise meaningfully).
+- **Notes:** Constant-LR continuation > additional cosine-decay fine-tuning here because the cosine end-of-schedule LR (~1e-7) was effectively zero by iter6. Holding LR at 2e-5 lets the model keep nudging. EMA finally beat live in late epochs once the trajectory was stable. The 9-epoch trajectory was: 71.88 / 71.94 / 71.99 / 71.88 / 71.62 / 71.67 / 71.57 / 71.31 / 71.29 — late epochs do most of the work.
+
 ### 2026-04-27 — iter8 weighted ensemble [iter6:0.6, iter5:0.3, iter7:0.1] — submitted
 
 - **Hypothesis:** A weighted average of normalized predictions from the chain (iter5/iter6) plus the divergent iter7 might recover a small gain by canceling per-model errors.
