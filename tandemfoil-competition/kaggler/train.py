@@ -38,14 +38,20 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 4
     surf_weight: float = 10.0
+    p_weight: float = 3.0           # extra weight on pressure channel (the leaderboard metric)
     epochs: int = 200
     n_hidden: int = 256
     n_layers: int = 8
     n_head: int = 8
     slice_num: int = 96
     mlp_ratio: int = 2
+    train_subsample: int = 40000    # subsample N nodes per training sample (keep all surface)
+    bf16: bool = True
+    grad_clip: float = 1.0
+    warmup_epochs: int = 3
+    huber_beta: float = 0.1         # SmoothL1 transition; lower → more L1-like
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -62,19 +68,50 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
 
-loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
+def make_train_collate(n_max: int):
+    """Random subsample of n_max nodes per training sample, but keep all surface nodes
+    (they're rare and dominate the metric). Falls back to pad_collate if n_max is None.
+    """
+    if not n_max:
+        return pad_collate
+
+    def collate(batch):
+        out = []
+        for x, y, sf in batch:
+            n = x.shape[0]
+            if n <= n_max:
+                out.append((x, y, sf))
+                continue
+            # Keep all surface nodes; subsample volume nodes uniformly.
+            surf_idx = sf.nonzero(as_tuple=False).view(-1)
+            vol_idx = (~sf).nonzero(as_tuple=False).view(-1)
+            n_keep_vol = max(0, n_max - surf_idx.numel())
+            if n_keep_vol < vol_idx.numel():
+                perm = torch.randperm(vol_idx.numel())[:n_keep_vol]
+                vol_idx = vol_idx[perm]
+            keep = torch.cat([surf_idx, vol_idx])
+            out.append((x[keep], y[keep], sf[keep]))
+        return pad_collate(out)
+    return collate
+
+
+loader_kwargs = dict(num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
 
 if cfg.debug:
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              shuffle=True, **loader_kwargs)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True,
+                              collate_fn=make_train_collate(cfg.train_subsample),
+                              **loader_kwargs)
 else:
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
-                              sampler=sampler, **loader_kwargs)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, sampler=sampler,
+                              collate_fn=make_train_collate(cfg.train_subsample),
+                              **loader_kwargs)
 
+# Validation runs on full meshes — no subsample.
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False,
+                     collate_fn=pad_collate, **loader_kwargs)
     for name, ds in val_splits.items()
 }
 
@@ -94,7 +131,24 @@ model_config = dict(
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+
+def lr_lambda(epoch: int) -> float:
+    if epoch < cfg.warmup_epochs:
+        return (epoch + 1) / max(1, cfg.warmup_epochs)
+    progress = (epoch - cfg.warmup_epochs) / max(1, MAX_EPOCHS - cfg.warmup_epochs)
+    return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159265)).item())
+
+
+scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+# Per-channel weights — extra emphasis on pressure (the leaderboard metric).
+ch_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=device)
+
+
+def smooth_l1(err: torch.Tensor, beta: float) -> torch.Tensor:
+    abs_err = err.abs()
+    return torch.where(abs_err < beta, 0.5 * err * err / beta, abs_err - 0.5 * beta)
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -146,6 +200,10 @@ for epoch in range(MAX_EPOCHS):
     epoch_vol = epoch_surf = 0.0
     n_batches = 0
 
+    autocast_ctx = (torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+                    if cfg.bf16 and torch.cuda.is_available()
+                    else torch.amp.autocast(device_type="cuda", enabled=False))
+
     for x, y, is_surface, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{MAX_EPOCHS}", leave=False):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         is_surface = is_surface.to(device, non_blocking=True)
@@ -154,17 +212,21 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2
+        with autocast_ctx:
+            pred = model({"x": x})["preds"]
+            err = pred - y_norm
+            sl1 = smooth_l1(err, cfg.huber_beta) * ch_w  # per-channel weighted
 
-        vol_mask = mask & ~is_surface
-        surf_mask = mask & is_surface
-        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-        loss = vol_loss + cfg.surf_weight * surf_loss
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (sl1 * vol_mask.unsqueeze(-1)).sum() / (vol_mask.sum().clamp(min=1) * ch_w.sum())
+            surf_loss = (sl1 * surf_mask.unsqueeze(-1)).sum() / (surf_mask.sum().clamp(min=1) * ch_w.sum())
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
         loss.backward()
+        if cfg.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -188,7 +250,7 @@ for epoch in range(MAX_EPOCHS):
         mae_vol = torch.zeros(3, device=device)
         n_surf = n_vol = n_vb = 0
 
-        with torch.no_grad():
+        with torch.no_grad(), autocast_ctx:
             for x, y, is_surface, mask in vloader:
                 x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
                 is_surface = is_surface.to(device, non_blocking=True)
@@ -198,18 +260,19 @@ for epoch in range(MAX_EPOCHS):
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
                 pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+                err = (pred - y_norm).float()
+                sl1 = smooth_l1(err, cfg.huber_beta) * ch_w
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                val_vol += (sq_err * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
-                val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
+                val_vol += (sl1 * vol_mask.unsqueeze(-1)).sum().item() / (vol_mask.sum().clamp(min=1).item() * ch_w.sum().item())
+                val_surf += (sl1 * surf_mask.unsqueeze(-1)).sum().item() / (surf_mask.sum().clamp(min=1).item() * ch_w.sum().item())
                 n_vb += 1
 
-                pred_orig = pred * stats["y_std"] + stats["y_mean"]
-                err = (pred_orig - y).abs()
-                mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
-                mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))
+                pred_orig = pred.float() * stats["y_std"] + stats["y_mean"]
+                err_phys = (pred_orig - y).abs()
+                mae_surf += (err_phys * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
+                mae_vol += (err_phys * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 n_surf += surf_mask.sum().item()
                 n_vol += vol_mask.sum().item()
 
