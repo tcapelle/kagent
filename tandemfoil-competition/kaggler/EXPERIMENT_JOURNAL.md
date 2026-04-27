@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: chain from iter5 + p_weight=5 + 14 epochs
+
+- **Hypothesis:** Boosting p_weight further (3→5) and adding more epochs (12→14, capped to 12 by 30-min budget) should continue the gains from iter5.
+- **Change:** `train.py`: `WARMSTART=model-4ydobzth/checkpoint.pt`, `p_weight=5.0`, `lr=8e-6` (slightly lower since further along in convergence), `epochs=14`.
+- **Result:** 12 epochs in 30 min. 47.17 → epoch 12 = **46.14** (best, monotonic). Per-split: single=51.5, geom_rc=60.2, geom_cruise=27.9, re_rand=44.9 (approx). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/840db61/`. Run `6ulvj74p`.
+- **Verdict:** kept — gain of -1.03, 2.2%. Comparable to iter5's -1.33. Cumulative: 49.34 → 46.14 over 3 chain iters (-3.20).
+- **Notes:** geom_camber_rc and re_rand splits are improving the most. single_in_dist is sticky around 51.4-51.5. Train losses fluctuating but val monotone — random sampling effect not signal of overfit. Expected test ≈ val * (42.11/49.34) ≈ 39.4 (would clearly take #1 from current 42.11 leader, beating thorfinn 42.90 by ~3.5).
+
 ### 2026-04-27 — iter5: chain from iter4 + p-channel weight=3 + 12 epochs
 
 - **Hypothesis:** Increasing pressure-channel weight in the loss (eval metric is surf_p MAE) plus more epochs (12 vs 8) should yield further gains beyond iter4's 48.50.
