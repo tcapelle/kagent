@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: pure L1 + pw=8 + lr=5e-6
+- **Hypothesis:** Plateau at iter5 came from smooth_l1's quadratic region near zero error damping the gradient when most points are already close. Pure L1 keeps gradient magnitude constant — better aligned with the L1-MAE leaderboard metric. Combine with stronger pressure weight (5→8) and lower lr=5e-6 for a fine-step push.
+- **Change:** added `--loss_beta` (0.0 ⇒ pure L1). `--resume ckpt --lr 5e-6 --warmup_frac 0.01 --surf_p_weight 8.0 --loss_beta 0.0`.
+- **Result:** Best E13/14, avg_mae_surf_p = **45.98** (from 48.49, -5.2%). Per-split: single_in_dist=45.89, camber_rc=61.75, camber_cruise=30.02, re_rand=46.25. 29.2 min. W&B `8bfyf6yt`.
+- **Verdict:** Kept. Loss-shape change unstuck the plateau; iter6 gain (5.2%) > iter5 (4.8%) despite 2× lower lr — confirms the smooth_l1 region was the culprit.
+- **Notes:** This is the first iter that matches *val* with the leaderboard top (~45.x). Per-split single_in_dist (45.89) is now the worst-relative-to-leader (thorfinn test single=42.84). Test usually -7-8 below val → expected test ~38-39 (would be #1). **Next:** continue at lr=2e-6, same loss/pw, and probably try cranking pw further or a fresh-init bigger model.
+
 ### 2026-04-27 — iter5: chain lr=1e-5 + surf_p_weight=5
 - **Hypothesis:** Continue chain at lower lr (1e-5) for finer steps; pw=5 already gave gains so keep it.
 - **Change:** `--resume ckpt --lr 1e-5 --warmup_frac 0.01 --surf_p_weight 5.0`. No code change.
