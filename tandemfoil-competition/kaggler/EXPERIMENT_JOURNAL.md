@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: deepest vanilla chain (lr=1e-6) → val/loss=0.74, avg_surf_p=53.59
+- **Hypothesis:** iter9 deeper chain (lr=5e-6) reached 53.81. Lower the lr further to 1e-6 for one more refinement step.
+- **Change:** Warm-start from iter9 (`model-g6g19fjy`), `lr=1e-6`, 11 epochs, otherwise identical to iter9. Run `3xi0kuhu`.
+- **Result:** epoch 10/11 best, val/loss=**0.7380**, avg_surf_p=**53.59**. 28.7 min, 29.1GB. Auto-submit succeeded.
+- **Verdict:** kept; minor improvement (-0.4%). Vanilla chain has fully converged. 10-way ensemble (final weights 0.04/0.07/0.18/0.04/0.07/0.08/0.16/0.18/0.07/0.11) submitted under `505ec04`.
+- **Notes:** Best single still iter3 (51.27). Vanilla chain plateaued around 53.5. Diversity for ensemble largely tapped.
+
 ### 2026-04-27 — iter10: more Fourier (16 scales, max_freq=32) → val/loss=0.81, avg_surf_p=58.06
 - **Hypothesis:** Original iter1 used 8 Fourier scales with max_freq=16. Try doubling both (16 scales, max_freq=32) for finer-grained spatial frequencies — possibly captures small-scale turbulence near surfaces.
 - **Change:** From-scratch run identical to iter1 except `--fourier_scales 16 --fourier_max_freq 32.0`. Run `djx8kgjc`.
