@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: chain link from iter10 lr=5e-6 (commit 049e6b5 → preds)
+- **Hypothesis:** Continue warm-start chain from iter10 at lr=5e-6 to extract marginal further gains.
+- **Change:** `--warm_start /tmp/iter10_best.pt --lr 5e-6 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** val/loss=**1.2735** at epoch 1 (chain saturating; later epochs flat at ~1.275). Per-split val: 2.06, 1.57, 0.33, 1.14 — virtually identical to iter10.
+- **Verdict:** kept for ensemble averaging. Marginal gain confirms saturation as frieren observed at iter111.
+- **Notes:** Mistake — pushed iter12 ensemble (049e6b5) commit while iter11 was running, so iter11's auto-predict overwrote iter12's ensemble outputs. Re-ran iter12 ensemble at fresh commit `95afc8e`. Future: don't make commits between training launch and predict completion.
+
+### 2026-04-27 — iter12: ensemble iter9 0.3 + iter10 0.7 (commit 95afc8e — re-run after overwrite)
+- **Hypothesis:** Average iter9 (val 1.334) and iter10 (val 1.281) to add SWA-like averaging diversity. iter10 weighted higher (stronger).
+- **Change:** `python ensemble.py --sources a0370c7 3924526 --weights 0.3 0.7`. No training.
+- **Result:** TBD on next leaderboard refresh.
+- **Verdict:** kept; cheap free win.
+
 ### 2026-04-27 — iter10: bs=2 no-subsample on iter9 base 🚀🚀 NEW BEST (commit 3924526)
 - **Hypothesis:** Apply frieren's bs=2/no-subsample breakthrough recipe to the deeper pretrained iter9 (val 1.334) instead of iter1 (val 1.997). Should reach val ~1.0-1.1.
 - **Change:** `--warm_start /tmp/iter9_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. Same 192x6 arch.
