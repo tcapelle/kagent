@@ -215,7 +215,7 @@ class Config:
     epochs: int = 40
     grad_clip: float = 1.0
     loss: str = "l1"  # 'l1' (matches the leaderboard MAE metric) or 'mse'
-    train_subsample: int = 40000  # max nodes per sample at train time (full mesh during val)
+    train_subsample: int = 40000  # max nodes/sample at train time (set to 0 to use full mesh)
     surface_oversample: float = 0.5  # fraction of subsampled nodes that must be surface nodes (if available)
     warm_start: str | None = None  # path to a state_dict to load before training
     skip_warmup: bool = True  # skip the first epoch of cosine warmup when warm-starting
@@ -336,7 +336,8 @@ def main():
 
             # Subsample nodes to fit memory budget. Pick surface nodes preferentially
             # (they're rare and disproportionately important for the leaderboard metric).
-            if cfg.train_subsample and x.shape[1] > cfg.train_subsample:
+            # Set --train_subsample 0 to keep the full mesh (helps surface-pressure generalization).
+            if cfg.train_subsample > 0 and x.shape[1] > cfg.train_subsample:
                 B, N, _ = x.shape
                 keep = torch.zeros(B, N, dtype=torch.bool, device=device)
                 K = cfg.train_subsample
