@@ -40,9 +40,13 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 25.0
+    surf_weight: float = 10.0
+    p_weight: float = 1.0  # extra multiplier on pressure channel error
+    loss_type: str = "l1"  # "l1" | "mse" | "smooth_l1"
     epochs: int = 80
+    train_subsample: int = 16384  # random subsample per sample (0 = no subsample)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
+    warm_start: str = ""  # path to checkpoint to warm-start from
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
@@ -89,9 +93,40 @@ model_config = dict(
 )
 
 model = Transolver(**model_config).to(device)
+if cfg.warm_start:
+    state = torch.load(cfg.warm_start, map_location=device, weights_only=True)
+    model.load_state_dict(state)
+    print(f"Warm-started from {cfg.warm_start}")
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+
+
+def subsample_batch(x, y, is_surface, mask, n_keep):
+    """Subsample real (mask=True) points per sample, prioritising surface."""
+    B, N = mask.shape
+    if n_keep <= 0 or n_keep >= N:
+        return x, y, is_surface, mask
+    scores = torch.rand(B, N, device=mask.device)
+    scores = scores.masked_fill(~mask, -1.0)
+    scores = scores + is_surface.float() * 2.0  # ensure all surface kept
+    _, idx = torch.topk(scores, k=n_keep, dim=1)
+    idx, _ = idx.sort(dim=1)
+    new_x = x.gather(1, idx.unsqueeze(-1).expand(-1, -1, x.shape[-1]))
+    new_y = y.gather(1, idx.unsqueeze(-1).expand(-1, -1, y.shape[-1]))
+    new_s = is_surface.gather(1, idx)
+    new_m = mask.gather(1, idx)
+    return new_x, new_y, new_s, new_m
+
+
+def compute_err(pred, y_norm, loss_type):
+    if loss_type == "l1":
+        return (pred - y_norm).abs()
+    if loss_type == "mse":
+        return (pred - y_norm) ** 2
+    if loss_type == "smooth_l1":
+        return F.smooth_l1_loss(pred, y_norm, reduction="none", beta=1.0)
+    raise ValueError(loss_type)
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -142,12 +177,17 @@ for epoch in range(MAX_EPOCHS):
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
+        x, y, is_surface, mask = subsample_batch(x, y, is_surface, mask, cfg.train_subsample)
+
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             pred = model({"x": x})["preds"]
-            err = F.smooth_l1_loss(pred, y_norm, reduction="none", beta=0.1)
+            err = compute_err(pred, y_norm, cfg.loss_type)
+            # per-channel weighting: amplify pressure (channel 2)
+            ch_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=err.device, dtype=err.dtype)
+            err = err * ch_w
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
@@ -194,12 +234,12 @@ for epoch in range(MAX_EPOCHS):
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                     pred = model({"x": x})["preds"]
                 pred = pred.float()
-                sl1 = F.smooth_l1_loss(pred, y_norm, reduction="none", beta=0.1)
+                eval_err = compute_err(pred, y_norm, cfg.loss_type)
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                val_vol += (sl1 * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
-                val_surf += (sl1 * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
+                val_vol += (eval_err * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
+                val_surf += (eval_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
