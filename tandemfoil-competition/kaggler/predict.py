@@ -53,7 +53,7 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-from train import Transolver
+from model import Transolver
 
 model_config = dict(
     space_dim=2,
