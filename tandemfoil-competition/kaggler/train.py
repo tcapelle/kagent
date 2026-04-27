@@ -230,14 +230,13 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter9: chain from iter7 best (4hbvu7xe, val=45.46) with L1-only loss
-# and single-foil sampling boost (single_in_dist is our weakest split).
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-4hbvu7xe/checkpoint.pt"
+# Iter11: chain from iter9 best (qsywg20y, val=44.73), even lower LR.
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-qsywg20y/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 5e-6
+    lr: float = 3e-6
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
