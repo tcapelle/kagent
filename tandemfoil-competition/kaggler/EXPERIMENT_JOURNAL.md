@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5-chain-lr5e-4-sw15 (iter 5)
+- **Hypothesis:** Iter 4 was still improving when timeout hit. Warm-start a fresh 30-min run from iter 4's best checkpoint with halved LR (5e-4) and bumped surf_weight (15) to keep pushing surface error down.
+- **Change:** `--warm_start /mnt/new-pvc/.../iter4_best_backup.pt --lr 5e-4 --surf_weight 15 --warmup_steps 100 --cosine_epochs 60`. EMA shadow weights are reinitialised from the loaded weights (so they're consistent at start).
+- **Result:** Best epoch 58, mean val surf_p MAE = **47.59** (single_in_dist=37.51, geom_rc=74.81, geom_cruise=22.10, re_rand=55.95). val/loss=1.45. 58 epochs in 28.1 min. Run: `frieren/iter5-chain-lr5e-4-sw15` (`bf5ustqc`). Commit `eb54b3a`.
+- **Verdict:** Kept — improved on iter 4 by 4.8% (50.01 → 47.59). All 4 split MAEs improved; biggest drops on `single_in_dist` (-4.8) and `geom_cruise` (-2.0). geom_rc and re_rand barely moved (-1.6 and -1.3). The metric ceiling on these OOD tracks is set by something other than training time — likely architecture / capacity for global reasoning.
+- **Notes / next ideas:**
+  - **Diminishing chains.** Each chain is ~5% — more chains won't catch thorfinn (40.68).
+  - **OOD tracks dominate loss budget.** geom_rc 74.81 + re_rand 55.95 = 130.8 of total 210.4 (62%). Have to attack those directly.
+  - Iter 6 plan: chain again with **larger subsample (80k vol)** to give each gradient step more signal — 250k samples vs 160k now. ~44s/step bench (vs 33s). Should still fit ~30 epochs in 28 min.
+
 ### 2026-04-27 — resmlp-h384-l1-pwt3-ema-msf (iter 4)
 - **Hypothesis:** Apply Edward+alphonse's proven recipe — L1 loss with channel weight `[1, 1, 3]` (boosts pressure), EMA shadow weights with decay 0.9995, multi-scale Fourier features (8 scales, max_freq 16). Roll back to iter 2's fast ResMLP (h=384 b=6 bf16) since Transolver was too slow. Aim: beat alphonse (50.70).
 - **Change:** New `MultiScaleFourier` class on positions; new `channel_loss(...)` with L1+p_weight=3; EMA shadow `state_dict` updated post-step (decay 0.9995, start 500 steps); validation and final ckpt saved using EMA weights; `cfg.warm_start` arg for chaining; `arch="resmlp"` default.
