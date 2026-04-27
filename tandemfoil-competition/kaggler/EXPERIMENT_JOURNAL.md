@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5+: MSE-loss diversity + ensemble sweep (PB 47.07)
+- **Hypothesis:** iter5 = warm-start iter1 with **MSE loss** (instead of L1) at bs=2 nosub lr=5e-5, 10 ep. Different loss landscape → different errors → ensembles well with iter2 (L1).
+- **Change:** No code change. `train.py --warm_start models/model-wrz7s30a/checkpoint.pt --loss_type mse --batch_size 2 --train_subsample 0 --lr 5e-5 --epochs 10`. iter5 commit `8deac10`. Predict.py failed via auto-submit (parent train.py held GPU); ran manually after kill.
+- **Result:** iter5 val/loss **1.3286** (BETTER than iter2's 1.4497 in MSE-evaluated val). But test surf_p 48.20 — slightly worse than iter2 alone (47.32). MSE-better val didn't translate to better surf MAE.
+- **Verdict:** kept for ensembling. Single-model use is dominated by iter2.
+- **Notes:** Important lesson — **val/loss is MSE-based; surf_p is L1-based**, so a model with lower val_loss can have higher surf MAE. For surf_p, L1 training matches the metric better.
+- **Ensemble sweep (all bs=2 nosub):**
+  - iter2 + iter5 0.5/0.5 (`b039e5e`): **47.14**
+  - iter2 + iter5 0.7/0.3 (`0dd7045`): **47.07** 🥇 — current PB
+  - iter2 + iter5 0.6/0.4 (`c5bdd47`): 47.08
+  - iter1 + iter2 + iter5 0.1/0.5/0.4 (`f8ca88d`): 47.55
+  - iter1 + iter2 0.3/0.7 (`9c8be71`): 49.28 (iter1 dilutes too much)
+- **Takeaway:** weighting toward iter2 ~70% with 30% iter5 hits the sweet spot. iter1 hurts every blend it's in.
+
 ### 2026-04-27 — iter4: ensemble iter1 + iter2 weighted 0.3/0.7
 - **Hypothesis:** iter1 (bs=4 sub=40k) and iter2 (bs=2 nosub) train on different mesh resolutions, so their errors should partially decorrelate. Weighted average favoring iter2 (the stronger one) should pull predictions toward iter2 while iter1 covers iter2's blind spots.
 - **Change:** Added `ensemble.py` that averages saved test predictions per-sample. `python ensemble.py --sources f2e8e4f 89eb6fd --weights 0.3 0.7`. Commit `9c8be71`.
