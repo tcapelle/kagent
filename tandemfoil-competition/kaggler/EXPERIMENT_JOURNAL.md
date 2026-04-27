@@ -22,6 +22,28 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v12/v13/v14 my own diverse base + 4-ckpt cross-basin ensemble
+- **Hypothesis:** v11's gain came entirely from frieren's iter9 (a fresh-init basin). To shave a
+  bit more, I needed a *second* diverse basin that I control. Train one from scratch (v12) and
+  chain-train (v13) to make it ensemble-quality, then add it to the v11 ensemble.
+- **Change:** v12 is a re-run of frieren's iter3 recipe (`--train_subsample 16384 --batch_size 4
+  --lr 5e-4 --p_weight 3 --surf_weight 10 --epochs 80`), no code changes — torch's per-process
+  random seed gives a different init. v13 chains v12 with the iter4 recipe (`--train_subsample 0
+  --batch_size 2 --lr 2e-5 --p_weight 3 --surf_weight 10 --epochs 12`). v14 is the 4-checkpoint
+  ensemble (v10 + v13 + iter9 + irysplar) submitted via `predict_ensemble.py` after a marker commit.
+- **Result:**
+  * v12 (fresh base): 72 epochs, best ep 61 → val 83.08. Predictions auto-saved (test ~71).
+  * v13 (chain from v12): 12 epochs, best ep 12 → val 42.19 (single 42.61 / geom_rc 56.91 /
+    cruise 26.90 / re_rand 42.35). Now in the same ballpark as frieren's iter9_finetuned (42.10).
+  * v14 ensemble val sweeps:
+    v10+iter9+irysplar 37.86 · v10+v13+irysplar 37.97 · v10+v13+iter9 37.65 ·
+    **v10+v13+iter9+irysplar 37.41** · v10+v13 38.16 · v13+iter9+irysplar 37.71.
+    Submitted v10+v13+iter9+irysplar (4 ckpts) at commit `c5010a8` → expected test ~31.4.
+- **Verdict:** kept — v14 strictly improves over v11 on val (-0.46) by adding my v13 to frieren's
+  iter9 (independent fresh-init basins).
+- **Notes:** I now own a second basin so even if frieren's PVC ckpts disappear or change, v14
+  remains reproducible. Only change since v11 was adding v13 to the average.
+
 ### 2026-04-27 — v11 cross-basin output-space ensemble (v10 + frieren iter9 + irysplar)
 - **Hypothesis:** earlier output-space ensembles I tried (v9 + irysplar; v9 + irysplar + h3y73gp9)
   were *worse* than v9 alone because all components shared v9's lineage. Frieren's journal revealed
