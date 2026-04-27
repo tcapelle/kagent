@@ -40,8 +40,11 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 4
     val_batch_size: int = 2  # validation runs on full meshes — keep small to fit in VRAM
-    surf_weight: float = 15.0
-    p_weight: float = 1.0  # extra weight on the pressure channel (the leaderboard metric).
+    # Per-region/per-channel L1 weights. The leaderboard ranks by surface pressure MAE → big weight there.
+    surf_p_weight: float = 6.0
+    surf_uv_weight: float = 1.0
+    vol_p_weight: float = 0.5
+    vol_uv_weight: float = 0.5
     epochs: int = 8  # cosine anneals over this many epochs; pick to roughly match wall-clock budget
     grad_clip: float = 1.0
     bf16: bool = True
@@ -188,16 +191,27 @@ for epoch in range(MAX_EPOCHS):
         with autocast_ctx:
             pred = model({"x": x})["preds"]
         # L1 in normalised space matches the per-channel MAE metric (MAE_phys = std * MAE_norm).
-        abs_err = (pred.float() - y_norm).abs()
-        # Up-weight the pressure channel on the surface — it's the leaderboard metric.
-        chan_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=device).view(1, 1, 3)
-        surf_err = abs_err * chan_w
+        abs_err = (pred.float() - y_norm).abs()  # [B, N, 3]
 
         vol_mask = mask & ~is_surface
         surf_mask = mask & is_surface
-        vol_loss = (abs_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (surf_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-        loss = vol_loss + cfg.surf_weight * surf_loss
+        # Split errors into UV (channels 0-1) and pressure (channel 2), each averaged over its region.
+        uv_err = abs_err[..., :2].mean(dim=-1)
+        p_err = abs_err[..., 2]
+        n_surf = surf_mask.sum().clamp(min=1)
+        n_vol = vol_mask.sum().clamp(min=1)
+        l_surf_uv = (uv_err * surf_mask).sum() / n_surf
+        l_surf_p = (p_err * surf_mask).sum() / n_surf
+        l_vol_uv = (uv_err * vol_mask).sum() / n_vol
+        l_vol_p = (p_err * vol_mask).sum() / n_vol
+        loss = (
+            cfg.surf_p_weight * l_surf_p
+            + cfg.surf_uv_weight * l_surf_uv
+            + cfg.vol_p_weight * l_vol_p
+            + cfg.vol_uv_weight * l_vol_uv
+        )
+        vol_loss = l_vol_uv + l_vol_p
+        surf_loss = l_surf_uv + l_surf_p
 
         optimizer.zero_grad()
         loss.backward()
@@ -255,7 +269,10 @@ for epoch in range(MAX_EPOCHS):
 
         val_vol /= max(n_vb, 1)
         val_surf /= max(n_vb, 1)
-        split_loss = val_vol + cfg.surf_weight * val_surf
+        split_loss = (
+            cfg.vol_uv_weight * val_vol  # approximation: per-channel split for val_vol/val_surf is overkill
+            + cfg.surf_p_weight * val_surf
+        )
         mae_surf /= max(n_surf, 1)
         mae_vol /= max(n_vol, 1)
 
