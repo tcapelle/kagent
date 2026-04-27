@@ -1,10 +1,29 @@
 """Model definitions shared between train.py and predict.py."""
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from timm.layers import trunc_normal_
+
+
+class FourierFeatures(nn.Module):
+    """Random Fourier features for low-dim spatial coords.
+
+    Following Tancik et al. 2020 — fixes coordinate-MLP spectral bias near
+    high-curvature regions (like the LE stagnation peak on an airfoil).
+    Output: [B, N, 2*n_freqs] sin/cos features.
+    """
+
+    def __init__(self, in_dim: int = 2, n_freqs: int = 32, sigma: float = 2.0):
+        super().__init__()
+        self.register_buffer("B", torch.randn(in_dim, n_freqs) * sigma)
+
+    def forward(self, x):
+        proj = 2 * math.pi * (x @ self.B)  # [B, N, n_freqs]
+        return torch.cat([proj.sin(), proj.cos()], dim=-1)
 
 
 ACTIVATION = {
@@ -125,6 +144,7 @@ class Transolver(nn.Module):
     def __init__(self, space_dim=1, n_layers=5, n_hidden=256, dropout=0.0,
                  n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
                  slice_num=32, ref=8, unified_pos=False,
+                 ff_n_freqs: int = 0, ff_sigma: float = 2.0,
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None):
         super().__init__()
@@ -132,13 +152,20 @@ class Transolver(nn.Module):
         self.unified_pos = unified_pos
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
+        self.ff_n_freqs = ff_n_freqs
 
         if self.unified_pos:
             self.preprocess = MLP(fun_dim + ref**3, n_hidden * 2, n_hidden,
                                    n_layers=0, res=False, act=act)
         else:
-            self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
+            ff_out = 2 * ff_n_freqs if ff_n_freqs > 0 else 0
+            preprocess_in = fun_dim + space_dim + ff_out
+            self.preprocess = MLP(preprocess_in, n_hidden * 2, n_hidden,
                                    n_layers=0, res=False, act=act)
+            if ff_n_freqs > 0:
+                self.coord_ff = FourierFeatures(
+                    in_dim=space_dim, n_freqs=ff_n_freqs, sigma=ff_sigma
+                )
 
         self.n_hidden = n_hidden
         self.space_dim = space_dim
@@ -163,7 +190,11 @@ class Transolver(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, data, **kwargs):
-        x = data["x"]
+        x = data["x"]  # [B, N, fun_dim + space_dim] with coords in dims [:space_dim]
+        if self.ff_n_freqs > 0:
+            coords = x[..., : self.coord_ff.B.shape[0]]
+            ff = self.coord_ff(coords)
+            x = torch.cat([x, ff], dim=-1)
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for block in self.blocks:
             fx = block(fx)
