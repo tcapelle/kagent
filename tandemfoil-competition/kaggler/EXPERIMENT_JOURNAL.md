@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9-multi-fourier (KEPT, marginal)
+- **Hypothesis:** single Fourier sigma trades broad context vs fine peak fitting; multi-scale (sigmas=[4, 8, 16], 96 freqs/band → 192 features) gives all scales.
+- **Change:** `model.py::FourierEmbedding` accepts `sigmas: list[float]` and concatenates per-band Gaussian projections; `train.py` defaults to `fourier_sigmas=(4.0, 8.0, 16.0)`.
+- **Result:** 13/14 epochs. **avg val surf_p MAE 66.76 → 68.48 (+2.6% val WORSE), but test 60.92 → 60.48 (-0.7% TEST BETTER).** Per test split: in_dist 67.57 (-2.7%), rc 79.60 (+0.4%), cruise 37.49 (+3.2%), re_rand 57.25 (-2.2%). W&B `kagent-tandemfoil3/jtq7wzdb`.
+- **Verdict:** kept — test marginally improved despite val regression. Validates that sigma=4 (broad) and sigma=16 (fine) compose; simple sigma=12 was overfitting OOD.
+- **Notes:** Val/test mismatch suggests multi-scale Fourier may regularize differently. Small effect either way; the next big lever is architectural (aux head) or capacity.
+
 ### 2026-04-27 — iter8-surf_p5 (FAILED, discarded)
 - **Hypothesis:** in Cp-space, surface-pressure errors are dimensionless O(0.1) — much safer to crank `surf_p_weight=5.0` (vs 2.5) without volume gradient starvation.
 - **Change:** `train.py` — `surf_p_weight: 2.5 → 5.0`. Single knob.
