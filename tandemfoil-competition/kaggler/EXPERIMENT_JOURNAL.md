@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12: deeper 224d/8L/8H from scratch → val/loss=0.87, avg_surf_p=62.81
+- **Hypothesis:** Capacity ceiling in 192/6/6. Try 224/8/8 (3M params, 1.7x iter1) for more representation power. Same proven recipe (subsample=40k, p_weight=3, 25 epochs).
+- **Change:** `--n_hidden 224 --n_layers 8 --n_head 8 --slice_num 64 --fourier_scales 8 --epochs 25`. Run `62mgdajz`.
+- **Result:** stopped at epoch 22 (timeout 29.8 min, 16.9GB). val/loss=**0.8739**, avg_surf_p=**62.81** — worse than iter1 baseline. Likely undertrained.
+- **Verdict:** kept for ensemble; not a winning single. **Leaderboard at this point: edward rank #4 (42.27 with 9-way ensemble) vs top 3 bunched at 39.5–39.8.**
+- **Notes:** Single best is still iter3 (51.27). Plan: lean down the ensemble (drop iter5, iter12) and weight iter3 heavier; consider warm-chaining iter12 to recover its capacity, or compute validation predictions and grid-search ensemble weights.
+
 ### 2026-04-27 — iter11: deepest vanilla chain (lr=1e-6) → val/loss=0.74, avg_surf_p=53.59
 - **Hypothesis:** iter9 deeper chain (lr=5e-6) reached 53.81. Lower the lr further to 1e-6 for one more refinement step.
 - **Change:** Warm-start from iter9 (`model-g6g19fjy`), `lr=1e-6`, 11 epochs, otherwise identical to iter9. Run `3xi0kuhu`.
