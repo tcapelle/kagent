@@ -29,10 +29,24 @@ from viz import visualize
 # Subsampling collate: training only — keeps all surface nodes + random volume
 # ---------------------------------------------------------------------------
 
-def make_subsample_collate(n_keep: int):
+# Per-sample geometry params we may augment. dim 15 = foil1 NACA camber (M digit /9).
+# val_geom_camber_rc tests OOD camber 0.78/0.89 not seen in training tandem set.
+GEOM_AUG_DIMS = [15, 16, 17]  # foil1 camber (M), position (P), thickness (TT)
+
+
+def make_subsample_collate(n_keep: int, camber_noise: float = 0.0):
     def collate(batch):
         new_batch = []
         for x, y, is_surface in batch:
+            if camber_noise > 0:
+                # Shared per-sample noise on geometry features (raw scale).
+                # Only foil1 camber (dim 15) gets full noise — that's the OOD axis.
+                # Foil1 position/thickness get a smaller perturbation for diversity.
+                noise = torch.zeros(x.shape[1])
+                noise[15] = torch.randn(1).item() * camber_noise
+                noise[16] = torch.randn(1).item() * camber_noise * 0.3
+                noise[17] = torch.randn(1).item() * camber_noise * 0.3
+                x = x + noise.unsqueeze(0)
             n = x.shape[0]
             if n <= n_keep:
                 new_batch.append((x, y, is_surface))
@@ -75,6 +89,7 @@ class Config:
     warmup_epochs: int = 3
     grad_clip: float = 1.0
     train_subsample: int = 40000
+    camber_noise: float = 0.0  # Gaussian noise std on foil1 camber (raw NACA-M units)
     n_hidden: int = 192
     n_layers: int = 6
     n_head: int = 6
@@ -98,7 +113,7 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
 
-train_collate = make_subsample_collate(cfg.train_subsample)
+train_collate = make_subsample_collate(cfg.train_subsample, camber_noise=cfg.camber_noise)
 loader_kwargs = dict(num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
 
