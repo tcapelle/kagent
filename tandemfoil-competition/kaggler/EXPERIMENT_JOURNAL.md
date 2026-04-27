@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: chain warm-start iter5 bs=2 no_sub lr=2e-5 — second strong endpoint
+- **Hypothesis:** Mirror iter2's recipe but on iter5 (different seed). Should converge to a similar val ~54 endpoint with a *different* optimization trajectory than iter4 — that's the diversity that finally cracks ensembles open.
+- **Change:** No code change. CLI: `--warm_start /tmp/iter5_best.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --epochs 10 --warmup_epochs 1`. Run `fuc1h5pv`.
+- **Result:** 10 epochs, 25.0 min. Val 67.18→61.79→59.92→57.88→57.64→55.17→54.73→54.34→54.04→**53.87**. Best epoch 10: val/avg_surf_p=53.87, val/loss=1.46. Iter6 predictions overwrote iter5's at `be2989a` (which is fine — iter6 alone is the relevant submission).
+- **Verdict:** Kept. Saved to `/tmp/iter6_best.pt`. Comparable val to iter4 (53.32) but distinct seed → real ensemble diversity.
+- **Notes:** Chain converged faster than iter2 — already at val 53.87 by epoch 10 vs iter2's 54.37. Different seed initialization helps. Now ensemble {iter4, iter6} or {iter3, iter4, iter6}.
+
 ### 2026-04-27 — iter5: from-scratch new seed (different optimization trajectory)
 - **Hypothesis:** Chain-correlated ensembles barely help (ensemble2: 46.90 ≈ iter3 solo 46.87). Apr23 lesson: a from-scratch model with a different seed adds *real* prediction-diversity (iter12 made the apr23 ensemble PB possible). iter5 = exact same recipe as iter1 (192x6, bs=8, sub40K, L1, p_w=3, 35 ep) but different RNG seed (no warm_start).
 - **Change:** No code change. CLI: `--batch_size 8 --train_subsample 40000 --lr 5e-4 --epochs 35`. Run `ioyh70am`.
