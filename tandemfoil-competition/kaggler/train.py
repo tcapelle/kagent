@@ -213,8 +213,11 @@ class Config:
     surf_weight: float = 15.0
     p_weight: float = 2.0  # extra weight on pressure channel inside loss
     train_max_points: int = 0  # 0 = no subsample
-    epochs: int = 50
+    train_subsample: int = 0  # vectorized topk subsample (preferred)
+    epochs: int = 80
     resume: str = ""  # path to checkpoint to warm-start from
+    loss_type: str = "mse"  # mse | l1 | smooth_l1
+    grad_clip: float = 0.0
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -336,62 +339,45 @@ def main():
             is_surface = is_surface.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
 
-            # Subsample to fit larger models in VRAM. Keep all surface points,
-            # randomly subsample volume points down to a budget.
-            if cfg.train_max_points and x.shape[1] > cfg.train_max_points:
-                B, N = x.shape[:2]
-                keep = is_surface | ~mask  # placeholder, will overwrite mask
-                # We sub-sample per batch element: keep all surface + random vol up to budget.
-                surf_count = is_surface.sum(dim=1)  # [B]
-                vol_budget = (cfg.train_max_points - surf_count).clamp(min=1)
-                keep_list = []
-                for b in range(B):
-                    valid = mask[b]
-                    sb = is_surface[b] & valid
-                    vb = (~is_surface[b]) & valid
-                    vb_idx = vb.nonzero(as_tuple=False).squeeze(-1)
-                    perm = torch.randperm(vb_idx.shape[0], device=x.device)[:vol_budget[b]]
-                    chosen_vol = vb_idx[perm]
-                    keep_b = torch.zeros(N, dtype=torch.bool, device=x.device)
-                    keep_b[sb] = True
-                    keep_b[chosen_vol] = True
-                    keep_list.append(keep_b)
-                keep = torch.stack(keep_list, dim=0)  # [B, N]
-                # Pad-pack the kept points into a uniform [B, M, ...] tensor.
-                kept_per = keep.sum(dim=1)
-                M = int(kept_per.max().item())
-                new_x = torch.zeros(B, M, x.shape[-1], device=x.device, dtype=x.dtype)
-                new_y = torch.zeros(B, M, y.shape[-1], device=y.device, dtype=y.dtype)
-                new_sf = torch.zeros(B, M, dtype=torch.bool, device=x.device)
-                new_mask = torch.zeros(B, M, dtype=torch.bool, device=x.device)
-                for b in range(B):
-                    n = int(kept_per[b].item())
-                    new_x[b, :n] = x[b, keep[b]]
-                    new_y[b, :n] = y[b, keep[b]]
-                    new_sf[b, :n] = is_surface[b, keep[b]]
-                    new_mask[b, :n] = True
-                x, y, is_surface, mask = new_x, new_y, new_sf, new_mask
+            # Vectorized topk subsample: keep all surface, fill remainder with
+            # random volume up to budget.
+            if cfg.train_subsample and x.shape[1] > cfg.train_subsample:
+                B, N = mask.shape
+                scores = torch.rand(B, N, device=mask.device)
+                scores = scores.masked_fill(~mask, -1.0)
+                scores = scores + is_surface.float() * 2.0
+                _, idx = torch.topk(scores, k=cfg.train_subsample, dim=1)
+                idx, _ = idx.sort(dim=1)
+                x = x.gather(1, idx.unsqueeze(-1).expand(-1, -1, x.shape[-1]))
+                y = y.gather(1, idx.unsqueeze(-1).expand(-1, -1, y.shape[-1]))
+                is_surface = is_surface.gather(1, idx)
+                mask = mask.gather(1, idx)
 
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
             with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=cfg.amp):
                 pred = model({"x": x})["preds"]
-                err = pred.float() - y_norm
-                sq_err = err * err
+                err_raw = pred.float() - y_norm
+                if cfg.loss_type == "l1":
+                    err = err_raw.abs()
+                elif cfg.loss_type == "smooth_l1":
+                    err = F.smooth_l1_loss(pred.float(), y_norm, reduction="none", beta=1.0)
+                else:  # mse
+                    err = err_raw * err_raw
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                # Channel weights inside the squared-error sum: emphasize pressure
-                # because the leaderboard ranks on surface pressure MAE.
                 ch_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=err.device)
-                w_sq = sq_err * ch_w
-                vol_loss = (w_sq * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (w_sq * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+                w_err = err * ch_w
+                vol_loss = (w_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+                surf_loss = (w_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
                 loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
             loss.backward()
+            if cfg.grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
