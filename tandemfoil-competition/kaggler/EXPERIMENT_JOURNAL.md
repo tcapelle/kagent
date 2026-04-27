@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — fourier-do05
+- **Hypothesis:** training curve plateaued in iter2 with ~3x train/val gap on val_geom_camber_rc — generalization is the bottleneck. Add multi-scale Fourier positional encoding for (x, z) (8 frequencies, 32 features) so the model gets richer spatial inductive bias; bump slice_num 64→96 for more attention capacity; small dropout 0.05.
+- **Change:** model.py — `FourierPosEnc` module (sin/cos at log-spaced freqs up to 32π) wired into Transolver (`pos_freqs=8`); train.py — slice_num=96, dropout=0.05 in model_config.
+- **Result:** 24 epochs in 31 min (78s/epoch — bigger slice and pos-enc cost). Best epoch 23: avg_surf_p=111.34. val_geom_camber_rc dropped from 4.04 (iter2) to 2.13 — Fourier features helped most on the unseen-camber generalization task. Predictions saved to `apr27-4/fern/3c5ceff`.
+- **Verdict:** kept (commit `74475fa`). 21% improvement (141.50 → 111.34). Now competitive with edward (90.12) but still behind nezuko (79.95) and thorfinn (45.94).
+- **Notes:** train still at 0.4 vol / 0.23 surf — still some overfit room. Next bet: scale capacity (n_hidden=256, maybe n_layers=10) with dropout=0.1 to keep regularization. Could also try EMA for evaluation since val curve is wobbly.
+
 ### 2026-04-27 — subsample40k
 - **Hypothesis:** epoch time (245s) was capping training at 7 epochs; subsample each training sample to <=40k nodes (keep all surface + random subset of volume) to fit ~5x more epochs without losing surface coverage. Validation still uses full mesh.
 - **Change:** custom train collate `make_train_collate(40000)` that subsamples per-sample before pad_collate; epochs raised to 80; freed model+optimizer before subprocess.run for predict.py to avoid GPU OOM.
