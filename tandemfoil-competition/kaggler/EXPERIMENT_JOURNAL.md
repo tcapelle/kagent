@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: chain at LR 4e-6 + p_weight 26
+- **Hypothesis:** keep ramping (p_weight 22→26, LR 5e-6→4e-6, same domain bias 1,3,2). Diminishing returns expected.
+- **Change:** args only.
+- **Result:** 28 epochs in 30.9 min. Best epoch 23 → val/avg_surf_p=45.57 (single=39.67, geom_rc=63.09, geom_cruise=31.53, re_rand=47.98). Run 880g4ow3. Predictions at apr27-5/askeladd/d7415da.
+- **Verdict:** kept — improvement (45.74 → 45.57, -0.17). Per-iter gain shrinking but consistent.
+- **Notes:** geom_rc still ~63. Single ~39.7. Plateau is real on this architecture; need a substantively different move (diverse-init model + true ensemble) or accept ~45 floor.
+
 ### 2026-04-27 — iter8: stronger domain bias (1,3,2) + p_weight 22 + LR 5e-6
 - **Hypothesis:** Iter7 domain bias worked. Push tandem weight harder (1,2.5,1.5 → 1,3,2) and continue chain ramp.
 - **Change:** args only.
