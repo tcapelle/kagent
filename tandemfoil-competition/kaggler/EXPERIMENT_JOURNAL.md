@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 8 — frieren-style fast subsample (16k) + L1 + grad_clip; 5-way ensemble
+- **Hypothesis:** Sniffed frieren's pushed branch — they get >2× more epochs in 30 min by subsampling **16k** points instead of my 50k. With T-192-6-6, that frees up enough headroom that ~50 epochs fit in 30 min and the cosine schedule actually completes. Also: vectorized topk subsample (no Python loop) + L1 loss + grad-clip 1.0 + p_weight=3 + sw=15 + lr=1e-4, warm-started from iter-7.
+- **Change:** `train.py` rewrote subsample as topk on `is_surface*2 + rand` scores (keeps all surface, fills rest with random vol). Added `loss_type` (mse/l1/smooth_l1) and `grad_clip`. Default `epochs=80` so cosine actually anneals to zero. Wandb run `11mrhkwp`.
+- **Result:** 56 epochs done in 30 min (~32 s/epoch, vs ~175 s before). Best **val avg surf_p=55.5** at epoch 41 (surf_Ux=0.70). Final saved checkpoint is val/loss-best (epoch 46), avg surf_p=59.3 there. Memory peak only 4 GB — model is barely a load now.
+- **Verdict:** Kept — single-model jump from 82.6 → 55.5 (33% relative drop). After it landed, reran `predict_ensemble.py` with five checkpoints (iter3 `aglmomxf` + iter4 `2v94v7an` + iter5 `q5ckvos5` + iter7 `tdafguoe` + iter8 `11mrhkwp`) → predictions at `nezuko/d006a0b9/`.
+- **Notes:** Dominant insight was epoch budget — the bottleneck was wall-clock per epoch, not model capacity. Frieren's earlier branches showed 84.2 → 40.97 → 40.12 → 39.54 just from continuing this same recipe with different (lr, p_weight, sw) on each stage. We probably have headroom for one more chained finetune at lr=2e-5 on top of iter-8.
+
 ### 2026-04-27 — Iter 7 — diverse-loss warm-start, then 4-way ensemble
 - **Hypothesis:** Iter 5 plateaued ~82.6 single-model. To improve via ensembling we need *diverse* snapshots, not more of the same. Train iter 7 with loss in the opposite regime: `sw=5`, `pw=1`, `lr=1e-4` — strongly different from iter 3/4/5 — so its prediction errors decorrelate.
 - **Change:** invocation only — `--resume model-q5ckvos5/checkpoint.pt --lr 1e-4 --surf_weight 5 --p_weight 1`. After it finished, ran `predict_ensemble.py` averaging four checkpoints (iter3 `aglmomxf` + iter4 `2v94v7an` + iter5 `q5ckvos5` + iter7 `tdafguoe`). Wandb run `tdafguoe`.
