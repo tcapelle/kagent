@@ -70,3 +70,4 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** Trained 8 epochs in 30 min (timed out). Best epoch 8: val/loss=6.02. Per-split val mae_surf_p: single=145.8, geom_rc=137.1, geom_cruise=90.2, re_rand=122.2 (avg=123.8). VRAM peak 84.6GB (within budget). W&B run zbie1byp.
 - **Verdict:** kept (predictions submitted to apr27-4/tanjiro/55efe74). But val mae_surf_p (~124) is much worse than prev tanjiro's TEST mae_surf_p (~51) — the new run is undertrained / worse-tuned. Suspect bf16 inference precision or aggressive lr=1e-3 hurt convergence.
 - **Notes:** Strong vol_loss decrease (0.73→0.20) but surf_loss plateaus around 0.13. Pattern suggests model is fitting field but not pressure peaks on surface. Next: try fp32, lr 5e-4, longer effective training.
+
