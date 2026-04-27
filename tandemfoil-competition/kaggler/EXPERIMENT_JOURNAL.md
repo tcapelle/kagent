@@ -22,6 +22,46 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12: ensemble iter11*2 + iter10 at predict time
+
+- **Hypothesis:** iter10 (sp_w=12) and iter11 (sp_w=16) trained from
+  different optima with different loss-balance pressures. Their predictions
+  may be diverse enough that a weighted average reduces MAE.
+- **Change:** No new training. Run `predict.py --checkpoints iter11,iter10`
+  with weights `[2, 1]` (iter11 stronger since it's slightly better alone).
+- **Result (bs=1 val):** 44.45 (vs iter11 alone 44.76, iter10 alone 45.60).
+  Splits: single=39.39, geom_rc=62.74, geom_cruise=30.42, re_rand=45.23.
+  Submit at the journal commit hash so the leaderboard sees it as a
+  separate entry.
+- **Verdict:** kept — small but real ~0.7% improvement on top of iter11,
+  free at inference time.
+- **Notes:** Weighted [2,1] beat equal [1,1] (44.45 vs 44.51) and [3,1]
+  (44.47). Three-model ensembles (with iter4) hurt because iter4 is too
+  much weaker. Diversity *between models of similar strength* helps; mixing
+  in weaker models drags the average back up.
+
+### 2026-04-27 — iter11: surf_p_weight 12→16, resume from iter10
+
+- **Hypothesis:** surf_p_weight progression has been 2 → 4 (iter2) → 12
+  (iter7) → 16 (iter11). Each bump pushed the metric harder. iter10 looks
+  capacity-limited; bumping the pressure weight a bit more might squeeze
+  the last bit out of the same architecture.
+- **Change:** `train.py:43` — `surf_p_weight 12 → 16`. Run with
+  `--resume_from .../model-j8o76pto/`.
+- **Result:** 25 epochs, best val_bs4 = **67.72** at epoch 18 (vs iter10's
+  68.21). Real bs=1 val: **44.76** (vs iter10's 45.60, -1.8%). Splits:
+  single=39.78, geom_rc=62.61, geom_cruise=30.95, re_rand=45.71. Run
+  `sumg2gb9`, commit `3c78568`. Predictions auto-submitted to commit
+  `5360f22`.
+- **Verdict:** kept — small but real improvement; geom_rc dropped from
+  65.06 to 62.61, single_in_dist from 41.28 to 39.78. Cruise regressed
+  slightly (30.23 → 30.95) — heavier pressure weight may have skewed the
+  velocity learning a bit.
+- **Notes:** Diminishing returns clearly setting in: 4→12 was big, 12→16 is
+  modest, probably 16→20 would be even smaller and might hurt cruise more.
+  Future iters should pivot to other levers (subsample size, ensemble,
+  longer training) instead of pushing surf_p_weight higher.
+
 ### 2026-04-27 — iter10: train_subsample 20k→40k, resume from iter8 (RANK 1!)
 
 - **Hypothesis:** with bs=1 predict already gating most of the gain (iter9),
