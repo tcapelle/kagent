@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: fresh base for ensemble diversity (random init)
+- **Hypothesis:** finetune chain has plateaued (iter4→6 deltas <1.5 in val). A second base trained from scratch with a different random init should reach a different basin and (after its own finetune) produce decorrelated errors usable in a final ensemble.
+- **Change:** rerun iter3's exact recipe (`python train.py --agent frieren --wandb_name "frieren/iter8-base-diverse"`) — no code changes. PyTorch seed defaults to per-process random, so init is naturally different.
+- **Result:** 72 epochs, best epoch 53: val/avg_mae_surf_p=**68.65** (iter3 was 84.20 — a *better* base, even before finetuning). Run id `4grkdz0n`. Ckpt mirrored at `/mnt/new-pvc/kagent/apr27-5/frieren/checkpoints/model-4grkdz0n/`. Predictions auto-saved at commit `66b3ad4` (ensemble commit) — note this overwrote the iter7 ensemble predictions, but the scoring already happened before overwrite (alphonse moved to 33.43 around then).
+- **Verdict:** kept as a base for iter9's chained finetune. Not best.pt (iter6 still better at 39.54).
+- **Notes:** Surprisingly outperformed iter3 base. Suggests iter3 may have been stuck in a worse local min. Consider re-doing the iter4-6 chain on this base — could yield a stronger #1.
+
+### 2026-04-27 — iter7: predictions ensemble (iter4 + iter5 + iter6)
+- **Hypothesis:** averaging predictions from three closely-related finetunes might cancel residual noise even if base models are correlated. Cheap (<5 min). Submitted under commit `66b3ad4`.
+- **Change:** new `ensemble.py`. Loads each commit's `test_*.pt` lists, averages per-sample tensors, saves under HEAD's commit dir.
+- **Result:** unknown — leaderboard hadn't yet picked it up before iter8 launched and **overwrote** the same commit's predictions on PVC. Ensemble experiment effectively lost.
+- **Verdict:** kept the script (it's the basis for iter10's bigger multi-base ensemble), but the submission itself is lost. Lesson: **always commit before launching a training run** that would auto-submit.
+- **Notes:** for iter10 I'll commit a marker first, then run a final ensemble script combining iter4, iter6, iter9 (cross-base) under a known commit.
+
 ### 2026-04-27 — iter5: deeper finetune (lr=5e-6, p_weight=5, surf_weight=15)
 - **Hypothesis:** marginal further refinement by stepping lr way down and weighting pressure surface harder. The next stage of apr27 frieren's chain.
 - **Change:** `python train.py --warm_start checkpoints/best.pt --batch_size 2 --train_subsample 0 --lr 5e-6 --p_weight 5.0 --surf_weight 15 --loss_type l1 --epochs 15`. Predictions auto-saved at commit `7c0c3c8`. (Note iter4 leaderboard score under `37a85cf` came in at **35.05** test — already #1, beating thorfinn's 44.55.)
