@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4 chain at lr=1e-4
+- **Hypothesis:** Continue the warm-start chain at lower LR (1e-4) and slightly slower EMA (0.9995, averaging ~2000 steps) to grind further down the loss curve.
+- **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter3_best.pt --ema_decay 0.9995 --epochs 30 --warmup_epochs 1`.
+- **Result:** Best epoch 28/30, val/loss=1.1087, avg_surf_p=**49.21** (val splits: in_dist=1.65, geom_rc=1.41, geom_cruise=0.32, re_rand=1.06). Run `akpldqxb`.
+- **Verdict:** Kept (commit 6e7afaf). Smaller gain (50.97 → 49.21, only -1.76) — chain is asymptoting. Per-epoch curve still monotone but very slow descent.
+- **Notes:** Diminishing returns from chained fine-tuning. Need more substantive change. Ideas: bump p_weight to push harder on the leaderboard metric (surface p MAE is what's scored), increase n_vol_subsample to expose model to more spatial context, or fresh start with bigger frieren-style 256/8/8/96 model (but loses 4 iters of training).
+
 ### 2026-04-27 — iter3 EMA + warm-start chain
 - **Hypothesis:** Add EMA(0.999) over weights, validate/checkpoint on EMA shadow. Warm-start from iter2 ckpt at even lower LR (2e-4) to extend the fine-tune chain. Frieren reportedly used EMA — expected to smooth val curve and trim a few points.
 - **Change:** `train.py` (commit 97dd212): added `EMA` class; in train loop, update shadow after each optimizer step; before validation, swap shadow→model; save state_dict (which is EMA weights at that moment) on improvement; restore real weights after val. Added `--ema_decay` flag. Ran with `--lr 2e-4 --warmup_epochs 1 --resume /tmp/iter2_best.pt --epochs 30 --ema_decay 0.999`.
