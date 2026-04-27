@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: warm-chain iter7 (vanilla, no Fourier) bs=2 + full mesh + p_weight=3 → val/loss=0.75, avg_surf_p=54.71
+- **Hypothesis:** iter7 (vanilla, no Fourier, p_weight=1) had val/loss=0.6692 but high surf_p=58.09 because pressure wasn't weighted. Re-warm with the proven recipe to push pressure down. Adds another diverse base for the ensemble (vanilla architecture, p_weight=3 fine-tune).
+- **Change:** `python train.py --warm_start /mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-gp7ce0vi/checkpoint.pt --fourier_scales 0 --batch_size 2 --train_subsample 0 --lr 2e-5 --p_weight 3.0 --epochs 11 --warmup_epochs 1`. Run `5cqn03sv`.
+- **Result:** epoch 11/11, 28.6 min, 29.2GB peak. val/loss=**0.7501**, avg_surf_p=**54.71** (single=0.75, rc=1.00, cruise=0.46, re_rand=0.79). Auto-submit succeeded.
+- **Verdict:** kept; surf_p improved 58→55 with chain (-6%), and the model adds vanilla-architecture diversity to the ensemble. Best single is still iter3 at 51.27 — the Fourier features remain a small but real win on the surf_p metric.
+- **Notes:** Full ensemble now spans (Fourier+p_weight=3 chain) iter1-3, (bigger 256/8 + p_weight=1 chain) iter5-6, (vanilla no-Fourier + p_weight={1,3}) iter7-8. 7-way ensemble (weights 0.05/0.10/0.25/0.05/0.10/0.15/0.30 favoring iter3 and iter8) submitted under `576b3c5`. With 7 models spanning 3 architectural families, ensemble should give a real improvement over best single.
+
 ### 2026-04-27 — iter7: vanilla Transolver, no Fourier, p_weight=1, 30 epochs → val/loss=0.67, avg_surf_p=58.09
 - **Hypothesis:** All five prior single models share Fourier features; ensemble diversity is lower than I'd like. Train a fully vanilla Transolver (`fourier_scales=0`) with p_weight=1 (balanced 3-channel L1) to get an architecturally distinct base model.
 - **Change:** Made `FourierFeatures` opt-in (`model.py`: `fourier_scales=0` disables and the model takes raw 24 features). Run with `--fourier_scales 0 --p_weight 1.0 --epochs 30`. Run `gp7ce0vi`.
