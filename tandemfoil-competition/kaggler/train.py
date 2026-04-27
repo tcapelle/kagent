@@ -37,6 +37,8 @@ class Config:
     amp: bool = True
     # Heavy weighting on surface (the leaderboard scores surface pressure MAE).
     surf_weight: float = 30.0
+    # L1 loss on surface pressure — directly aligned with the metric.
+    surf_p_l1_weight: float = 0.0
     # Channel weights inside vol/surf losses.
     # Surface-pressure dominates the leaderboard so we bias the channel weights
     # toward p, but still keep a useful Ux/Uy signal so attention learns flow.
@@ -217,13 +219,17 @@ for epoch in range(MAX_EPOCHS):
 
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.amp):
             pred = model({"x": x})["preds"]
-            sq_err = (pred.float() - y_norm) ** 2
+            err = pred.float() - y_norm
+            sq_err = err ** 2
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
             vol_loss = (sq_err * vol_cw * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
             surf_loss = (sq_err * surf_cw * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-            loss = vol_loss + cfg.surf_weight * surf_loss
+            # L1 on the surface pressure channel — directly aligned with metric.
+            l1_p = err[..., 2].abs() * surf_mask
+            surf_p_l1 = l1_p.sum() / surf_mask.sum().clamp(min=1)
+            loss = vol_loss + cfg.surf_weight * surf_loss + cfg.surf_p_l1_weight * surf_p_l1
 
         optimizer.zero_grad()
         loss.backward()
