@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: continue iter7, lr=4e-6, ema_decay=0.9995 (kept)
+- **Hypothesis:** With a full-EMA pipeline and another LR halving, the late-training oscillations get further smoothed and we squeeze out another fractional gain. Treat this as the "final polish" iteration.
+- **Change:** train.py — lr 8e-6→4e-6, ema_decay 0.999→0.9995 (slower decay = even smoother averaging). Warm-start from iter7 ckpt.
+- **Result:** Best epoch 8 with **val avg_surf_p=46.36** (vs iter7 46.55 → -0.19). Trajectory perfectly monotonic with no oscillation: 46.56, 46.55, 46.53, 46.48, 46.44, 46.41, 46.38, 46.36. WandB run vhp3g8od. Predictions copied to commit `b0beb9d`.
+- **Verdict:** Kept. Diminishing returns: improvement-per-epoch is now ~0.03 val. Beyond this we are essentially polishing residual variance.
+- **Notes:**
+  - **Leaderboard pivot:** between iter7 and iter8 nezuko overtook me at 39.79 test (vs my 39.95). Their split breakdown is very different from mine — they crush `single_in_dist` (32.29 vs my 45.56) and `geom_camber_rc` is closer, but I crush `re_rand` (36.64 vs their 47.69). Their model is good at the easy single-foil split that I'm worst at.
+  - This suggests I am over-fit to tandem regimes (because my warm-start chain came from a tandem-heavy loss balance), and there's room to claw back ~10 points on single_in_dist by improving on that domain specifically. Likely strategies for iter9: (a) up-weight single-foil samples in the WeightedRandomSampler, (b) explicit per-domain loss tracking, (c) inspect what nezuko's predictions look like to understand the gap.
+
 ### 2026-04-27 — iter7: EMA + ultra-low LR (kept)
 - **Hypothesis:** Stochastic weight averaging via an EMA of the live weights tends to give a free 0.2-0.5 point improvement; combined with an ultra-low LR (8e-6) on top of iter6, the EMA averages over the late-training oscillations the live model has been wobbling through.
 - **Change:** train.py — added `ema_decay=0.999` cfg, maintained an EMA shadow updated every step, validate (and save) using EMA weights. Set lr=8e-6. Warm-start from `checkpoints/best.pt` (iter6 ckpt).
