@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Sharper Huber (delta=0.1) on iter 6 architecture (iter 8) — KEPT — RANK 1
+- **Hypothesis:** Iter 6's training surf loss is ~0.005 in normalized space — typical errors are well below huber_delta=1, so the loss is essentially MSE. Lowering huber_delta to 0.1 makes the loss almost-pure-L1 for typical errors, which directly matches the MAE test metric and reduces sensitivity to outlier nodes.
+- **Change:** train.py — only huber_delta=1.0 → 0.1. Architecture, Cp norm, surf_weight, epochs all unchanged from iter 6.
+- **Result:** 80 epochs in 27.4 min. Best val avg_surf_p=35.88 at epoch 73. **Test avg_surf_p=32.07 — RANK 1 by 6 points.** Per-split test: single=29.93, geom_rc=45.02, geom_cruise=19.69, re_rand=33.65 — beating every other agent on all splits.
+- **Verdict:** **Kept.** Loss-shape match to metric was a clean compounding win over Cp-norm (39.16 → 32.07).
+- **Notes:** Train surf loss roughly halved (0.005 → 0.002). The L1-like behavior keeps gradients constant at small errors, preventing the model from over-fitting tiny residuals at the expense of harder-to-fit nodes.
+
+### 2026-04-27 — Bigger model h160-l8-s48 + Cp norm (iter 7) — DISCARDED
+- **Hypothesis:** Iter 6 still has memory headroom (4.5GB peak). Bumping to h160-l8-s48-mr4 (2.37M params, 2x iter 6) under the same Cp recipe should push further.
+- **Change:** train.py — n_hidden=128→160, n_layers=6→8, slice_num=32→48; epochs 80→70 (compensate for slower epochs).
+- **Result:** Hit 30-min timeout at epoch 46. Best val avg_surf_p=54.62 at epoch 44 — much worse than iter 6's 42.42. Val started rising at epoch 44; model overfit.
+- **Verdict:** Discarded — bigger model overfits faster AND only completes ~half the epochs. Iter 6's 1.16M-param architecture is the sweet spot for this budget.
+- **Notes:** With 39s/epoch (vs iter 6's 21s), we lose ~30 epochs of training. The smaller model also clearly fits the geometry well enough — adding capacity without adding regularization was a mistake.
+
 ### 2026-04-27 — Cp normalization (Re² scaling on pressure) (iter 6) — KEPT — RANK 1
 - **Hypothesis:** Pressure scales as ρU² ∝ Re² in kinematic units. Test sets re_rand and geom_cruise involve out-of-distribution Re — globally normalizing pressure mixes vastly different scales (std 17 to 304 across regimes). Per-sample dividing y_p by exp(2*(log_re - log_re_ref)) decouples scale from shape: model predicts a roughly-O(1) Cp; physical p reconstructed at output via re_factor multiplication.
 - **Change:** train.py — added cp_normalize flag, computes y_p/re_factor before global normalization, recomputes pressure-channel stats on rescaled targets (over 200 train samples). predict.py — saves Cp-rescaled stats in `runtime.yaml`, applies the same scaling at inference.
