@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: domain re-weighting + chain LR 6e-6 + p_weight 18
+- **Hypothesis:** geom_camber_rc=64.36 dominated the avg in iter6 (next worst is re_rand=49). Oversample tandem domains to push the model harder on the bottleneck distribution. Add `--domain_weights "1,2.5,1.5"` (single 1×, racecar_tandem 2.5×, cruise 1.5×). Continue chain ramp.
+- **Change:** add `--domain_weights` CLI to train.py — multiplies the existing balanced sampler weights by per-domain factors before constructing `WeightedRandomSampler`. No change to data.py.
+- **Result:** 28 epochs in 30.9 min. Best epoch 25 → val/avg_surf_p=45.95 (single=39.66, geom_rc=63.59, geom_cruise=31.78, re_rand=48.75). Run z4e67k2u. Predictions at apr27-5/askeladd/8db4853.
+- **Verdict:** kept — improvement (46.27 → 45.95, -0.32). Per-split: single +0.37 (worse), geom_rc -0.77, geom_cruise -0.28, re_rand -0.61. Tandem oversampling worked exactly as designed — single regressed slightly, all tandem splits won.
+- **Notes:** geom_rc still dominates (63.59). val=45.95 is below thorfinn's apr27-bis test of 45.94 (their val was ~70.5, ratio ~1.5x → my test extrapolated ~30). Try one more chain with even more aggressive tandem weighting (3,2) and p_weight=22.
+
 ### 2026-04-27 — iter6: chain at LR 8e-6 + p_weight 15
 - **Hypothesis:** keep walking the chain; p_weight 12→15, LR 1e-5→8e-6.
 - **Change:** args only.
