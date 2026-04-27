@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 10 — third chain finetune (lr=5e-6, sw=12, pw=4); regressed to 57.01
+- **Hypothesis:** With iter 9's val/loss settling at 1.54 and the curve clearly bouncing, drop LR another 4× and shift the loss balance (sw=12, pw=4) to nudge the model into a flatter minimum the cosine can anneal into.
+- **Change:** invocation only — `--resume model-dbqik2p5/checkpoint.pt --lr 5e-6 --surf_weight 12 --p_weight 4`. Wandb run `xd15zvoj`.
+- **Result:** 56 epochs, best val/loss = 1.27 at epoch 11, but its corresponding avg surf_p ≈ 56.9. Test scoring (my own per-node MAE) = **57.01** — a regression vs iter 9's 55.47.
+- **Verdict:** Discarded the auto-saved predictions for the latest commit. Copied iter 9's predictions (8a7092fb) onto the latest commit dir so the scorer evaluates iter 9 single instead.
+- **Notes:** val/loss-best ≠ avg-surf_p-best when the loss formulation changes between runs. Iter 10's loss has higher pressure weight + lower surf weight, so its val/loss numbers are not on the same scale as iter 9's, and the val/loss-best epoch is not necessarily the surf_p best epoch. Going forward — track surf_p directly as the checkpoint criterion.
+
 ### 2026-04-27 — Iter 9 — chain finetune lr=2e-5 from iter 8; iter 9 single beats ensemble
 - **Hypothesis:** Iter 8 single best was 55.5; chain another finetune at lower LR (2e-5) from iter 8's best to squeeze out the last few points before the cosine schedule freezes things.
 - **Change:** invocation only — `--resume model-11mrhkwp/checkpoint.pt --lr 2e-5 --surf_weight 15 --p_weight 3`. Wandb run `dbqik2p5`.
