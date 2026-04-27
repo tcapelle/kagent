@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5 chain fine-tune + full-mesh fine-tune phase (KEPT)
+- **Hypothesis:** Continue training from iter4 ckpt (warm start) and add a 5-epoch full-mesh batch=2 fine-tune phase at the end. Subsample-trained model never sees the dense per-sample node distribution it's evaluated on; a brief full-mesh pass should close that gap.
+- **Change:** train.py — `load_from`, `finetune_epochs`, `finetune_batch_size=2`, `finetune_lr=5e-5`. After base epochs, switch to a no-subsample loader and a fixed lower LR. Cosine schedule covers base epochs only; FT phase is fixed-LR.
+- **Run config:** `--load_from checkpoints/best.pt --epochs 25 --finetune_epochs 5 --lr 2e-4 --finetune_lr 5e-5`. 20 base epochs (subsample 40K, batch=8) + 5 FT epochs (full mesh, batch=2). bf16. 26.9 min total.
+- **Result:** Best epoch 23, **val avg_surf_p=61.07** (down from iter4's 99.26), **test avg_surf_p=54.02**. Trajectory shows the FT phase is the load-bearing step: base end (epoch 20) was 88.55; first FT epoch dropped to 69, third FT epoch to 61. Base epochs 16-20 plateaued at 87-90.
+- **Verdict:** Kept (commit `a14232b`).
+- **Notes:** Full-mesh FT phase unlocked ~30 % improvement in 5 epochs — the subsample/full-mesh distribution gap was real. Plateaus after ~3 FT epochs, suggesting the LR=5e-5 is well-tuned but capacity may be the new bottleneck. Currently 4th on leaderboard (frieren 42.11, historical thorfinn 42.90, tanjiro 51.42, me 54.02). Iter6 should chain again, possibly with longer FT phase or lower LR.
+
 ### 2026-04-27 — iter4 d192/L6/s64/h6 + L1 + 40K subsample + batch=8 + bf16 (KEPT)
 - **Hypothesis:** Match prior agent's recipe (L1 loss in normalized space, batch=8 with random 40K-node subsampling per sample, surface always preserved). Should produce a sane baseline.
 - **Change:** train.py — L1 loss for vol+surf (normalized), `subsample()` keeps all surface nodes + random fill to 40K, batch_size=8 (train) / 4 (val), bf16, surf_weight=10, epochs=30, cosine T_max=30, select on `avg_mae_surf_p`. predict.py uses bf16 autocast.
