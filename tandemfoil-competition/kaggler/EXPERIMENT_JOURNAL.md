@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — 2-checkpoint ensemble iter 8 + iter 11 (iter 12) — submitted
+- **Hypothesis:** iter 8 (huber_delta=0.1) and iter 11 (huber_delta=0.05) have the same architecture and Cp recipe but different loss-shape — iter 11's val_single is slightly better (31.19 vs 33.13) while iter 8 is better on geom_rc. Averaging predictions should give a tighter consensus on common errors and partial cancellation of independent ones.
+- **Change:** Added predict_ensemble.py — loads multiple checkpoints with their own runtime.yaml, runs each, averages predictions before saving. No retraining.
+- **Result:** Predictions saved to commit b5c6c32. Score pending.
+- **Verdict:** Pending; will keep if score < 32.07, otherwise revert.
+- **Notes:** No diminishing returns risk — pure post-hoc averaging at zero training cost. Worth trying since I had multiple viable checkpoints from the iter 8/11 search.
+
+### 2026-04-27 — huber_delta 0.05 (iter 11) — DISCARDED
+- **Hypothesis:** If 1.0→0.1 was a step toward L1, going 0.1→0.05 should sharpen the loss further toward MAE-matching behavior.
+- **Change:** Only huber_delta 0.1 → 0.05.
+- **Result:** Best val avg_surf_p=37.31 at epoch 78 — worse than iter 8's 35.88. val_single improved (31.19 vs 33.13) but val_geom_rc regressed (51.19 vs 48.25).
+- **Verdict:** Discarded. huber_delta=0.1 is the sweet spot.
+- **Notes:** Below ~0.1, the L1-like region dominates training and the model learns slightly different solutions per split — generalization on the harder geom_rc track suffers. Useful as an ensemble member though (different solution).
+
 ### 2026-04-27 — Bigger model h144-l7 with iter 8 recipe (iter 10) — DISCARDED
 - **Hypothesis:** Iter 7 (h160-l8-s48) overfit, but the gentler bump h144-l7-s32 (1.69M params) under iter 8's full recipe (Cp + huber_delta=0.1) might find a better optimum without overfitting.
 - **Change:** train.py — n_hidden=128→144, n_layers=6→7; epochs 80→70 to fit in budget.
