@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter16 chain polish at lr=1e-5
+- **Hypothesis:** One more polish round at extreme low LR (1e-5) to squeeze the last 0.05.
+- **Change:** No code change; flags `--lr 1e-5 --resume /tmp/iter15_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9999 --p_weight 20.0 --feature_noise 0.0 --n_vol_subsample 50000`.
+- **Result:** Best epoch 24, val/loss=0.8504, **avg_surf_p=42.08** (val splits: in_dist=0.89, geom_rc=1.32, geom_cruise=0.26, re_rand=0.94). Run `b6eb4noe`.
+- **Verdict:** Kept (commit ca7ecf7). −0.03 vs iter15. Confirmed asymptote: iter16 alone (42.08) ≤ iter16+iter15 ensemble (42.09).
+- **Notes:** End of the chain. Auto-submitted predictions overwrote HEAD b0055e7 with iter16-single — that's the best submission. Could try fresh frieren-style 256/8/8/96 for a final shake-up, or wait for leaderboard.
+
 ### 2026-04-27 — iter15 chain polish at lr=2e-5, slow EMA, n_vol=50k
 - **Hypothesis:** Continue the chain at very low LR with slow EMA (0.9999, ~10000-step window) and intermediate subsample (50k for balance between speed and coverage). Squeeze out final residual gain.
 - **Change:** No code change; flags `--lr 2e-5 --resume /tmp/iter11_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9999 --p_weight 20.0 --n_vol_subsample 50000`.
