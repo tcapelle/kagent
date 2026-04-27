@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v8 chain from frieren's newer h3y73gp9 ckpt (frieren leapt to 33.94)
+- **Hypothesis:** v7 took #1 at 33.70 from frieren's 33.94. While the scorer was running, frieren
+  saved a newer ckpt `h3y73gp9` (presumably their 33.94 entry). Warm-starting from their newer
+  state and chain-training another 30 min should compound the lead. Slightly lower LR (3e-6 vs 5e-6)
+  for finer polishing.
+- **Change:** no code changes. Run: `--warm_start h3y73gp9 --train_subsample 0 --batch_size 2
+  --lr 3e-6 --p_weight 5 --surf_weight 10 --epochs 12`.
+- **Result:** wandb run, 12 epochs in 29.8 min. Best at epoch 11 →
+  **val/avg_surf_p = 39.81** (single 40.02 / geom_rc 53.26 / cruise 24.94 / re_rand 41.04).
+  Frieren's h3y73gp9 evaluated to val 40.30 in my pipeline, so training improved on top of it.
+  Predictions at `/mnt/new-pvc/predictions/apr27-5/alphonse/64f05cd/`. Expected test ~33.5.
+- **Verdict:** kept — small but consistent gain on every split vs v7 (40.10 → 39.81).
+- **Notes:** trajectory is plateauing; per-epoch gains are tenths now. Next move is probably
+  weight-averaging v7+v8 (same arch, same lineage) or another chain at lr=1e-6 to fully exploit
+  the cosine schedule's tail.
+
 ### 2026-04-27 — v7 pivot: warm-start from frieren's kr1xvas8 (frieren leapt to test 35.05)
 - **Hypothesis:** v6's chain-train from v5 was capped at val ~44 by my model's basin. frieren just took
   the lead at test 35.05 with their own iter4 ckpt (192/6/6/**64**, fun_dim=22, space_dim=2,
