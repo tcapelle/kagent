@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: polish iter9 (lr=3e-6, pw=10)
+- **Hypothesis:** Standard polish-after-warm-restart at lower LR.
+- **Change:** Resume iter9; --lr 3e-6 --p_weight 10.
+- **Result:** **surf_p 48.66 → 48.15** (~1%). Per-split: single≈55, rc≈70, cruise≈30, re_rand≈51. W&B `8ii5o16f`.
+- **Verdict:** Kept (best). Plateau as expected post-restart.
+- **Notes:** Going to attempt a 3rd warm-restart cycle (iter11) at lr=2e-5 with pw=12, sw=12 to push pressure even harder.
+
 ### 2026-04-27 — iter9: 2nd warm-restart from iter8 (lr=2e-5, pw=10)
 - **Hypothesis:** First warm-restart (iter7) got 2.5% gain. Try a stronger second cycle: 2x the LR (1e-5→2e-5) and bump pw 8→10 to push pressure further. Same shape (bs=2 nosub ep=10).
 - **Change:** Resume iter8; --lr 2e-5 --p_weight 10 --warmup_epochs 0.
