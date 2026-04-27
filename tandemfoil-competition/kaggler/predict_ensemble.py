@@ -30,9 +30,9 @@ PRED = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 
 # Sources to mix: short-name -> (agent, commit). Commits are immutable on PVC.
 SRC = {
-    # Leader: best on every test split. 0cc44bf is best individual single (35.59),
-    # cruise (20.83), re (35.33) — slightly better than fc1227e on cruise.
-    "thorfinn":  ("thorfinn", "0cc44bf"),  # avg 35.21 — single 35.591 cruise 20.833
+    # Leader thorfinn — multiple commits, each per-split sweet spots.
+    "thorfinn":  ("thorfinn", "1f9db55"),  # avg 35.199 — best single individual (s 35.588 c 20.832 re 35.324)
+    "thorfinn0": ("thorfinn", "0cc44bf"),  # avg 35.21 — single 35.591 cruise 20.833 re 35.327
     "thorfinn2": ("thorfinn", "fc1227e"),  # avg 35.22 — single 35.602 cruise 20.882
     "thorfinn3": ("thorfinn", "6f756c8"),  # avg 35.22 — cruise 20.869
     "thorfinn4": ("thorfinn", "8103189"),  # avg 35.23
@@ -61,9 +61,11 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    single: str = "thorfinn5:0.50,thorfinn:0.30,thorfinn6:0.20"
-    rc: str = "thorfinn:0.85,tanjiro:0.10,thorfinn2:0.05"
-    cruise: str = "thorfinn:0.50,thorfinn7:0.50"
+    # Use thorfinn 1f9db55 as primary (best single 35.588, cruise 20.832, re 35.324),
+    # blend with 8ce7299 for single decorrelation. RC blend with tanjiro stays.
+    single: str = "thorfinn:0.5,thorfinn5:0.3,thorfinn6:0.2"
+    rc: str = "thorfinn0:0.85,tanjiro:0.10,thorfinn:0.05"  # 0cc44bf base for rc (49.07)
+    cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
 
 
