@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: stronger rc_single boost (4x), lr=5e-6 (kept)
+- **Hypothesis:** Iter9's 2.5x boost moved single_in_dist (45.40→44.14 test). Going to 4x should claw back more of the gap to nezuko (32.29).
+- **Change:** train.py — `rc_single_boost` 2.5→4, lr 6e-6→5e-6. Also lowered predict.py default `batch_size` 4→1 to stop the auto-predict from OOMing on cruise meshes.
+- **Result:** Best epoch 8 with **val avg_surf_p=45.56** (vs iter9 45.93 → -0.37). Trajectory: 45.90, 45.87, 45.79, 45.74, 45.70, 45.64, 45.59, 45.56. val_single_in_dist: 2.7090→2.6779. Wall time 27.1 min (faster again because more single-foil samples). WandB run uz9red8i.
+- **Verdict:** Kept. Boost-then-polish loop is paying off.
+- **Notes:**
+  - Just as the leaderboard updated I jumped to **#1 at 39.52** test (iter9 commit `6fb87ef`), edging askeladd's 39.55 by 0.03. iter10 scored TBD.
+  - Per-split wins on iter9 vs iter8: single_in_dist 45.40→44.14 (the deliberate target, ✓), rc 55.47→55.25, re_rand 36.58→36.47, cruise unchanged at 22.21. The boost lever is clean: it moves the targeted split without trashing the others.
+  - Auto-predict OOM'd again with batch_size=4 on cruise (had to manually re-run with bs=1). Defaulting predict.py to bs=1 going forward.
+
 ### 2026-04-27 — iter9: boost racecar_single 2.5x in sampler (kept)
 - **Hypothesis:** From the leaderboard split breakdown, my model is far behind on `test_single_in_dist` (45.4 vs nezuko's 32.3). The balanced sampler in `data.py` already gives equal weight to each domain, but the model has been over-fit to tandem regimes through the warm-start chain. Up-weighting racecar_single 2.5x in the sampler (on top of the existing 1/group_size weights) should claw back some of that gap.
 - **Change:** train.py — added `rc_single_boost=2.5` cfg, multiplies sample_weights for the 599 racecar_single training indices read from `meta.json` after `load_data()`. Bumped lr 4e-6→6e-6 (slightly more energy to actually move on the new sampler distribution), ema_decay 0.9995→0.999 (faster adaptation).
