@@ -40,13 +40,16 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30))  # minutes
 class Config:
     lr: float = 1e-3
     weight_decay: float = 1e-4
-    batch_size: int = 2
+    batch_size: int = 4
     surf_weight: float = 10.0
     huber_beta: float = 1.0
     epochs: int = 50
     grad_clip: float = 1.0
     warmup_steps: int = 100
     ema_decay: float = 0.999
+    train_max_nodes: int = 80000  # subsample mesh for training; 0 disables
+    keep_surface_nodes: bool = True  # always keep surface nodes when subsampling
+    val_batch_size: int = 2
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -58,6 +61,8 @@ class Config:
 
 cfg = sp.parse(Config)
 MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
+
+torch.set_float32_matmul_precision("high")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
@@ -77,9 +82,57 @@ else:
                               sampler=sampler, **loader_kwargs)
 
 val_loaders = {
-    name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+    name: DataLoader(ds, batch_size=cfg.val_batch_size, shuffle=False, **loader_kwargs)
     for name, ds in val_splits.items()
 }
+
+
+def subsample_batch(x, y, is_surface, mask, max_nodes, keep_surface):
+    """Subsample mesh nodes per-sample to max_nodes for faster training.
+
+    Returns padded subsampled tensors. Surface nodes are kept when keep_surface=True.
+    """
+    if max_nodes <= 0:
+        return x, y, is_surface, mask
+    B, N_max = x.shape[0], x.shape[1]
+    counts = mask.sum(dim=1).long()  # [B]
+    if counts.max().item() <= max_nodes:
+        return x, y, is_surface, mask
+
+    new_max = min(max_nodes, int(counts.max().item()))
+    new_x = torch.zeros(B, new_max, x.shape[-1], device=x.device, dtype=x.dtype)
+    new_y = torch.zeros(B, new_max, y.shape[-1], device=y.device, dtype=y.dtype)
+    new_surf = torch.zeros(B, new_max, dtype=torch.bool, device=is_surface.device)
+    new_mask = torch.zeros(B, new_max, dtype=torch.bool, device=mask.device)
+    for b in range(B):
+        n = int(counts[b].item())
+        if n <= new_max:
+            new_x[b, :n] = x[b, :n]
+            new_y[b, :n] = y[b, :n]
+            new_surf[b, :n] = is_surface[b, :n]
+            new_mask[b, :n] = True
+            continue
+        if keep_surface:
+            surf_idx = torch.nonzero(is_surface[b, :n], as_tuple=False).flatten()
+            n_surf = surf_idx.numel()
+            need = new_max - n_surf
+            if need <= 0:
+                # rare: surface alone exceeds budget — truncate
+                pick = surf_idx[torch.randperm(n_surf, device=x.device)[:new_max]]
+                idx = pick
+            else:
+                vol_mask = ~is_surface[b, :n]
+                vol_idx = torch.nonzero(vol_mask, as_tuple=False).flatten()
+                vol_pick = vol_idx[torch.randperm(vol_idx.numel(), device=x.device)[:need]]
+                idx = torch.cat([surf_idx, vol_pick], dim=0)
+        else:
+            idx = torch.randperm(n, device=x.device)[:new_max]
+        idx = idx.sort().values
+        new_x[b, :idx.numel()] = x[b, idx]
+        new_y[b, :idx.numel()] = y[b, idx]
+        new_surf[b, :idx.numel()] = is_surface[b, idx]
+        new_mask[b, :idx.numel()] = True
+    return new_x, new_y, new_surf, new_mask
 
 model_config = dict(
     space_dim=2,
@@ -245,6 +298,9 @@ for epoch in range(MAX_EPOCHS):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
+        x, y, is_surface, mask = subsample_batch(
+            x, y, is_surface, mask, cfg.train_max_nodes, cfg.keep_surface_nodes
+        )
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
