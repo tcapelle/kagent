@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — three iter8-ensemble weight variants submitted
+- ensemble5 (4b82ff0): 0.40/0.40/0.20 — moderate iter8
+- ensemble6 (89f9652): 0.35/0.35/0.30 — heavier iter8
+- ensemble7 (8a3998f): 0.45/0.45/0.10 — conservative iter8
+- iter9 in flight (chain iter8 lr=5e-6 8ep) for more refinement
+
 ### 2026-04-27 — iter8 alone scored 48.99: BEST single_in_dist (46.96, beats iter4 by 5pt)
 - iter8 alone (`127ecd5`): surf_p=48.99 | **sing=46.96** rc=67.41 cruise=32.47 re_rand=49.14
 - Confirms iter8 is a specialist: best single by 5pt, but loses on the other 3 splits.
