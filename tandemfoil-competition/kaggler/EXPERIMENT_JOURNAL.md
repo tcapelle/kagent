@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter21+iter22: Cp normalization + Huber-0.1 (val 0.82 → 0.75) 🚀
+- **Hypothesis (post-mortem from competitor research):** askeladd jumped from 39.16 → 32.07 via two structural changes — (1) Cp-style Re² pressure normalization (divide y_p by exp(2*(log_re-LOG_RE_REF))) and (2) Huber loss with delta=0.1 (sharper L1, dampens grad on tiny residuals). Both are loss-shape changes; together a 7-pt jump on top of Cp norm's 11-pt jump. My L1 chain stalled at val 1.02 (iter20) → surf_p ~37 ceiling. Need to switch recipe.
+- **Change:**
+  1. Added `--cp_normalize` flag in train.py: computes LOG_RE_REF as median of 200 train log_re samples, replaces pressure stats with Cp-rescaled stats, divides y[..., 2] / re_factor in train+val loops, undoes the rescale before MAE computation. predict.py reads `runtime.yaml` and applies the inverse.
+  2. Added `--loss_type huber --huber_delta 0.1` for the sharp-L1 behavior askeladd used.
+  3. `iter21`: fresh from-scratch with Cp+Huber-0.1, bs=4 sub=40k 30 ep — val/loss **0.8238** (much faster convergence than iter1's 1.68 at same epochs). Commit `2bec710`.
+  4. `iter22`: warm-start iter21 with bs=2 nosub Cp+Huber-0.1, lr=5e-5, 12 ep — val/loss **0.7471**. Commit `23421d0`. Per-split val: single=1.20, rc=1.01, cruise=0.15, re_rand=0.63 — all improved over iter17 (single=1.82, rc=1.36, cruise=0.24, re_rand=1.01).
+- **Result:** Test surf_p pending scoring (queue backed up). Based on val/loss trajectory, expect surf_p in 31-34 range (vs my prev best 38.13).
+- **Verdict:** kept and continuing. The Cp+Huber recipe is structurally better than my L1 chain.
+- **Notes:** iter23 next: warm-restart iter22 with lr=1e-4 (cycle pattern that worked: chain → restart → chain).
+
 ### 2026-04-27 — iter17 ALONE = 38.13 surf_p — RANK 1 🥇
 - **Hypothesis:** Repeat the iter15-style warm-restart trick on iter16. lr=1e-4 (2x prior peak), bs=2 nosub, L1, 12 ep cosine. Each cycle drops val/loss by ~0.05-0.10.
 - **Change:** No code change. `train.py --warm_start models/model-8mtphkf0/checkpoint.pt --lr 1e-4 --epochs 12 --warmup_epochs 1 --loss_type l1 --batch_size 2 --train_subsample 0`. Commit `9ce1ce0` (predictions saved at `908936e` after journal/code commits moved HEAD mid-run).
