@@ -40,7 +40,8 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 2
     surf_weight: float = 15.0
-    epochs: int = 50
+    p_weight: float = 1.0  # extra weight on the pressure channel (the leaderboard metric).
+    epochs: int = 8  # cosine anneals over this many epochs; pick to roughly match wall-clock budget
     grad_clip: float = 1.0
     bf16: bool = True
     warm_start: str | None = None  # path to a previous checkpoint.pt to resume from
@@ -169,11 +170,14 @@ for epoch in range(MAX_EPOCHS):
             pred = model({"x": x})["preds"]
         # L1 in normalised space matches the per-channel MAE metric (MAE_phys = std * MAE_norm).
         abs_err = (pred.float() - y_norm).abs()
+        # Up-weight the pressure channel on the surface — it's the leaderboard metric.
+        chan_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=device).view(1, 1, 3)
+        surf_err = abs_err * chan_w
 
         vol_mask = mask & ~is_surface
         surf_mask = mask & is_surface
         vol_loss = (abs_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (abs_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+        surf_loss = (surf_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
         loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
