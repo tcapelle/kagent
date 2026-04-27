@@ -39,6 +39,7 @@ SRC = {
     "thorfinn5": ("thorfinn", "8ce7299"),  # single 35.586 (best single individual)
     "thorfinn6": ("thorfinn", "90567b5"),  # single 35.588 cruise 20.871
     "thorfinn7": ("thorfinn", "ae15980"),  # single 35.591 cruise 20.833
+    "thorfinn8": ("thorfinn", "5ae926e"),  # single 35.588 (avg 35.197)
     # External models — best per split (non-thorfinn)
     "edward":   ("edward",   "c773fa7"),  # single 36.25, cruise 23.73
     "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08
@@ -61,8 +62,8 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # Add small edward to single (best non-thorfinn single 36.25 — may decorrelate).
-    single: str = "thorfinn:0.45,thorfinn5:0.30,thorfinn6:0.20,edward:0.05"
+    # Heavier 8ce7299 (single best individual). 57ff762 = 35.1957 was the best so far.
+    single: str = "thorfinn5:0.7,thorfinn:0.15,thorfinn6:0.15"
     rc: str = "thorfinn0:0.85,tanjiro:0.10,thorfinn:0.05"
     cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
