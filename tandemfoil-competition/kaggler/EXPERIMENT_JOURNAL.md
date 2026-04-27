@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: chain at lr=1e-6 (no perturbation)
+- **Hypothesis:** iter8 paid 1 epoch to recover from changing `surf_p_weight` mid-chain. Drop LR 2x to 1e-6, keep all other settings the same. No loss-shape change → no perturbation, just slower polish.
+- **Change:** `--lr 1e-6`. Everything else same as iter8.
+- **Result:** 7 epochs in 30 min, best `val/avg_surf_p=56.44` at epoch 7. Trajectory: 57.07 → 57.53 → 57.08 → 57.23 → 56.65 → 56.57 → 56.44. Predictions at `askeladd/b977533`. W&B: askeladd/iter9-chain-lr1e6.
+- **Verdict:** kept (-1.13 vs iter8). No epoch wasted to perturbation.
+- **SWA experiment:** Tried averaging weights of {iter7, iter8, iter9} → val/surf_p=57.19 (worse than iter9 alone 56.44). Tried {iter8, iter9} → 56.78 (still worse). The chain was monotonically improving so each successive checkpoint dominates the average. SWA only helps when checkpoints are sampled around a flat minimum. Skip SWA at this stage.
+- **Notes:** Diminishing returns are real — 60 → 57 → 56. Tried bumping LR back up (frieren did this and got similar results). Next angle for iter10: tinier LR=5e-7 to confirm we've hit the floor, then consider architectural changes if no progress.
+
 ### 2026-04-27 — iter8: stronger single_boost + bigger surf_p_weight
 - **Hypothesis:** iter7 showed single_boost works without hurting other splits. Push it harder: `single_boost 2.5→3.5`, `surf_p_weight 10→12`. Same lr=2e-6, nosub, bs=2.
 - **Change:** Just CLI args. No code change.
