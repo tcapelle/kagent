@@ -42,8 +42,8 @@ TEST_SPLITS = [
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    """Generate test predictions from a trained checkpoint (or comma-separated list for ensemble)."""
+    checkpoint: str  # path to a checkpoint, or comma-separated list of checkpoints for ensemble
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None  # kaggler name for output path
     batch_size: int = 4
@@ -56,16 +56,23 @@ splits_dir = Path(cfg.splits_dir)
 import yaml
 from train import Transolver
 
-ckpt_path = Path(cfg.checkpoint)
-config_path = ckpt_path.parent / "config.yaml"
-with open(config_path) as f:
-    model_config = yaml.safe_load(f)
 
-model = Transolver(**model_config).to(device)
-state = torch.load(cfg.checkpoint, map_location=device, weights_only=True)
-model.load_state_dict(state)
-model.eval()
-print(f"Loaded model from {cfg.checkpoint}")
+def load_model(ckpt_path_str: str) -> Transolver:
+    ckpt_path = Path(ckpt_path_str)
+    config_path = ckpt_path.parent / "config.yaml"
+    with open(config_path) as f:
+        model_config = yaml.safe_load(f)
+    m = Transolver(**model_config).to(device)
+    m.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
+    m.eval()
+    return m
+
+
+checkpoint_paths = [p.strip() for p in cfg.checkpoint.split(",") if p.strip()]
+models = [load_model(p) for p in checkpoint_paths]
+print(f"Loaded {len(models)} model(s) for {'ensemble' if len(models) > 1 else 'single-model'} inference:")
+for p in checkpoint_paths:
+    print(f"  - {p}")
 
 # Load stats
 with open(splits_dir / "stats.json") as f:
@@ -103,7 +110,9 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            x_in = (x_pad - x_mean) / x_std
+            preds_norm = [m({"x": x_in})["preds"] for m in models]
+            pred_norm = torch.stack(preds_norm, dim=0).mean(dim=0)
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
