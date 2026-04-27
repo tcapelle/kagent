@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: chain link 3 — warm iter3 lr=2e-6 (commit f5695bd)
+- **Hypothesis:** Following frieren's iter111 recipe: continue chain at lr=2e-6 for marginal val gain + ensemble averaging.
+- **Change:** `--warm_start /tmp/iter3_best.pt --lr 2e-6 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. Same 192x6.
+- **Result:** val/loss=**1.5073** at epoch 9 (25.1 min). Per-split val: single=2.39, rc=1.91, cruise=0.42, re_rand=1.31. ~0.6% gain over iter3 — chain saturating as frieren predicted.
+- **Verdict:** kept. Predictions saved at `f5695bd` (after manual `predict.py` re-run because the train.py auto-call OOM'd: training process held 88GB and the `subprocess` spawn only had 5GB to work with).
+- **Notes:** OOM bug: `train.py` auto-runs `predict.py` after training without freeing model VRAM first. Should fix: `del model; torch.cuda.empty_cache()` before subprocess call. Workaround for now: re-run predict.py manually after killing the train process.
+
 ### 2026-04-27 — iter6: warm iter5 256x8 bs=2 no-subsample (commit 7f2faa7)
 - **Hypothesis:** Apply frieren's bs=2 + no-subsample breakthrough to the bigger 256×8 model. Larger capacity + full mesh + low LR should push past 192×6 ceiling.
 - **Change:** `--warm_start /tmp/iter5_best.pt --n_hidden 256 --n_layers 8 --n_head 8 --slice_num 64 --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. 50.7GB peak.
