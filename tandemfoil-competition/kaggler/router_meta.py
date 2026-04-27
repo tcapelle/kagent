@@ -42,6 +42,7 @@ SRC = {
     "askeladd": ("askeladd", "01851f9"),  # cruise 26.59, re 45.79 (worse alone but different model)
     "alphonse": ("alphonse", "5aa9393"),  # 52.89 alone, different model
     "alphonse2": ("alphonse", "7992b5c"),  # NEW alphonse 48.23
+    "alphonse3": ("alphonse", "f0b59cc"),  # ALPHONSE JUMP 42.32
     "nezuko":   ("nezuko",   "08cdd12"),  # 60.92 alone (worst), but fully different model
     "nezuko2":  ("nezuko",   "a6bcbcd"),  # JUMP! 37.39 (single 38.62, rc 51.78, cr 21.78, re 37.39)
     "nezuko3":  ("nezuko",   "012619a"),  # 38.32 (single 40.93, rc 51.60, cr 23.55, re 37.20)
