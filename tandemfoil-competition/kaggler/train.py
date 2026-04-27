@@ -230,13 +230,14 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-9f4m2qmm/checkpoint.pt"
+# Iter3 warmstarts from iter2's best checkpoint (run id bwa7nnol).
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-bwa7nnol/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 3e-5
-    min_lr: float = 1e-6
+    lr: float = 1e-5
+    min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
     surf_weight: float = 10.0
@@ -244,7 +245,7 @@ class Config:
     grad_clip: float = 1.0
     l1_weight: float = 1.0
     l2_weight: float = 1.0
-    ema_decay: float = 0.99
+    ema_decay: float = 0.995
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
