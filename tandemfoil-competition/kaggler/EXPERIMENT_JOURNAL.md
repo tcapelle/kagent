@@ -89,3 +89,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Change:** `--resume model-p6r6oy7j --lr 8e-5 --train_max_points 0 --batch_size 2 --surf_weight 50 --surf_p_l1_weight 30`.
 - **Result:** 8 epochs in 30 min. Best `avg_surf_p = 54.13` at epoch 8. **3.6% over v9 (56.18→54.13), 85% over baseline.** Per-split p MAE: single_in_dist=58, geom_camber_rc=66, geom_camber_cruise=42, re_rand=51. W&B `alphonse/v10-warm-lr8e5` (`uncjx333`).
 - **Verdict:** Kept — slightly noisier (epoch 2 small bump) suggesting lr=8e-5 is near the upper edge. Drop back to 5e-5 next round.
+
+### 2026-04-27 — v11-warm-lr5e5
+- **Hypothesis:** Drop back to lr=5e-5 after v10's 8e-5 was a bit noisy.
+- **Change:** `--resume model-uncjx333 --lr 5e-5 --train_max_points 0 --batch_size 2 --surf_weight 50 --surf_p_l1_weight 30`.
+- **Result:** 8 epochs, monotonic. Best `avg_surf_p = 51.54` at epoch 8. **4.8% over v10 (54.13→51.54), 86% over baseline.** Per-split p MAE: single_in_dist=55, geom_camber_rc=63, geom_camber_cruise=39, re_rand=49. W&B `alphonse/v11-warm-lr5e5` (`vtebwe5c`).
+- **Verdict:** Kept. lr=5e-5 is the sweet spot — back to monotonic 4-5%/iter.
+- **Notes:** Gap to thorfinn now 12%. Continue chain.
