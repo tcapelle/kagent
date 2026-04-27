@@ -83,15 +83,15 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter23: 3-way top-3 per split (next decorrelation step from 50/50 in 2db8758=34.8527).
-    # single top-3: L (35.2169), M (35.2228), I (35.2565) — close
-    # rc top-3:     L (48.6820), M (48.6873), K (48.6968) — close
-    # cruise top-3: N (20.6232), O (20.6251), M (20.6861) — slight gap to M
-    # re top-3:     M (34.9163), N (34.9212), O (34.9485) — slight gap to O
-    single: str = "thorfinnL:0.4,thorfinnM:0.4,thorfinnI:0.2"
-    rc: str = "thorfinnL:0.4,thorfinnM:0.4,thorfinnK:0.2"
-    cruise: str = "thorfinnN:0.45,thorfinnO:0.45,thorfinnM:0.10"
-    re_rand: str = "thorfinnM:0.45,thorfinnN:0.45,thorfinnO:0.10"
+    # iter24: combine empirical per-split bests across 2db8758 + c942ac8.
+    # single: 50/50 L+M (proven 35.2144 best)
+    # rc:     3-way L+M+K 40-40-20 (proven 48.6777 best)
+    # cruise: 50/50 N+O (proven 20.6158 best)
+    # re:     50/50 M+N (proven 34.9014 best)
+    single: str = "thorfinnL:0.5,thorfinnM:0.5"
+    rc: str = "thorfinnL:0.40,thorfinnM:0.40,thorfinnK:0.20"
+    cruise: str = "thorfinnN:0.5,thorfinnO:0.5"
+    re_rand: str = "thorfinnM:0.5,thorfinnN:0.5"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
