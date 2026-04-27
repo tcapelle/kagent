@@ -51,6 +51,9 @@ class Config:
     mlp_ratio: int = 2
     grad_clip: float = 1.0
     balanced: bool = True  # per-sample variance-normalized loss
+    use_fourier: bool = True
+    n_fourier: int = 32
+    fourier_sigma: float = 8.0
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -93,6 +96,9 @@ model_config = dict(
     n_head=cfg.n_head,
     slice_num=cfg.slice_num,
     mlp_ratio=cfg.mlp_ratio,
+    use_fourier=cfg.use_fourier,
+    n_fourier=cfg.n_fourier,
+    fourier_sigma=cfg.fourier_sigma,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )

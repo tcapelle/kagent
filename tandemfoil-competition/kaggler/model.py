@@ -121,23 +121,45 @@ class TransolverBlock(nn.Module):
         return fx
 
 
+class FourierEmbedding(nn.Module):
+    """Random Fourier features for high-frequency positional encoding.
+
+    Aero-Nef / Tancik et al.: lifts MLP underfitting near pressure stagnation peaks.
+    """
+
+    def __init__(self, in_dim: int = 2, n_freqs: int = 32, sigma: float = 8.0):
+        super().__init__()
+        # Frozen random projection. Same across all positions; learnable scale not needed.
+        self.register_buffer("B", torch.randn(in_dim, n_freqs) * sigma)
+
+    def forward(self, x):
+        proj = x @ self.B
+        return torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)
+
+
 class Transolver(nn.Module):
     def __init__(self, space_dim=1, n_layers=5, n_hidden=256, dropout=0.0,
                  n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
                  slice_num=32, ref=8, unified_pos=False,
+                 use_fourier: bool = False, n_fourier: int = 32, fourier_sigma: float = 8.0,
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None):
         super().__init__()
         self.ref = ref
         self.unified_pos = unified_pos
+        self.use_fourier = use_fourier
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
 
+        ff_extra = 2 * n_fourier if use_fourier else 0
+        if use_fourier:
+            self.fourier = FourierEmbedding(in_dim=space_dim, n_freqs=n_fourier, sigma=fourier_sigma)
+
         if self.unified_pos:
-            self.preprocess = MLP(fun_dim + ref**3, n_hidden * 2, n_hidden,
+            self.preprocess = MLP(fun_dim + ref**3 + ff_extra, n_hidden * 2, n_hidden,
                                    n_layers=0, res=False, act=act)
         else:
-            self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
+            self.preprocess = MLP(fun_dim + space_dim + ff_extra, n_hidden * 2, n_hidden,
                                    n_layers=0, res=False, act=act)
 
         self.n_hidden = n_hidden
@@ -164,6 +186,10 @@ class Transolver(nn.Module):
 
     def forward(self, data, **kwargs):
         x = data["x"]
+        if self.use_fourier:
+            pos = x[..., : self.space_dim]
+            ff = self.fourier(pos)
+            x = torch.cat([x, ff], dim=-1)
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for block in self.blocks:
             fx = block(fx)
