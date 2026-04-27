@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3-fourier-features (BIG WIN, KEPT)
+- **Hypothesis:** Pressure spikes at airfoil leading-edge stagnation are high-frequency in space; an MLP-only Transolver underfits them. Random Fourier features on the 2-D position (Tancik et al. / Aero-Nef recipe) provide a high-frequency basis that the model can blend.
+- **Change:** new `FourierEmbedding` in `model.py`; `Transolver` accepts `use_fourier=True, n_fourier=32, fourier_sigma=8.0` and concatenates `[sin(B·pos), cos(B·pos)]` (64 extra features) into the preprocess input. Wired through `train.py`'s config.
+- **Result:** 13/14 epochs. **avg val surf_p MAE 94.42 → 85.71 (-9.2%) — biggest gain so far.** Per-split:
+  - in_dist 114.13 → 100.78 (-11.7%) — the peak-pressure split benefited most
+  - rc 107.91 → 96.80 (-10.3%)
+  - cruise 68.51 → 63.07 (-7.9%)
+  - re_rand 87.12 → 82.18 (-5.7%)
+  - **Test leaderboard: 79.95 → 75.06, jumped to rank #4.** Gap to leader thorfinn 45.94 still ~30 points.
+  W&B `kagent-tandemfoil3/rdqtq1nu`.
+- **Verdict:** kept. Cumulative val: 97.85 → 85.71 (-12.4%); cumulative test: 79.95 → 75.06 (-6.1%).
+- **Notes:** Adds ~16K params, no measurable per-epoch overhead (142s same as before). Validation losses still decreasing at epoch 13 — model not converged. Next levers: push Fourier harder (more freqs, higher sigma), TTA y-flip at inference (free 3-6%), more aggressive var_floor.
+
 ### 2026-04-27 — iter2-balanced-loss (KEPT)
 - **Hypothesis:** Pressure variance is 17–304 across domains (after global y_std=679 normalisation, per-sample variance ranges 0.0006 to 0.12 — 200x). Loss is dominated by raceCar tandem; low-Re cruise Part3 gets nearly no gradient. Divide squared error by per-sample variance (with floor 0.05 to cap upweight) → equalises gradient contributions. Also split surface weight: surf_p_w=2.5, surf_uv_w=0.5 (concentrate budget on the metric).
 - **Change:** `train.py` — compute per-sample masked variance; `sq_err *= 1/(y_var_b + var_floor)`; per-channel split surface loss into `surf_uv_loss + surf_p_loss`. Ckpt selection switched to `avg val surf_p MAE` (the leaderboard metric) instead of `val/loss`.
