@@ -196,8 +196,8 @@ MODEL_CONFIG = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=256,
-    n_layers=6,
+    n_hidden=384,
+    n_layers=8,
     n_head=8,
     slice_num=64,
     mlp_ratio=2,
@@ -224,12 +224,52 @@ class Config:
     warmup_frac: float = 0.05
     ema_decay: float = 0.999
     epochs: int = 50
+    subsample_n: int = 60000  # subsample N points per training sample (full mesh at val)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
     resume: str | None = None  # path to a checkpoint to warm-start from
+
+
+def subsample_batch(x, y, is_surface, mask, k):
+    """Randomly sample k points per sample, keeping all surface points."""
+    B, N_max, D = x.shape
+    device = x.device
+    keep_idx_list = []
+    n_keep = 0
+    for i in range(B):
+        valid = mask[i].nonzero(as_tuple=False).flatten()
+        n = valid.shape[0]
+        if n <= k:
+            sel = valid
+        else:
+            surf_pos = is_surface[i, valid].nonzero(as_tuple=False).flatten()
+            vol_pos = (~is_surface[i, valid]).nonzero(as_tuple=False).flatten()
+            n_surf = surf_pos.shape[0]
+            if n_surf >= k:
+                # Almost never; just take k random surface points
+                pick = surf_pos[torch.randperm(n_surf, device=device)[:k]]
+            else:
+                n_vol_keep = k - n_surf
+                vol_pick = vol_pos[torch.randperm(vol_pos.shape[0], device=device)[:n_vol_keep]]
+                pick = torch.cat([surf_pos, vol_pick])
+            sel = valid[pick]
+        keep_idx_list.append(sel)
+        n_keep = max(n_keep, sel.shape[0])
+
+    new_x = torch.zeros(B, n_keep, D, device=device, dtype=x.dtype)
+    new_y = torch.zeros(B, n_keep, y.shape[-1], device=device, dtype=y.dtype)
+    new_surf = torch.zeros(B, n_keep, dtype=torch.bool, device=device)
+    new_mask = torch.zeros(B, n_keep, dtype=torch.bool, device=device)
+    for i, sel in enumerate(keep_idx_list):
+        n = sel.shape[0]
+        new_x[i, :n] = x[i, sel]
+        new_y[i, :n] = y[i, sel]
+        new_surf[i, :n] = is_surface[i, sel]
+        new_mask[i, :n] = True
+    return new_x, new_y, new_surf, new_mask
 
 
 def smooth_l1(pred, target, beta=1.0):
@@ -348,6 +388,9 @@ def main():
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             is_surface = is_surface.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
+
+            if cfg.subsample_n > 0:
+                x, y, is_surface, mask = subsample_batch(x, y, is_surface, mask, cfg.subsample_n)
 
             x_n = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
