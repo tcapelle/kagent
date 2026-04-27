@@ -22,10 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-27 — iter5: warm-start iter4 + camber-noise augmentation
-- **Hypothesis:** `val_geom_camber_rc` surf_p MAE is stuck at ~122 across all iters — that split tests OOD camber (M=7,8 unseen for tandem). Adding small Gaussian noise on the foil1 camber/position/thickness inputs during training should make the model interpolate between training camber values rather than memorize the discrete set.
-- **Change:** train.py: added `camber_noise` flag, applied in subsample collate as shared per-sample raw-scale noise on dims 15/16/17. Run `--warm_start iter4 --slice_num 128 --lr 2e-5 --camber_noise 0.1 --epochs 50`. Code commit `395a063`.
-- **Result:** TBD.
+### 2026-04-27 — iter5b: full-mesh fine-tune (frieren-style) — BREAKTHROUGH
+- **Hypothesis:** Frieren leaderboard scoring 46.87 jumped from val/avg_surf_p~78 to ~53 by fine-tuning with **full mesh** (`train_subsample=0`), `batch_size=2`, and very low LR (2e-6). Subsampling 40k pts during training was leaving a lot of supervision on the table — the model wasn't seeing the wake/far-field nodes during fine-tune.
+- **Change:** train.py: `make_subsample_collate` now treats `n_keep<=0` as "no subsampling". Killed iter5 (camber noise) early to free GPU. Run `--warm_start iter4 --slice_num 128 --train_subsample 0 --batch_size 2 --lr 2e-6 --epochs 10`. Code commit `cc186e5`. Run id `hahrr3i7`.
+- **Result:** Best val/avg_surf_p=**50.53** at epoch 9/9 (still improving when timeout hit). Per-split: cruise=30.6, rc=65.55 (was 121.75!), re_rand=49.6, single=56.3 (slight regression vs iter4's 53.4). Train each epoch ~3.5 min, peak VRAM 42 GB. -23 absolute val/avg_surf_p in ~30 min!
+- **Verdict:** Kept (ckpt commit `b7ff534`, predictions in `fern/cc186e5`).
+- **Notes:** The huge gain came from `geom_camber_rc` (-56) — the model now sees full mesh during fine-tune so it learns the OOD camber regimes via wake propagation, not just the local geometry features. The camber-noise augmentation experiment (iter5) was a less-good idea given how well full-mesh works. Next: chain another low-LR fine-tune (iter6).
+
+### 2026-04-27 — iter5: warm-start iter4 + camber-noise augmentation (KILLED)
+- **Hypothesis:** `val_geom_camber_rc` surf_p MAE stuck at ~122 — test OOD camber (M=7,8 unseen for tandem). Add Gaussian noise on foil1 camber/position/thickness inputs to interpolate.
+- **Change:** train.py: added `camber_noise` flag in subsample collate. Run `--warm_start iter4 --lr 2e-5 --camber_noise 0.1`. Code commit `395a063` (kept — flag is still useful).
+- **Result:** Killed at epoch 1 (val=74.49 — slightly worse than iter4's 73.21). Replaced with iter5b (full-mesh) after seeing frieren's leaderboard jump.
+- **Verdict:** Discard the run (no checkpoint kept). The flag in code is preserved; may revisit combined with full-mesh.
+- **Notes:** Premature kill — could have let it converge. But frieren's full-mesh approach was clearly higher EV.
 
 ### 2026-04-27 — iter4: warm-start fine-tune of slice_num=128 cold-start
 - **Hypothesis:** iter3's slice_num=128 cold-start undertrained at 30 min (val 90.50). Warm-starting the slice_num=128 model with iter2's loss recipe should let the bigger arch beat slice_num=64 + warm-start (iter2's 79.12).
