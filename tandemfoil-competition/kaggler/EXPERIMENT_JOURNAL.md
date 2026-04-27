@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v9: bigger model n_hidden=256 n_layers=8 (22ep)
+- **Hypothesis:** A genuinely larger architecture (1.5x params, 33% more layers) might give the diversity my v3/v5/v7/v8 family lacks. Even if individually slower to converge, complementary errors should help the ensemble.
+- **Change:** `--n_hidden 256 --n_layers 8 --n_head 8 --slice_num 64 --mlp_ratio 2 --epochs 22`. 79s/epoch (1.7x slower), 18.2GB peak VRAM.
+- **Result:** Best val avg_surf_p=75.47 at epoch 21 — much worse than v7=46.03. Cosine LR didn't fully decay (timeout-limited at 22 epochs vs needed 40+).
+- **Verdict:** Discarded for ensemble. Adding v9 to v7+v8 ensemble hurts at every weighting tested ([0.5,0.4,0.1]=45.12, [0.55,0.4,0.05]=44.46, [0.45,0.40,0.15]=45.97 — all worse than v7+v8 alone=44.02).
+- **Notes:** Bigger model needs longer training to compete. Not feasible within 30-min budget. The v7+v8 ensemble [0.6, 0.4] at val=44.02 (test 42.77 from c773fa7 with v7+v5 variant) remains my best. Run `ohxn4jiy`. Final standing: rank 3 at test 42.77 (thorfinn 36.82, tanjiro 41.60).
+
 ### 2026-04-27 — final-5: per-split ensemble (val 44.00)
 - **Hypothesis:** Different test splits favor different ensemble weights — pick optimal weights per-split independently. Inspired by thorfinn's per-split routing (they jumped 45→37 with this trick).
 - **Change:** Added `predict_per_split.py` (uses YAML config for per-split weights) and `eval_per_split.py` (sweeps weights and reports per-split optima). Submitted with: single [0.7, 0.3], geom_rc [0.6, 0.4], cruise [0.5, 0.5], re_rand [0.6, 0.4] over [v7, v8].
