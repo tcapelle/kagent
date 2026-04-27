@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: bigger model 256/L7/slice128 (regression)
+- **Hypothesis:** Boost capacity — n_hidden 192→256, n_layers 6→7, slice_num 96→128, n_pos_freqs 10→14, max_pos_freq 16→24. With lr lowered to 4e-4 for stability. Even at fewer epochs (30 target → ~24 actual) the larger model should generalize better.
+- **Change:** train.py model_config + lr only.
+- **Result:** Trained 25 epochs in 30 min (74s/epoch vs 48s before). Best epoch 25 val/loss=3.48 (vs iter5 2.90). Val mae_surf_p avg=73.4 (vs iter5 65.0). W&B run `iter6-h256-L7-s128-pf14` / fc-prefixed run id (predictions auto-submitted to commit c3af0ef but worse than iter5).
+- **Verdict:** **discarded** — `git reset --hard HEAD~1` to restore iter5 config. Capacity wasn't the bottleneck at this training budget; per-epoch time growth ate any quality gain.
+- **Notes:** train losses converged similarly (vol≈0.10, surf≈0.034 at epoch 25), so the bigger model was undertrained for its size. If we want larger arch, need to find a way to keep epoch count high — e.g. smaller subsample (15k) or batch=8 with stable LR, or warm-start from iter5.
+
 ### 2026-04-27 — iter5: extended iter3 to 38 epochs (full 30-min budget)
 - **Hypothesis:** Iter3 only used 19.9 of 30 min (25 epochs). Stretching the cosine schedule to 38 epochs and letting it train the full 30 min should give substantial improvement at the same batch/lr.
 - **Change:** train.py — epochs 25→38. Everything else identical to iter3.
