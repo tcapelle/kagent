@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: chain again, raise p_weight 5→8, LR 3e-5→2e-5
+- **Hypothesis:** iter2 trajectory was still descending at timeout, and p_weight 3→5 was a clear net win. Pushing p_weight further (5→8) and dropping LR a notch should keep moving down without destabilising.
+- **Change:** args only. `--warm_start /mnt/new-pvc/kagent/apr27-5/askeladd/checkpoints/model-tska1pw8/checkpoint.pt --skip_warmup --lr 2e-5 --epochs 30 --p_weight 8.0`.
+- **Result:** 28 epochs in 30.9 min. Best epoch 26 → val/avg_surf_p=49.37 (single=42.31, geom_rc=68.15, geom_cruise=34.30, re_rand=52.72). Run eck7oggk. Predictions at apr27-5/askeladd/cb450df.
+- **Verdict:** kept — clear improvement (51.32 → 49.37, -1.95). p_weight ramp continues to help.
+- **Notes:** Improvements per iter shrinking (3.5 → 2.0). geom_rc still the worst (68.2). Trajectory near plateau in last 5 epochs (49.7→49.4). Worth one more chain at lower LR plus consider an ensemble of the 3 chained checkpoints (rriy9vrf, tska1pw8, eck7oggk).
+
 ### 2026-04-27 — iter2: chain warm-start, raise p_weight 3→5
 - **Hypothesis:** iter1 was still descending at timeout (cosine LR ≈0). Restarting with another cosine cycle at slightly lower peak (3e-5) and stronger surface-pressure weight (p_weight 3→5) should keep moving down without destabilising. p_weight is the leaderboard metric multiplier on surface pressure inside the L1 loss.
 - **Change:** train.py unchanged, args only. `--warm_start /mnt/new-pvc/kagent/apr27-5/askeladd/checkpoints/model-rriy9vrf/checkpoint.pt --skip_warmup --lr 3e-5 --epochs 30 --p_weight 5.0`.
