@@ -49,6 +49,7 @@ class Config:
     """
     checkpoint: str = ""
     checkpoints: str = ""  # comma-separated paths for ensemble
+    weights: str = ""  # comma-separated weights for ensemble (default uniform)
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 1  # bs=1 avoids padding-driven attention degradation
@@ -61,6 +62,10 @@ splits_dir = Path(cfg.splits_dir)
 ckpt_paths = [Path(p) for p in cfg.checkpoints.split(",") if p.strip()] \
     if cfg.checkpoints else [Path(cfg.checkpoint)]
 assert ckpt_paths, "Must pass --checkpoint or --checkpoints"
+weights = [float(w) for w in cfg.weights.split(",") if w.strip()] \
+    if cfg.weights else [1.0] * len(ckpt_paths)
+assert len(weights) == len(ckpt_paths), f"Got {len(weights)} weights for {len(ckpt_paths)} checkpoints"
+total_w = sum(weights)
 ckpt_path = ckpt_paths[0]  # for downstream config + mirror
 cfg_path = ckpt_path.parent / "config.yaml"
 with open(cfg_path) as f:
@@ -73,7 +78,7 @@ for p in ckpt_paths:
     m.eval()
     models.append(m)
     print(f"Loaded model from {p}")
-print(f"Ensemble of {len(models)} model(s)")
+print(f"Ensemble of {len(models)} model(s), weights={weights}")
 
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
@@ -113,7 +118,7 @@ for split in TEST_SPLITS:
 
             with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=use_amp):
                 x_in = (x_pad - x_mean) / x_std
-                pred_norm = sum(m({"x": x_in})["preds"].float() for m in models) / len(models)
+                pred_norm = sum(w * m({"x": x_in})["preds"].float() for w, m in zip(weights, models)) / total_w
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
