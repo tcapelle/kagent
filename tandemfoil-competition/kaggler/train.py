@@ -115,6 +115,8 @@ class SliceAttention(nn.Module):
 
     Each node is softly assigned to S slices; we self-attend on slice tokens,
     then redistribute back. Cost is O(N*S + S^2) instead of O(N^2).
+    Supports a boolean `mask` over nodes — masked-out nodes contribute zero
+    weight to slice assignment (essential when the batch has padding).
     """
 
     def __init__(self, dim: int, heads: int = 8, dim_head: int = 32, slice_num: int = 64):
@@ -132,11 +134,14 @@ class SliceAttention(nn.Module):
         self.to_v = nn.Linear(dim_head, dim_head, bias=False)
         self.to_out = nn.Linear(inner, dim)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         B, N, _ = x.shape
         x_mid = self.in_project_x(x).reshape(B, N, self.heads, self.dim_head).permute(0, 2, 1, 3).contiguous()
         fx_mid = self.in_project_fx(x).reshape(B, N, self.heads, self.dim_head).permute(0, 2, 1, 3).contiguous()
         slice_w = (self.in_project_slice(x_mid) / self.temperature).softmax(dim=-1)  # [B, h, N, S]
+        if mask is not None:
+            m = mask[:, None, :, None].to(slice_w.dtype)
+            slice_w = slice_w * m
         slice_n = slice_w.sum(dim=2)  # [B, h, S]
         slice_t = torch.einsum("bhnc,bhns->bhsc", fx_mid, slice_w)
         slice_t = slice_t / (slice_n.unsqueeze(-1) + 1e-5)
@@ -147,6 +152,22 @@ class SliceAttention(nn.Module):
         out_x = torch.einsum("bhsc,bhns->bhnc", out_s, slice_w)
         out_x = rearrange(out_x, "b h n d -> b n (h d)")
         return self.to_out(out_x)
+
+
+class GatedSliceAttn(nn.Module):
+    """Slice attention with a learnable per-channel gate γ initialised to 0.
+    At init time the residual contribution is exactly zero, so this layer is
+    safe to drop into a pre-trained network without changing its forward output.
+    """
+
+    def __init__(self, dim: int, heads: int = 8, dim_head: int = 32, slice_num: int = 64):
+        super().__init__()
+        self.ln = nn.LayerNorm(dim)
+        self.attn = SliceAttention(dim, heads, dim_head, slice_num)
+        self.gate = nn.Parameter(torch.zeros(dim))
+
+    def forward(self, x, mask=None):
+        return x + self.gate * self.attn(self.ln(x), mask=mask)
 
 
 class TransolverBlock(nn.Module):
@@ -223,10 +244,13 @@ class ResMLP(nn.Module):
                  n_freqs: int = 32, fourier_sigma: float = 4.0,
                  ff_kind: str = "random",
                  fourier_scales: int = 8, fourier_max_freq: float = 16.0,
-                 use_global: bool = False):
+                 use_global: bool = False,
+                 n_attn_layers: int = 0, attn_heads: int = 8,
+                 attn_dim_head: int = 48, attn_slice_num: int = 64):
         super().__init__()
         self.ff_kind = ff_kind
         self.use_global = use_global
+        self.n_attn_layers = n_attn_layers
         if ff_kind == "multiscale":
             self.fourier = MultiScaleFourier(num_scales=fourier_scales,
                                              max_freq=fourier_max_freq)
@@ -242,6 +266,18 @@ class ResMLP(nn.Module):
             self.globals = nn.ModuleList([GlobalFiLM(hidden) for _ in range(n_blocks)])
         else:
             self.globals = None
+        # Optional gated slice-attention layers, evenly spaced across blocks.
+        if n_attn_layers > 0:
+            stride = max(1, n_blocks // n_attn_layers)
+            self.attn_positions = list(range(stride - 1, n_blocks, stride))[:n_attn_layers]
+            self.attns = nn.ModuleList([
+                GatedSliceAttn(hidden, heads=attn_heads,
+                               dim_head=attn_dim_head, slice_num=attn_slice_num)
+                for _ in range(len(self.attn_positions))
+            ])
+        else:
+            self.attn_positions = []
+            self.attns = None
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, hidden), nn.GELU(),
@@ -254,10 +290,14 @@ class ResMLP(nn.Module):
         ff = self.fourier(x[..., :2])
         h = torch.cat([x, ff], dim=-1)
         h = self.embed(h)
+        attn_idx = 0
         for i, block in enumerate(self.blocks):
             h = block(h)
             if self.globals is not None:
                 h = self.globals[i](h, mask)
+            if self.attns is not None and i in self.attn_positions:
+                h = self.attns[attn_idx](h, mask=mask)
+                attn_idx += 1
         return {"preds": self.head(h)}
 
 
@@ -311,6 +351,11 @@ class Config:
     ema_start_step: int = 500
     # Global FiLM modulation per block (zero-init, safe to warm-start)
     use_global: bool = False
+    # Gated slice attention (zero-init γ, safe to warm-start onto a non-attn ckpt)
+    n_attn_layers: int = 0
+    attn_heads: int = 8
+    attn_dim_head: int = 48
+    attn_slice_num: int = 64
 
 
 def subsample_batch(x, y, is_surface, mask, k_vol):
@@ -468,6 +513,10 @@ def main():
             n_freqs=cfg.n_freqs,
             fourier_sigma=cfg.fourier_sigma,
             use_global=cfg.use_global,
+            n_attn_layers=cfg.n_attn_layers,
+            attn_heads=cfg.attn_heads,
+            attn_dim_head=cfg.attn_dim_head,
+            attn_slice_num=cfg.attn_slice_num,
         )
         model_kwargs = {k: v for k, v in model_config.items() if k != "arch"}
         model = ResMLP(**model_kwargs).to(device)
