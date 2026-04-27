@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v10: chain v8 with lr=1e-5 (12ep) + final-6 ensemble v7+v10 per-split (val 43.87)
+- **Hypothesis:** Even gentler chain on v8 refines it slightly. Pairs better with v7 in ensemble.
+- **Change:** `--warm_start v8 --slice_num 128 --lr 1e-5 --epochs 12`. Then per-split sweep v7+v10.
+- **Result:** v10 alone val=48.06 (epoch 10, beats v8=48.56 by 0.5). Ensemble v7+v10 [0.6, 0.4] uniform=43.90; per-split optima=43.87 (single 0.65/0.35, geom_rc 0.6/0.4, cruise 0.55/0.45, re_rand 0.55/0.45). Beats v7+v8 [0.6, 0.4]=44.02 by 0.12.
+- **Verdict:** Submitted per-split as new best.
+- **Notes:** Per-split optima all favor v10 slightly more than v8 favored. Run `8fazsiug`.
+
 ### 2026-04-27 — v9: bigger model n_hidden=256 n_layers=8 (22ep)
 - **Hypothesis:** A genuinely larger architecture (1.5x params, 33% more layers) might give the diversity my v3/v5/v7/v8 family lacks. Even if individually slower to converge, complementary errors should help the ensemble.
 - **Change:** `--n_hidden 256 --n_layers 8 --n_head 8 --slice_num 64 --mlp_ratio 2 --epochs 22`. 79s/epoch (1.7x slower), 18.2GB peak VRAM.
