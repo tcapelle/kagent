@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15: deeper chain on iter3 (lr=1e-6) → val_surf_p=51.23 + 8-way ensemble val=49.05
+- **Hypothesis:** iter3 holds 38% of optimal ensemble weight. Refining iter3 directly should give the biggest single-model improvement. Chain it at lr=1e-6 for 11 epochs (the deepest yet on the Fourier branch).
+- **Change:** Warm-start iter3 (`model-w2qvsfx1`), `lr=1e-6`, bs=2 full mesh. Run `n3rus7ko`.
+- **Result:** epoch 11 best, val/loss=**0.7275**, surf_p=**51.23** (vs iter3's 51.27). Marginal solo gain. But ensemble optimizer with iter15 added improves: 49.12 → **49.05** with new weights {iter3=0.26, iter15=0.26, iter9=0.25, iter11=0.12, iter14=0.06, iter2=0.02, iter8=0.01, iter1=0.003}. Submitted under `8e5d14f`.
+- **Verdict:** kept; -0.07 ensemble val improvement.
+- **Notes:** iter15 is essentially a near-clone of iter3 (deeper chain) but contributes equal weight in the optimal ensemble — the small parameter delta still improves the blend. Best-single iter15 = 51.23, slightly better than iter3.
+
 ### 2026-04-27 — iter14: seed-diverse Fourier model + 6-way validated ensemble → val=49.12
 - **Hypothesis:** Optimizer dropped non-Fourier models. Seed diversity within Fourier+chain family might help. Train another iter1-style model (192/6/6, fourier=8, p_weight=3, 30ep) with `PYTHONHASHSEED=42`.
 - **Change:** Re-run iter1 recipe. Run `o4n26g12`. Submitted ensemble at HEAD via fast_optimize.py with 12 sources.
