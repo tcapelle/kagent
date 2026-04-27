@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 18 (re-roll, no explicit seed) — DISCARDED
+- **Hypothesis:** iter 8 was the only run that hit val 35.88. Maybe re-rolling without an explicit seed (matching iter 8's startup) lets randomness produce another good run.
+- **Change:** `seed=0` disables explicit seeding (added `if cfg.seed > 0` guard).
+- **Result:** Best val=39.27 at epoch 76. Test pending. Worse than iter 8.
+- **Verdict:** Discarded — iter 8 remains an outlier. Possibly the only path to match it would be running many seeds. Time permitting, the ensemble strategy (averaging multiple OK runs) may approach iter 8 indirectly.
+
+### 2026-04-27 — Iter 17 (lr=5e-4) — DISCARDED
+- **Hypothesis:** Lower LR with same architecture might find a smoother optimum and produce a different ensemble member.
+- **Change:** lr=1e-3 → 5e-4, explicit seed=42, otherwise iter 8 recipe.
+- **Result:** Best val avg_surf_p=43.83 at epoch 61. Test=41.05 — significantly worse than iter 8.
+- **Verdict:** Discarded. lr=5e-4 is too low to converge in 80 epochs with this schedule.
+
 ### 2026-04-27 — Ensemble + diversity-seed runs (iter 13–17)
 - **Hypothesis:** A handful of moderately-similar checkpoints (iter 8 + variants) averaged should produce a tighter prediction by cancelling independent errors. Tried: 2-way (iter 8+11), 3-way (iter 8+11+13), weighted (iter 8 ×3 + iter 13 + iter 15).
 - **Diversity members trained:**
