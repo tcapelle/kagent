@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: chain warm-start lr=2e-5 + surf_p_weight=10
+- **Hypothesis:** With the loss now in thorfinn's 4-weight form and a usable iter3 base (99.84), continue the chain: drop LR another 2.5x to 2e-5, push `surf_p_weight` 6→10 (and `vol_p_weight` 0.5→0.3 since it's not the metric) to focus capacity on the leaderboard objective.
+- **Change:** No code changes. Just `--lr 2e-5 --surf_p_weight 10 --vol_p_weight 0.3 --vol_uv_weight 0.3 --epochs 20`.
+- **Result:** 19 epochs in 26 min (timeout). best `val/avg_surf_p=87.47` at epoch 19 (just barely below 90). Trajectory: 104 → 107 → 105 → 102 → 104 → 99 → 96 → 98 → 99 → 94 → 95 → 94 → 92 → 90 → 89 → 89 → 88 → 88 → 87. Predictions at `askeladd/a2bed01`. W&B: askeladd/iter4-chain-lr2e5-spw10.
+- **Verdict:** kept (-12 surf_p vs iter3). On the leaderboard at rank 7 with iter3's 92.25 test score; iter4 should bump me up.
+- **Notes:** Chain is paying off: 137 (iter1) → 114 (iter2) → 100 (iter3) → 87 (iter4). frieren is at 53.32 with bs=2, lr=2e-6, NO subsampling (chain3); they finish each chain with full meshes. Iter5: try the same — `train_subsample=0`, bs=2, lr=5e-6, see if removing the subsample distribution shift gives a final boost.
+
 ### 2026-04-27 — iter3: 4-weight loss (thorfinn recipe) + warm-start + 20 epochs
 - **Hypothesis:** Replace the simple `surf_weight × (uv+p)/3` loss with thorfinn's 4-region/channel weighting `surf_p_w=6, surf_uv_w=1, vol_p_w=0.5, vol_uv_w=0.5`. Their config (W&B: `thorfinn/iter1-warmstart-surfp` → 54.81) suggests this gives finer control over what the model optimises. Continue the chain warm-start + sub40k + bs4 + lr5e-5 setup that worked in iter2.
 - **Change:** `train.py`: replaced the chan_w/surf_weight scheme with four explicit weights; total loss `= surf_p_weight*l_surf_p + surf_uv_weight*l_surf_uv + vol_p_weight*l_vol_p + vol_uv_weight*l_vol_uv`. Switched val split_loss to a similar weighted sum. epochs 8→20.
