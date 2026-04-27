@@ -112,10 +112,19 @@ class TransolverBlock(nn.Module):
 class Transolver(nn.Module):
     def __init__(self, space_dim=2, fun_dim=22, n_layers=8, n_hidden=256,
                  dropout=0.0, n_head=8, act="gelu", mlp_ratio=2, out_dim=3,
-                 slice_num=96, use_checkpoint=False):
+                 slice_num=96, use_checkpoint=False,
+                 num_pos_freqs=0, pos_dims_to_encode=4):
         super().__init__()
         self.use_checkpoint = use_checkpoint
-        self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
+        self.num_pos_freqs = num_pos_freqs
+        self.pos_dims_to_encode = pos_dims_to_encode
+        # Fourier encoding adds 2 * num_freqs * pos_dims_to_encode extra features
+        extra_dim = 2 * num_pos_freqs * pos_dims_to_encode if num_pos_freqs > 0 else 0
+        if num_pos_freqs > 0:
+            # Geometric series of frequencies, like NeRF positional encoding
+            freqs = 2.0 ** torch.arange(num_pos_freqs).float()
+            self.register_buffer("fourier_freqs", freqs)
+        self.preprocess = MLP(fun_dim + space_dim + extra_dim, n_hidden * 2, n_hidden,
                               n_layers=0, res=False, act=act)
         self.n_hidden = n_hidden
         self.blocks = nn.ModuleList([
@@ -140,6 +149,12 @@ class Transolver(nn.Module):
 
     def forward(self, data, **kwargs):
         x = data["x"]
+        if self.num_pos_freqs > 0:
+            # Encode the first `pos_dims_to_encode` features (position + saf) with Fourier
+            pos = x[..., :self.pos_dims_to_encode]
+            enc = pos[..., None] * self.fourier_freqs * 3.141592653589793  # [B, N, D, F]
+            fourier = torch.cat([enc.sin(), enc.cos()], dim=-1).flatten(-2)  # [B, N, 2*F*D]
+            x = torch.cat([x, fourier], dim=-1)
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for i, block in enumerate(self.blocks):
             if self.use_checkpoint and self.training and i < len(self.blocks) - 1:

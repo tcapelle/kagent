@@ -48,6 +48,8 @@ class Config:
     constant_lr: bool = False  # disable cosine decay; LR stays at peak after warmup (for SWA)
     swa_last_n: int = 0  # if >0, post-training: average last N per-epoch ckpts and use if better
     save_per_epoch: bool = False  # save model state dict every epoch (for SWA)
+    num_pos_freqs: int = 0  # 0 = no Fourier features; 4-8 = NeRF-style positional encoding
+    pos_dims_to_encode: int = 4  # encode position (0,1) and saf (2,3) by default
     epochs: int = 50
     grad_clip: float = 1.0
     warmup_steps: int = 100
@@ -150,6 +152,8 @@ model_config = dict(
     mlp_ratio=2,
     dropout=0.0,
     use_checkpoint=cfg.use_checkpoint,
+    num_pos_freqs=cfg.num_pos_freqs,
+    pos_dims_to_encode=cfg.pos_dims_to_encode,
 )
 
 model = Transolver(**model_config).to(device)
@@ -158,7 +162,19 @@ print(f"Params: {n_params/1e6:.2f}M")
 
 if cfg.resume:
     state = torch.load(cfg.resume, map_location=device, weights_only=True)
-    model.load_state_dict(state)
+    if cfg.num_pos_freqs > 0:
+        # Pad the preprocess input weight matrix with zeros for the new Fourier dims
+        # so iter11's behavior is preserved at init.
+        target_state = model.state_dict()
+        pre_w_key = "preprocess.linear_pre.0.weight"
+        old_w = state[pre_w_key]
+        new_w_shape = target_state[pre_w_key].shape
+        if old_w.shape != new_w_shape:
+            print(f"Padding {pre_w_key}: {old_w.shape} -> {new_w_shape}")
+            padded = torch.zeros(new_w_shape, dtype=old_w.dtype)
+            padded[:, :old_w.shape[1]] = old_w
+            state[pre_w_key] = padded
+    model.load_state_dict(state, strict=False)
     print(f"Resumed from {cfg.resume}")
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
