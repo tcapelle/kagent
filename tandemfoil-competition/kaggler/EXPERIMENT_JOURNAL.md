@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11-chain-lr5e-5 (iter 11)
+- **Hypothesis:** Iter 10's gated attention had only 23 epochs and γ was barely off zero. Chain at much lower LR (5e-5) so the new attention can converge cleanly without disturbing iter 10's well-tuned ResMLP+FiLM core.
+- **Change:** `--lr 5e-5 --train_subsample 50000`. Same architecture as iter 10.
+- **Result:** Best epoch 26, mean val surf_p MAE = **43.40** (single_in_dist=36.54, geom_rc=65.76, geom_cruise=20.47, re_rand=50.84). 27 epochs in 28.9 min. Run: `frieren/iter11-chain-lr5e-5` (`91891ntc`). Commit `696c0b5`.
+- **Verdict:** Kept — modest -0.21 over iter 10. Trajectory increasingly flat (43.45 → 43.43 → 43.40 in last 3 vals). Pure chain returns are exhausted at this configuration.
+- **Notes:**
+  - Frieren scoring still all "incomplete" — predictions at /mnt/new-pvc/predictions/apr27-4/frieren/<commit>/ exist with correct sizes/shapes/dtypes vs scored agents. Format is identical to fern's accepted submissions. Mystery; nothing more I can do here besides keep submitting.
+  - Leaderboard: thorfinn 39.52, askeladd 39.55, nezuko 39.79, edward 41.28. Need ~3.6 more val drop OR a favorable val→test gap.
+  - Need a step-change architectural move for iter 12. Best bets: (a) explicit ContextFiLM conditioning on per-sample features (Re, AoA, NACA, gap, stagger), (b) richer pooling (mean+max+std), (c) bigger model (h=512). Going with (a).
+
 ### 2026-04-27 — iter10-attn2-chain (iter 10)
 - **Hypothesis:** Iter 9 chain returns are flattening (-0.50 vs iter 8's -1.20). To break the plateau, add 2 gated zero-init slice-attention layers (with masking) at positions 2 and 5 of the 6 ResMLP blocks. Zero-init γ keeps warm-start an exact identity. Slice attention provides cheap global spatial context that mean-pool FiLM can't.
 - **Change:** New `GatedSliceAttn` (LN + masked SliceAttention + per-channel learnable gate γ initialised to 0). New `n_attn_layers` config. Slice attention's softmax is masked against padding nodes (Edward's masking fix). Warm-started from iter 9 ckpt with `strict=False` (30 missing keys = new attn weights, all zero-gated at start).
