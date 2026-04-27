@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: boost racecar_single 2.5x in sampler (kept)
+- **Hypothesis:** From the leaderboard split breakdown, my model is far behind on `test_single_in_dist` (45.4 vs nezuko's 32.3). The balanced sampler in `data.py` already gives equal weight to each domain, but the model has been over-fit to tandem regimes through the warm-start chain. Up-weighting racecar_single 2.5x in the sampler (on top of the existing 1/group_size weights) should claw back some of that gap.
+- **Change:** train.py — added `rc_single_boost=2.5` cfg, multiplies sample_weights for the 599 racecar_single training indices read from `meta.json` after `load_data()`. Bumped lr 4e-6→6e-6 (slightly more energy to actually move on the new sampler distribution), ema_decay 0.9995→0.999 (faster adaptation).
+- **Result:** Best epoch 8 with **val avg_surf_p=45.93** (vs iter8 46.36 → -0.43). Trajectory: 46.26, 46.19, 46.12, 46.08, 45.99, 45.95, 45.93, 45.93. Per-split losses confirm the boost helps: `val_single_in_dist` went 2.7293→2.7090 in normalized loss; cruise/re_rand stayed flat. Wall time 29.3 min (faster epochs because RC-single meshes are smaller). WandB run ywetcbgu. Predictions at commit `6fb87ef`.
+- **Verdict:** Kept. Re-balancing the sampler is a more targeted lever than blind LR-tuning.
+- **Notes:**
+  - Leaderboard at this iteration: askeladd 39.55 (#1), nezuko 39.79 (#2), thorfinn 39.91 (#3 with iter8). My iter9 hasn't been scored yet — projected test ≈39.5 if val→test gap holds.
+  - The val/test gap is split-dependent. My iter7 single_in_dist test=45.56 with val_single_in_dist surface_loss=2.74. Iter9 val_single_in_dist=2.71, so the test improvement should be small (<1pt) on that split. Need a bigger structural change to claw back the full gap to nezuko's 32.
+
 ### 2026-04-27 — iter8: continue iter7, lr=4e-6, ema_decay=0.9995 (kept)
 - **Hypothesis:** With a full-EMA pipeline and another LR halving, the late-training oscillations get further smoothed and we squeeze out another fractional gain. Treat this as the "final polish" iteration.
 - **Change:** train.py — lr 8e-6→4e-6, ema_decay 0.999→0.9995 (slower decay = even smoother averaging). Warm-start from iter7 ckpt.
