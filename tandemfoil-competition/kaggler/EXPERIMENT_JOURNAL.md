@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12 chain with w_p=5, LR=2e-5 (KEPT)
+- **Hypothesis:** Iter11's w_p=3 helped a lot; push pressure weight to 5 for more gradient focus.
+- **Run:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 2e-5 --w_p 5.0`. Chain from iter11 ckpt.
+- **Result:** Best epoch 11 (last), **val avg_surf_p=44.55** (Δ -1.19 vs iter11). 27.4 min. Trajectory monotonically descending: 51.6→49.1→47.7→48.0→47.3→46.9→45.8→45.5→44.9→44.7→44.5. Test score pending scoring service refresh.
+- **Verdict:** Kept (commit `c8c5db8`).
+- **Notes:** Per-iter improvement holding up under heavier pressure weighting. val_geom_camber_rc still the worst split (2.37 combined loss). Iter13 chain again at lower LR (1e-5) to see if there's more to squeeze; if plateau, switch to bigger model or Cp normalization.
+
 ### 2026-04-27 — iter11 per-channel L1 weights [Ux,Uy,p]=[1,1,3] (KEPT — big win)
 - **Hypothesis:** Leaderboard scores only surface pressure MAE; loss currently weights all 3 channels equally. Triple-weight pressure to focus the L1 gradient signal where the metric lives.
 - **Change:** train.py — multiply normalized-space L1 diff by `[1, 1, 3]` channel-wise before applying vol/surf masks. Added `w_ux`/`w_uy`/`w_p` Config knobs.
