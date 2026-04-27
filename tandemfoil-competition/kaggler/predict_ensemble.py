@@ -83,13 +83,12 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter19: per-split-best across thorfinn's expanding new-blend pool.
-    # Best per split: single=03652c4 (35.2169), rc=03652c4 (48.6820),
-    # cruise=9be70c5 (20.6232), re=34c2f44 (34.9163). Floor=34.8596.
-    single: str = "thorfinnL:1.0"   # 03652c4
-    rc: str = "thorfinnL:1.0"       # 03652c4
-    cruise: str = "thorfinnN:1.0"   # 9be70c5 (best cruise)
-    re_rand: str = "thorfinnM:1.0"  # 34c2f44 (best re)
+    # iter20: 50/50 blend top-2 per split — chase decorrelation gain across thorfinn's diverse
+    # new commits. Currently #1 at 34.8596 (5cf59c7); aim 34.84 by adding decorrelation on s/rc/re.
+    single: str = "thorfinnL:0.5,thorfinnM:0.5"   # 03652c4 + 34c2f44 (both at single floor)
+    rc: str = "thorfinnL:0.5,thorfinnM:0.5"       # 03652c4 + 34c2f44 (both at rc floor)
+    cruise: str = "thorfinnN:0.5,thorfinnO:0.5"   # 9be70c5 + c9af0cd (cruise top-2)
+    re_rand: str = "thorfinnM:0.5,thorfinnL:0.5"  # 34c2f44 + 03652c4
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
