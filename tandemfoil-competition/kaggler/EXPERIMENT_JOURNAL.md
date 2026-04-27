@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: chain link 2 — warm iter2 lr=5e-6 (commit e352f58)
+- **Hypothesis:** Following frieren's iter101 recipe: continue chain at 4× lower LR (5e-6) for further fine-tuning. Should give 1-2% val improvement and add ensemble diversity to iter2.
+- **Change:** `--warm_start /tmp/iter2_best.pt --lr 5e-6 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. Same architecture.
+- **Result:** val/loss=**1.5157** at epoch 9 (25.1 min, 29.1GB). Per-split val: single=2.42, rc=1.91, cruise=0.43, re_rand=1.31. Marginal improvement over iter2 (1.532); chain saturating.
+- **Verdict:** kept. Marginal gain but valuable for ensemble averaging.
+- **Notes:** Predictions written to commit `e352f58` (head moved due to ensemble.py commit). Frieren's experience: each chain link gives 0.01-0.05 val gain; bigger wins come from ensembling multiple chain links + architectural diversity (slice=128). Next: iter4 = ensemble iter2+iter3 (free win), then iter5 = slice=128 diversity model.
+
 ### 2026-04-27 — iter2: warm-start iter1 + bs=2 no-subsample (BREAKTHROUGH recipe, commit 381bc71)
 - **Hypothesis:** Frieren's apr23 iter93 showed bs=2 + train_subsample=0 (full mesh) is ~30% better than bs=8 sub=40K. Apply to iter1 warm-start at lr=2e-5 cosine over 10 epochs (no warmup since model is pre-trained).
 - **Change:** `--warm_start /tmp/iter1_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. Same 192x6 architecture.
