@@ -21,3 +21,19 @@ Keep entries short. Link W&B run URLs when useful.
 ---
 
 ## Entries
+
+### 2026-04-27 — iter1 thorfinn-recipe Transolver 192/6/6/128
+- **Hypothesis:** Adopting thorfinn's apr27-bis recipe (192/6/6/128 Transolver, 40k volume node subsampling, L1 loss with p_weight=3 on surface pressure, bf16 AMP, warmup+cosine, grad_clip=1.0, batch_size=8) should beat my apr27-bis score of 79.95 and approach thorfinn's 45.94.
+- **Change:** Full rewrite of `train.py` (commit c3dc789):
+  - Architecture: n_hidden 128→192, n_layers 5→6, n_head 4→6, slice_num 64→128.
+  - Custom collate that keeps all surface nodes and subsamples 40k volume nodes per training sample (val unchanged → full mesh).
+  - Loss: MSE → L1 with per-channel weight `[1, 1, 3]` (extra weight on pressure).
+  - bf16 autocast for forward + grad clip 1.0 + AdamW.
+  - LR: 5e-4 → 1e-3, scheduler: per-epoch cosine → per-step warmup(2 epochs) + cosine over 60 epochs.
+  - Best ckpt selected by `avg_surf_p` (matches leaderboard metric), not val/loss.
+  - Wrapped main in `if __name__ == "__main__":` so predict.py can `from train import Transolver` cleanly.
+  - Mirror best ckpt to PVC + `checkpoints/best.pt`.
+  - Fixed predict.py to load Transolver + config.yaml.
+- **Result:** Best epoch 28/60 (timeout); val/loss=1.8288, avg_surf_p=79.11 (val splits: in_dist=2.50, geom_rc=2.32, geom_cruise=0.61, re_rand=1.88). Train: 66s/epoch, 30GB peak VRAM. Run `g0e6o8nz`.
+- **Verdict:** Kept (commit de6dcc2). Marginal improvement over apr27-bis (79.95 → 79.11) but still ~1.7× behind thorfinn (45.94). Loss was still decreasing fast at epoch 28 — cosine was scheduled for 60 epochs so LR was only halfway decayed when timeout hit.
+- **Notes:** Two clear next moves: (a) set `epochs` close to what actually fits (~28-30) so the cosine schedule completes properly within the 30-min budget; (b) warm-start from this checkpoint (de6dcc2) at low LR for final fine-tune. Geom_rc track is the worst (2.32 split-loss vs 0.61 for geom_cruise) — possibly under-represented in the balanced sampler since cruise gets equal weight despite tougher targets being p in raceCar tandem.
