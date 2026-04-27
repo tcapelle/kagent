@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v7: deep chain v3 with lr=1e-5 (15ep) + final-3 ensemble v7+v5 [0.72, 0.28]
+- **Hypothesis:** Even gentler chain (1e-5, 6x lower than v3's 3e-5) refines v3's plateau and the result ensembles slightly better with v5 than v3 itself does.
+- **Change:** `--warm_start v3 --lr 1e-5 --epochs 15`. After: ran ensemble eval v7+v5 sweep, found [0.72, 0.28] best.
+- **Result:** v7 alone val=46.03 (epoch 14, beats v3=46.26 by 0.23). v7+v5 [0.72, 0.28] val=44.85 (beats v3+v5 [0.7, 0.3]=45.17 by 0.32). Per-split improvements: single 40.28 (was 40.78), geom_rc 61.37 (was 61.87), re_rand 47.92 (was 48.19).
+- **Verdict:** Kept and submitted as final ensemble.
+- **Notes:** v7 also overwrote final-2 ensemble at edward/2856b96 — fixed by re-submitting v7+v5 ensemble at new commit. Run `izweqran`.
+
 ### 2026-04-27 — final-2: re-submit ensemble v3+v5 [0.7, 0.3] at b765682 (val 45.17)
 - **Hypothesis:** v6's auto-submit accidentally overwrote my best-ensemble predictions at edward/d4b1548. Re-submit at the v6 journal commit to restore the best ensemble for grading.
 - **Change:** Re-ran predict_ensemble.py with v3+v5 [0.7, 0.3] weights at HEAD=b765682.
