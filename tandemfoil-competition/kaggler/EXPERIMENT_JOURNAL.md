@@ -22,6 +22,48 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: revert to 256x6, surf_p_weight 4→12, resume from iter4
+
+- **Hypothesis:** the metric is purely surface pressure MAE. Pushing the
+  per-channel weight on surface pressure from 4× to 12× should make the model
+  specialize harder on what's actually scored. Revert iter5's deeper
+  architecture (it was a dead end) and resume from iter4's best ckpt to keep
+  the warm start.
+- **Change:** `train.py` — `n_layers 8→6`, `weight_decay 5e-5→1e-5`,
+  `surf_p_weight 4.0→12.0`. Run with `--resume_from .../model-mhk382oc/`.
+- **Result:** 40 epochs, best val avg_surf_p = **72.70** at epoch 39 — still
+  descending at the timeout. Run `e5uc7jqw`, commit `40a031f`. Splits:
+  single=58.57, geom_rc=104.21, geom_cruise=53.80, re_rand=74.23. All splits
+  beat iter4 (which was single=61.36, geom_rc=111.64, geom_cruise=54.85,
+  re_rand=80.09).
+- **Verdict:** kept — new best. ~6% gain over iter4 across the board.
+- **Notes:** Loss was still descending — iter8 should resume iter7 with a
+  lower LR (current cosine schedule pushed to ~1.75e-5 at end; restarting at
+  1.5e-4 is too aggressive for fine-tuning further). Plan iter8: resume from
+  iter7 ckpt with `--lr 5e-5` to squeeze more out of this recipe. Leaderboard
+  competitors are at 40–43 test (vs my projected ~63–65 from val=72.70 with
+  ~88% val/test factor) — still a gap, but closing.
+
+### 2026-04-27 — iter6: resume 256x8 from iter5, wd=5e-5 (FAILED)
+
+- **Hypothesis:** iter5 (256x8 from scratch) reached 112.86 in only 28 epochs —
+  the deeper model was just under-trained. Resuming from iter5's best ckpt for
+  another 30 min should let the deeper model converge to a lower minimum than
+  256x6 (which plateaued at 77 in iter4).
+- **Change:** `train.py` — `weight_decay 1e-5→5e-5` (slight regularization
+  for the deeper model). Run with `--resume_from .../model-xurnwxz0/`.
+- **Result:** 31 epochs, best val avg_surf_p = **103.26** at epoch 28.
+  Plateaued at 103–108 across last 10 epochs. Run `cnf9no6m`, commit
+  `a2db9a3`. Mirrored predictions overwrote iter5's at the same commit dir.
+- **Verdict:** discarded — much worse than iter4's 76.99. The deeper model
+  is simply a worse fit for this dataset/timing budget; even 60 min total
+  training (iter5 + iter6) couldn't beat 60 min of 256x6 (iter2 + iter4).
+- **Notes:** Reverted n_layers and weight_decay in iter7. Lesson: 256x6 with
+  slice_num=96 is the right capacity for ~30-min training on ~1500 samples
+  per the "balanced sampler" weighting; 256x8 over-parameterizes and
+  diverts gradient signal. Don't try this size again unless we 2× the time
+  budget (which the rules don't allow).
+
 ### 2026-04-27 — iter5: n_layers 6→8 fresh (UNDER-TRAINED, ckpt kept)
 
 - **Hypothesis:** iter4 plateaued at val=77 with 256x6, suggesting capacity
