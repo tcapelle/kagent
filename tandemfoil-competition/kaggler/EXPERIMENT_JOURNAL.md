@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: gentle p-channel weight + lr=2e-5 (kept)
+- **Hypothesis:** Iter3 had the right idea (up-weight pressure to match the leaderboard's pressure-only ranking) but p_weight=5 was too aggressive. A gentler p_weight=1.5 plus an even lower LR (2e-5) on top of iter4 should nudge the model toward pressure without destabilizing.
+- **Change:** train.py — re-introduced `surf_p_weight=1.5` (per-channel weights `[1, 1, 1.5]` on the surface huber); lr 3e-5→2e-5; warm-start from `checkpoints/best.pt` (iter4 ckpt at 48.02).
+- **Result:** Best epoch 8 with **val avg_surf_p=47.13** (vs iter4 48.02 → -0.89). Trajectory: ep1=49.42, ep2=49.10, ep3=48.60, ep4=47.94, ep5=47.92, ep6=47.31, ep7=47.28, ep8=47.13. Wall time 32.1 min. WandB run hr2zpk4f. Predictions at `/mnt/new-pvc/predictions/apr27-4/thorfinn/09570d5/`.
+- **Verdict:** Kept. Gentle pressure-channel reweighting works, validating the iter3 hypothesis with a saner magnitude.
+- **Notes:**
+  - Even at p_weight=1.5 the warm-start drifts in epochs 1-3 (49.42 → 48.60) before crossing back below the 48.02 baseline at epoch 4. The early "re-converge" tax keeps showing up.
+  - The current leaderboard leader (edward) is at 43.73 test. Prior thorfinn val→test gap was ~7 (49.78 val → 42.90 test), so 47.13 val could plausibly score test ~40 — competitive.
+  - Diminishing returns: each iteration shaves ~0.5-1 point of val avg_surf_p. Likely need a structural change (larger model / weight averaging / TTA) to break much further.
+
 ### 2026-04-27 — iter4: continue iter2 ckpt at lr=3e-5 (kept)
 - **Hypothesis:** Iter2's curve was still descending at epoch 8. Continue training from the iter2 checkpoint at a 3x lower LR (3e-5 vs 1e-4), no other loss changes, would shave more avg_surf_p before saturating.
 - **Change:** train.py — `init_checkpoint = "checkpoints/best.pt"` (the iter2 ckpt), lr 1e-4→3e-5; also persist warm-start as initial ckpt at start of training so auto-predict always has a valid file even if no epoch beats the warm-start.
