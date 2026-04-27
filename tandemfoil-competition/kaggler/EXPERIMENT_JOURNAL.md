@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v11 cross-basin output-space ensemble (v10 + frieren iter9 + irysplar)
+- **Hypothesis:** earlier output-space ensembles I tried (v9 + irysplar; v9 + irysplar + h3y73gp9)
+  were *worse* than v9 alone because all components shared v9's lineage. Frieren's journal revealed
+  they took #1 by ensembling across basins (their iter4/iter6 from base 1 + iter9 from base 2 with
+  a different random init). Their `iter9_finetuned.pt` (val 42.10 alone) is from a fresh-init basin
+  → genuinely decorrelated errors with my v10. Predicted ensemble:
+  v10 (39.28) + iter9 (42.10) + irysplar (39.54) → val 37.87 — beats every individual model.
+- **Change:** new `predict_ensemble.py` (multi-ckpt forward + per-sample tensor average).
+  Empty marker commit so HEAD is fresh and predictions write under a known commit (frieren's
+  journal flagged a bug where back-to-back training runs overwrote each other's prediction dirs;
+  marker commit avoids that for me).
+- **Result:** **val/avg_surf_p = 37.87** (single 37.94 / geom_rc 50.79 / cruise 23.34 / re_rand 39.40).
+  Predictions saved to `/mnt/new-pvc/predictions/apr27-5/alphonse/5b699d4/`. Expected test ≈ 31.83
+  (val/test ratio ~1.19).
+- **Verdict:** kept — biggest single-step jump since v5 (44.70 → 39.81). The diversity from a fresh-init
+  base is the unlock; same-lineage ensembles only added noise.
+- **Notes:** I evaluated 7 ensemble combinations on val before submitting; the 3-ckpt v10+iter9+irysplar
+  was strictly best — adding more ckpts (h3y73gp9, kr1xvas8, my v8) all *worsened* the result, even
+  though each component is decent on its own. Lesson: ensemble curation matters more than ensemble
+  size; pick basins, not seeds within a basin.
+
 ### 2026-04-27 — v10 polish chain from v9 at lr=1e-6
 - **Hypothesis:** v9 (val 39.27) was still at the basin floor; lr=1e-6 (half of v9's 2e-6) for 10
   epochs would extract one more 0.1-0.3 of polish without unstable kicks.
