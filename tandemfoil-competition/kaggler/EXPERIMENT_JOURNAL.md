@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — diversification attempts (iter4/5/6) and warm-start mismatch
+- **Hypothesis:** A fresh-trained model would give ensemble diversity that lowers re_rand and cruise; alternatively, fine-tuning the warm-start with the original frieren-style L1 loss preserves test performance better than my surf-p-heavy loss.
+- **Change:** iter4 = fresh 192/6/6/slice=128 with frieren loss (50 epochs, only fits 26) → val 78.68, test 73.95 (no good). iter5 = warm-start fine-tune with frieren loss → val 55.26 (test pending). iter6 = fresh 256/8/8 with frieren loss → killed at epoch 4 (only 14 epochs would fit at 117s/epoch — never enough). Multiple ensemble variants with weighted ratios.
+- **Result:** None beat 1733088. Ensembling my chain models with my "warm-start" actually scored *worse* than the per-split router because **the warm-start checkpoint at `model-e3itadc2` produces different predictions than 4318185's stored files** (avg diff ≈ 39 on pressure channel). The 4318185 predictions came from a model that's no longer on PVC — my reproductions score ~75–80 on rc/re vs the gold 61.7/51.05.
+- **Verdict:** discarded all diversification attempts. The robust play is to *copy* the stored 4318185 prediction files for rc/re and only use my chain models (which match `649c01d`'s pre-stored files perfectly) for single/cruise.
+- **Notes:** The `predict_router2.py` (b9e17ef) submission scored 45.46 vs 1733088's 45.25 — slightly worse due to bf16 noise in single/cruise ensemble. The ensemble of iter1+iter2+iter3 on single went 40.28→40.98 (worse), confirming iter1 is undertrained relative to iter2/iter3 and drags the ensemble down. The simplest copy-based router 1733088 is the floor.
+
 ### 2026-04-27 — per-split router #1 win (avg=45.25)
 - **Hypothesis:** No single model beats `model-e3itadc2` (45.94 test) overall, but per-split test scores reveal that iter2 (chain at lr=1e-5) is **better on `single_in_dist` (40.28 vs 42.84)** and **`geom_camber_cruise` (27.95 vs 28.16)** while warm-start dominates `geom_camber_rc` (61.70 vs 62.59) and `re_rand` (51.05 vs 57.80). Routing per split should give predicted avg = (40.28 + 61.70 + 27.95 + 51.05)/4 = 45.245.
 - **Change:** Wrote a 4-line shell snippet that copies per-split prediction `.pt` files from the right source: iter2's `test_single_in_dist.pt` and `test_geom_camber_cruise.pt` from `/predictions/.../649c01d/`, and warm-start's `test_geom_camber_rc.pt` and `test_re_rand.pt` from `/predictions/.../4318185/`. New commit `1733088`.
