@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: continue iter5 ckpt at lr=1e-5 (kept)
+- **Hypothesis:** Iter5's curve was still descending. Drop LR another factor of two (to 1e-5) and continue from `checkpoints/best.pt` (iter5 ckpt at 47.13). Same loss as iter5.
+- **Change:** train.py — `lr` 2e-5→1e-5; everything else identical to iter5.
+- **Result:** Best epoch 8 with **val avg_surf_p=46.84** (vs iter5 47.13 → -0.29). Trajectory: ep1=47.64, ep2=47.99, ep3=47.72, ep4=47.00, ep5=47.07, ep6=46.88, ep7=46.86, ep8=46.84. Wall time 32.4 min. WandB run vz708x3g. Predictions at `/mnt/new-pvc/predictions/apr27-4/thorfinn/a9065d5/`.
+- **Verdict:** Kept. Marginal but real continued descent.
+- **Notes:**
+  - Auto-predict OOM'd on the cruise split at batch_size=4 (cruise meshes are ~208K nodes); re-ran predict.py manually with `--batch_size 1`. Should consider lowering predict.py default batch to 1 to avoid this in future.
+  - **As of this iteration, thorfinn is leading the apr27-4 leaderboard at 40.68 test avg_surf_p (commit 09570d5 = iter5)**, with edward at 43.24 and nezuko at 42.58.
+  - Tested weight averaging across iter2/iter4/iter5 ckpts — all averaging hurts because the checkpoints are highly correlated (each warm-started from the previous). Tested prediction ensemble of iter4+iter5+iter6 — also hurts vs iter6 alone (47.16 vs 47.13). Diversity is too low; ensembling isn't going to help unless we get a structurally different model.
+
 ### 2026-04-27 — iter5: gentle p-channel weight + lr=2e-5 (kept)
 - **Hypothesis:** Iter3 had the right idea (up-weight pressure to match the leaderboard's pressure-only ranking) but p_weight=5 was too aggressive. A gentler p_weight=1.5 plus an even lower LR (2e-5) on top of iter4 should nudge the model toward pressure without destabilizing.
 - **Change:** train.py — re-introduced `surf_p_weight=1.5` (per-channel weights `[1, 1, 1.5]` on the surface huber); lr 3e-5→2e-5; warm-start from `checkpoints/best.pt` (iter4 ckpt at 48.02).
