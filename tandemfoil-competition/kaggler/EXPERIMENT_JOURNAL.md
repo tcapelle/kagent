@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: chain at lr=2e-6 (frieren chain step)
+- **Hypothesis:** With iter5 settled at val/surf_p=63.80, drop LR another 2.5x to 2e-6 (frieren's iter4 LR) and let the model polish for 6 more full-mesh epochs.
+- **Change:** No code changes. `--lr 2e-6 --epochs 8` (rest unchanged).
+- **Result:** 6 epochs in 30 min, best `val/avg_surf_p=60.21` at epoch 6. Trajectory monotone: 62.30 → 61.99 → 61.25 → 61.20 → 61.02 → 60.21. Predictions at `askeladd/5079a56`. W&B: askeladd/iter6-nosub-bs2-lr2e6-chain2.
+- **Verdict:** kept (-3.6 vs iter5). Diminishing returns at this LR — each epoch nets <1 surf_p. Test scores from iter5 put me at rank 5 (53.32) — top tier (45-46) is fern, frieren, thorfinn.
+- **Notes:** Per-split test gap analysis (iter5 53.32 vs top): single_in_dist 69.6 vs 50.0 (largest gap), geom_rc 67.6 vs 59.8, geom_cruise 28.6 vs 25.1, re_rand 47.5 vs 42.5. **single_in_dist is by far the biggest opportunity** — closing it could move me into top 3. iter7: add `--single_boost` to upweight racecar_single domain in the WeightedRandomSampler.
+
 ### 2026-04-27 — iter5: drop subsampling, bs=2, lr=5e-6 (frieren's chain trick)
 - **Hypothesis:** frieren's W&B trace (now 2nd at 46.87) showed iter3+iter4 ditched `train_subsample=40000` and switched to `bs=2, lr=5e-6` then `lr=2e-6`. Subsampling during training and validating on full meshes is a distribution shift — once the model is well-trained, this shift hurts more than the speed helps. Switching to no-sub + tiny LR for the final fine-tune should close that gap.
 - **Change:** `--lr 5e-6 --train_subsample 0 --batch_size 2 --epochs 8` (rest of 4-weight loss unchanged).
