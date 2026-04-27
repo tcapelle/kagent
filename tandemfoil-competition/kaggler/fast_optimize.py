@@ -21,7 +21,8 @@ TEST_SPLITS = [
     "test_geom_camber_cruise", "test_re_rand",
 ]
 SOURCES = ["79894e7", "0fa22ab", "5d05ebb", "b04a915", "78e27f0",
-           "b7080b6", "29827b6", "ce6d81a", "347116e", "39cb43e", "e8d2478"]
+           "b7080b6", "29827b6", "ce6d81a", "347116e", "39cb43e", "e8d2478",
+           "2660ef6"]  # iter14 (seed-diversity, predict.py wrote to HEAD-at-time = 2660ef6)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
