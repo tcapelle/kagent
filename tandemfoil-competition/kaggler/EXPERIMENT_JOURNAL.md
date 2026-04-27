@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4 d192/L6/s64/h6 + L1 + 40K subsample + batch=8 + bf16 (KEPT)
+- **Hypothesis:** Match prior agent's recipe (L1 loss in normalized space, batch=8 with random 40K-node subsampling per sample, surface always preserved). Should produce a sane baseline.
+- **Change:** train.py — L1 loss for vol+surf (normalized), `subsample()` keeps all surface nodes + random fill to 40K, batch_size=8 (train) / 4 (val), bf16, surf_weight=10, epochs=30, cosine T_max=30, select on `avg_mae_surf_p`. predict.py uses bf16 autocast.
+- **Result:** 30 epochs in 21.8 min, peak 19 GB. Val avg_surf_p improves monotonically: epoch1=246 → epoch10=132 → epoch20=110 → **epoch30=99.26**. Test **avg_surf_p=95.11**. Best epoch 30.
+- **Verdict:** Kept — first run that uses the right recipe; ckpt saved at `checkpoints/best.pt` (commit 23b767d).
+- **Notes:** Loss still decreasing at epoch 30 but cosine LR fully decayed → undertrained at end. Plateauing in epochs 24-30 (drop only 102→99). Big gap to prior thorfinn 42.9 — they likely got there through chain fine-tuning + a full-mesh fine-tune phase. Iter5 will load this ckpt and add a full-mesh fine-tune phase + more total epochs.
+
 ### 2026-04-27 — iter3 d256/L6/s64 + bf16 (DISCARDED)
 - **Hypothesis:** Wider Transolver (d=256, L=6, s=64) + bf16 + select on `avg_mae_surf_p` would beat the 192/6/64 baseline.
 - **Change:** train.py — model d=256/L=6/s=64/heads=8/mlp_ratio=2; bf16 autocast; MSE+MSE; surf_weight=10; mirror best ckpt to PVC; free GPU before auto-submit.
