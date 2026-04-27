@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — vol_subsample 20K + 80 epochs (iter 5) — KEPT
+- **Hypothesis:** With iter 4 overfitting, give the model more data variety per batch (vol_subsample 12K→20K) while keeping iter 3's 1.16M-param architecture. Use freed time for longer training (80 epochs).
+- **Change:** train.py — vol_subsample=20000, epochs=80, reverted model to h128-l6-s32-mr4. Same Huber loss, channel weights, surf_weight=20.
+- **Result:** 80 epochs in 27.3 min. Best val avg_surf_p=55.22 at epoch 78. **Test avg_surf_p=50.87** — rank 6 on leaderboard (was rank 7).
+- **Verdict:** **Kept.** Bigger improvement than iter 3→4 attempts. Best splits: single=48.55, geom_rc=61.27, geom_cruise=37.61, re_rand=56.03.
+- **Notes:** Cruise (37.61) and re_rand (56.03) are weakest splits — both test Re generalization. Leader frieren is at 25.27/39.88 there → 12 and 16 points behind. Next experiment (iter 6): Cp-style Re² pressure normalization to handle scale variation across regimes.
+
+### 2026-04-27 — Bigger model h192-l8 + subsampling (iter 4) — DISCARDED
+- **Hypothesis:** With subsampling freeing up budget (only 17 min used in iter 3), a bigger model (h192-l8, slice_num=64, mlp_ratio=4 → 3.4M params) should reach a better optimum given the same training loop.
+- **Change:** Bumped n_hidden=128→192, n_layers=6→8, slice_num=32→64; warmup_epochs=1→2; epochs=60→50.
+- **Result:** Best val avg_surf_p=78.40 at epoch 35, but overfit hard afterwards (val ~100+ by epoch 50). Worse than iter 3's 70.96.
+- **Verdict:** Discarded — bigger model overfits without more regularization. Reverting to iter 3 architecture.
+- **Notes:** Train loss went much lower (0.012 vs iter 3's 0.013) but val drifted up — classic overfitting on the surface points (which are upweighted 20x). Need either more regularization (dropout) or more data variety (bigger vol_subsample) before scaling up the model.
+
 ### 2026-04-27 — Surface-aware subsampling (iter 3) — KEPT
 - **Hypothesis:** Most compute is wasted on volume nodes (~95% of mesh) while metric is 100% on surface (~3% of mesh). Keep all surface, subsample volume to 12K → ~7x faster per batch + 10x effective surface upweighting → far more training epochs converging on the right thing.
 - **Change:** train.py — added `subsample_collate` (keeps surface, samples K=12000 volume points) for train loader; val loaders still use full-mesh `pad_collate` for fair comparison. Bumped epochs to 60.
