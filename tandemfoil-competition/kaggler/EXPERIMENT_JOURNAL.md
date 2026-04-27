@@ -22,6 +22,31 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter18: train_subsample 40k→60k, resume iter16 (BREAKTHROUGH 40.08)
+
+- **Hypothesis:** the resume chain has been giving diminishing returns
+  (~1% per cycle); the only "fresh" lever I haven't pushed is the
+  subsample size. Going 40k→60k gives ~50% more points per gradient
+  step, which should let the model sharpen its surface predictions.
+  iter10 already showed sub20k→sub40k helped a lot; sub40k→sub60k is the
+  next data point.
+- **Change:** `train.py:45` — `train_subsample 40000 → 60000`. Run with
+  `--resume_from .../model-snvf1y5m/`.
+- **Result:** ~16 epochs, best val_bs4 = 67.63 at epoch 14. Real bs=1
+  val: **40.08** — down from iter17's 42.03 ensemble (-4.6%)! ALL splits
+  improved meaningfully: single 36.60→34.84, geom_rc 59.82→58.39,
+  geom_cruise 28.03→25.54, re_rand 43.68→41.56. Run `rvlag6rf`,
+  predictions auto-submitted to commit `5198950`.
+- **Verdict:** kept — biggest single-iter gain since iter10's bs=1 fix.
+- **Notes:** Ensembling iter18 with iter15/iter16 actually *hurts*
+  (40.08 → 40.46 in best ensemble) — iter18 has different failure
+  patterns than the sub40k chain, so averaging blurs its signal. The
+  denser gradient changed the loss-landscape navigation enough that the
+  resulting basin is genuinely better, not just a small step. Next
+  iter: sub80k or sub100k to test if the trend continues. Expected test
+  ≈ 35 (using val/test ratio 0.87) — would jump to rank 1 if it lands
+  there.
+
 ### 2026-04-27 — iter17: ensemble iter16+iter15 (val_bs1=42.03)
 
 - **Hypothesis:** iter16 alone (42.78) is slightly worse than iter15 alone
