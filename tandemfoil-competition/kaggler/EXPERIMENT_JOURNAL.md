@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: warm-restart from iter5 (lr=1e-5, p_weight=8)
+- **Hypothesis:** iter5 plateaued at 51.82 with very low LR. A warm-restart at higher LR (1e-5, ~5x iter5) plus stronger pressure weight (pw=6→8) should kick the optimizer out of the local min and bias more toward pressure error.
+- **Change:** Resume from iter5 ckpt; --lr 1e-5 --p_weight 8 (other hyperparams unchanged).
+- **Result:** **surf_p 51.82 → 50.51** (~2.5% gain — first jump >1% since iter3). Per-split: single≈55, rc≈73, cruise≈30, re_rand≈53. Still descending at epoch 10. W&B `kn4rwxqy`.
+- **Verdict:** Kept (best). Big win — confirms warm-restart escapes plateau.
+- **Notes:** Both levers (LR kick + stronger pw) likely contribute. Next: chain ft at low LR to polish (iter8), then maybe another warm-restart cycle.
+
 ### 2026-04-27 — iter6: fresh from scratch with bs=2 nosub (frieren iter93 recipe)
 - **Hypothesis:** frieren's run history showed a big drop (val~1.4 → ~1.0) when restarting from scratch with bs=2 full mesh — maybe my chain-from-sub30k path is stuck in a local min.
 - **Change:** New training run, no resume; bs=2, n_sub=0, ep=10, lr=2e-5, warmup_epochs=1, p_weight=3 (matching iter2 first finetune step).
