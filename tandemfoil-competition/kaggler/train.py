@@ -212,8 +212,10 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 20.0
     p_weight: float = 3.0  # extra weight on pressure channel in loss (denorm range is huge)
-    epochs: int = 30
+    epochs: int = 60
     grad_clip: float = 1.0
+    train_subsample: int = 32768  # max nodes per sample at train time (full mesh during val)
+    surface_oversample: float = 0.5  # fraction of subsampled nodes that must be surface nodes (if available)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -252,7 +254,7 @@ def main():
         space_dim=2,
         fun_dim=X_DIM - 2,
         out_dim=3,
-        n_hidden=192,
+        n_hidden=256,
         n_layers=8,
         n_head=8,
         slice_num=64,
@@ -315,6 +317,43 @@ def main():
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             is_surface = is_surface.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
+
+            # Subsample nodes to fit memory budget. Pick surface nodes preferentially
+            # (they're rare and disproportionately important for the leaderboard metric).
+            if cfg.train_subsample and x.shape[1] > cfg.train_subsample:
+                B, N, _ = x.shape
+                keep = torch.zeros(B, N, dtype=torch.bool, device=device)
+                K = cfg.train_subsample
+                for b in range(B):
+                    valid = mask[b]
+                    surf_idx = (valid & is_surface[b]).nonzero(as_tuple=False).squeeze(-1)
+                    vol_idx = (valid & ~is_surface[b]).nonzero(as_tuple=False).squeeze(-1)
+                    target_surf = min(int(K * cfg.surface_oversample), surf_idx.numel())
+                    target_vol = K - target_surf
+                    if target_vol > vol_idx.numel():
+                        target_vol = vol_idx.numel()
+                        target_surf = min(K - target_vol, surf_idx.numel())
+                    if target_surf > 0:
+                        sel_s = surf_idx[torch.randperm(surf_idx.numel(), device=device)[:target_surf]]
+                        keep[b, sel_s] = True
+                    if target_vol > 0:
+                        sel_v = vol_idx[torch.randperm(vol_idx.numel(), device=device)[:target_vol]]
+                        keep[b, sel_v] = True
+                # Repack to a uniform-K tensor (each row has K kept-True entries by construction
+                # except where padded samples have <K real nodes; pad those rows with zeros + mask=False).
+                new_K = K
+                x_new = torch.zeros(B, new_K, x.shape[-1], device=device, dtype=x.dtype)
+                y_new = torch.zeros(B, new_K, y.shape[-1], device=device, dtype=y.dtype)
+                surf_new = torch.zeros(B, new_K, dtype=torch.bool, device=device)
+                mask_new = torch.zeros(B, new_K, dtype=torch.bool, device=device)
+                for b in range(B):
+                    idx = keep[b].nonzero(as_tuple=False).squeeze(-1)
+                    n = idx.numel()
+                    x_new[b, :n] = x[b, idx]
+                    y_new[b, :n] = y[b, idx]
+                    surf_new[b, :n] = is_surface[b, idx]
+                    mask_new[b, :n] = True
+                x, y, is_surface, mask = x_new, y_new, surf_new, mask_new
 
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
