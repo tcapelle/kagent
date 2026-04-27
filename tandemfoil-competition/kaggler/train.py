@@ -73,11 +73,20 @@ class Config:
     bf16: bool = True
     huber_beta: float = 0.05  # small beta -> nearly pure L1 (metric is L1 MAE);
     # quadratic only in tiny region near zero for gradient stability
+    log_pressure: bool = True  # predict signed_log of normalized pressure
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+
+
+def signed_log(x):
+    return torch.sign(x) * torch.log1p(x.abs())
+
+
+def signed_log_inv(z):
+    return torch.sign(z) * torch.expm1(z.abs())
 
 
 cfg = sp.parse(Config)
@@ -185,9 +194,17 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
+        # Build target. If log_pressure, the network learns signed_log of the
+        # normalized pressure channel (compresses heavy-tailed Cp values).
+        if cfg.log_pressure:
+            y_target = y_norm.clone()
+            y_target[..., 2] = signed_log(y_norm[..., 2])
+        else:
+            y_target = y_norm
+
         with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.bf16):
             pred = model({"x": x})["preds"]
-            err = (pred.float() - y_norm)
+            err = (pred.float() - y_target)
             abs_err = err.abs()
             beta = cfg.huber_beta
             # smooth L1 / Huber: 0.5*x^2/beta for |x|<beta, |x|-0.5*beta otherwise
@@ -237,7 +254,15 @@ for epoch in range(MAX_EPOCHS):
                 with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.bf16):
                     pred = model({"x": x})["preds"]
                 pred = pred.float()
-                err = pred - y_norm
+
+                # Build target matching training (apply signed_log to p channel)
+                if cfg.log_pressure:
+                    y_target = y_norm.clone()
+                    y_target[..., 2] = signed_log(y_norm[..., 2])
+                else:
+                    y_target = y_norm
+
+                err = pred - y_target
                 abs_err = err.abs()
                 beta = cfg.huber_beta
                 huber = torch.where(abs_err < beta, 0.5 * err * err / beta, abs_err - 0.5 * beta)
@@ -249,7 +274,11 @@ for epoch in range(MAX_EPOCHS):
                 val_surf += (huber_w * surf_mask.unsqueeze(-1)).sum().item() / (surf_mask.sum().clamp(min=1).item() * 3)
                 n_vb += 1
 
-                pred_orig = pred * stats["y_std"] + stats["y_mean"]
+                # Invert log on pressure channel before denormalizing
+                pred_norm = pred.clone()
+                if cfg.log_pressure:
+                    pred_norm[..., 2] = signed_log_inv(pred[..., 2])
+                pred_orig = pred_norm * stats["y_std"] + stats["y_mean"]
                 err = (pred_orig - y).abs()
                 mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))

@@ -47,6 +47,11 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None  # kaggler name for output path
     batch_size: int = 4
+    log_pressure: bool = True  # invert signed_log on pressure channel before denormalizing
+
+
+def signed_log_inv(z):
+    return torch.sign(z) * torch.expm1(z.abs())
 
 
 cfg = sp.parse(Config)
@@ -102,7 +107,12 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            pred_raw = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            if cfg.log_pressure:
+                pred_norm = pred_raw.clone()
+                pred_norm[..., 2] = signed_log_inv(pred_raw[..., 2])
+            else:
+                pred_norm = pred_raw
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
