@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: 3-way prediction ensemble of iter3+iter4+iter5
+- **Hypothesis:** Even within a warm-start chain, averaging the three best checkpoints' predictions should reduce variance and add 0.5-1 point on the leaderboard.
+- **Change:** New `ensemble.py` averages per-sample test predictions across commits with configurable weights. Ran with `--sources 60c4364 ebd8537 055e735 --weights 0.2 0.3 0.5` (more weight on better/later iters). Commit `2cdbe5f`.
+- **Result:** Pending leaderboard score. Predictions saved to `apr27-5/tanjiro/2cdbe5f/`.
+- **Verdict:** pending.
+- **Notes:** Weighted toward iter5 (best val) but iter3/iter4 add minor decorrelation from earlier chain points.
+
+### 2026-04-27 — iter5: warm-start iter4 lr=2e-6 12ep (chain step 4 — plateau)
+- **Hypothesis:** Push chain one more step; expect tiny gain.
+- **Change:** `python train.py --warm_start /tmp/iter4_best.pt --lr 2e-6 --epochs 12`. Placeholder commit `055e735`.
+- **Result:** Best epoch 7, val/loss=**1.6878** (down from 1.6989, only 0.011 improvement). Best epoch is mid-cosine — model started overfitting after epoch 7. Predictions saved to `apr27-5/tanjiro/055e735/`. Run `i8585hfs`.
+- **Verdict:** kept but chain has plateaued. Next: try diversity (different loss / p_weight / slice_num).
+- **Notes:** Train loss e12 vol=0.45 surf=0.32 ≈ same as iter4 — the model is overfitting on training set without gaining val. Need a fundamentally different model for further gains via ensembling.
+
 ### 2026-04-27 — iter4: warm-start iter3 lr=5e-6 12ep (chain step 3)
 - **Hypothesis:** Lower LR continues fine-tuning toward minimum without disturbing the converged weights. Expect ~0.03 val/loss improvement.
 - **Change:** `python train.py --warm_start /tmp/iter3_best.pt --lr 5e-6 --epochs 12`. Placeholder commit `ebd8537`.
