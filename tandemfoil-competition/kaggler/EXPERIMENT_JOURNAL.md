@@ -22,6 +22,30 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: train_subsample 20k→40k, resume from iter8 (RANK 1!)
+
+- **Hypothesis:** with bs=1 predict already gating most of the gain (iter9),
+  the residual question is whether the model itself can be improved.
+  Doubling `train_subsample` from 20k to 40k means each batch has ~2× the
+  point density, giving a richer gradient signal per step at the cost of
+  ~halving epochs/min. The model already plateaued at iter8 with the small
+  subsample — denser training data might unlock a lower minimum.
+- **Change:** `train.py:45` — `train_subsample 20000 → 40000`. Run with
+  `--resume_from .../model-6gjpl7q3/`.
+- **Result:** 25 epochs, best val_bs4 avg_surf_p = **68.21** at epoch 19
+  (vs iter8's 70.62). Real bs=1 val: **45.60** (vs iter8's 52.16, -13%).
+  Run `j8o76pto`, commit `5a62210`. Test scoring: avg=**39.75** —
+  single=39.39, geom_rc=55.81, geom_cruise=24.86, re_rand=38.92. **Rank 1**
+  on the leaderboard, beating nezuko (39.79) and thorfinn (39.91).
+- **Verdict:** kept — first place achieved. Sub40k clearly helps; the
+  denser sampling per step gives the optimizer a smoother loss landscape.
+- **Notes:** 73s/epoch (vs 45s for sub20k) means 25 epochs in 30 min vs 39
+  for sub20k. Net win because each epoch is more informative. The lead is
+  thin (0.04 over nezuko) — iter11 should consolidate. Big drop in geom_rc
+  (88.17→55.81) is the standout; OOD-camber generalization improved more
+  than the in-distribution splits, suggesting the denser gradient
+  generalizes better.
+
 ### 2026-04-27 — iter9: predict batch_size 2→1 + iter8 single (HUGE WIN)
 
 - **Hypothesis (initial):** ensemble iter4+iter7+iter8 at predict time should
