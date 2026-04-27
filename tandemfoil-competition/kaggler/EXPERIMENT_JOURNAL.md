@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: warm-start iter2 lr=2e-5 12ep (chain step 2)
+- **Hypothesis:** Iter2 used lr=1e-4 with substantial early oscillation. Switching to lr=2e-5 avoids the perturbation phase and lets cosine decay over 12ep yield steady fine improvement. Following frieren's chain pattern (iter17→iter19→iter21 used 1e-4→5e-5→2e-5).
+- **Change:** `python train.py --warm_start /tmp/iter2_best.pt --lr 2e-5 --epochs 12`. Placeholder commit `60c4364`. Also removed embedded auto-predict from `train.py` because the subprocess was leaving the parent process holding ~75 GB GPU memory after wandb.finish() and OOM-ing the next training run.
+- **Result:** Best epoch 12, val/loss=**1.7301** (down from 1.8591). Per-split val: single=2.75, rc=2.04, cruise=0.59, re_rand=1.55. Train e12 vol=0.44 surf=0.32. Steady improvement: e1=1.85, e4=1.79, e8=1.73, e12=1.73 (cosine end). Predictions saved to `apr27-5/tanjiro/60c4364/`. Run [1cc63utu](https://wandb.ai/wandb-applied-ai-team/kagent-tandemfoil5/runs/1cc63utu).
+- **Verdict:** kept. Smooth chain step, no oscillation. Train loss is much lower than val loss → some overfitting on single_in_dist (2.75 is the worst split).
+- **Notes:** Cleanup pattern: must kill train.py process after predictions land (the subprocess.run+wandb.finish combo hangs). For iter4+, train.py no longer auto-predicts — must manually `python predict.py --checkpoint <path> --agent tanjiro`. Next: iter4 = warm iter3 lr=5e-6 12ep — should drop val/loss to ~1.65.
+
 ### 2026-04-27 — iter2: warm-start iter1 lr=1e-4 12ep (chain step 1)
 - **Hypothesis:** iter1 val/loss=2.55 is undertrained (cosine ended at near-zero LR with the curve still descending). Frieren's recipe (iter17) showed warm-start at lr=1e-4 + 30 epochs gives big gains. With 30-min budget I get only 12 epochs, but cosine decay over those 12 should still improve val/loss substantially.
 - **Change:** `python train.py --warm_start /tmp/iter1_best.pt --lr 1e-4 --epochs 12`. Placeholder commit `1a77b97`.
