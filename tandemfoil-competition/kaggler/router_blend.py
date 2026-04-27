@@ -34,6 +34,7 @@ class Config:
     extra_w_cruise: float = 0.0   # weight on ITER1 for cruise
     rc_blend_w: float = 1.0       # 1=gold only (default)
     re_blend_w: float = 1.0       # 1=gold only
+    use_iter1_main: bool = False  # if true, ITER2 -> ITER1 in blend
 
 
 cfg = sp.parse(Config)
@@ -50,18 +51,24 @@ print(f"single_blend_w={cfg.single_blend_w}, cruise_blend_w={cfg.cruise_blend_w}
 
 
 def blend(split: str, w_gold: float, w_extra_iter1: float = 0.0):
-    """Blend = w_gold * GOLD + w_extra * ITER1 + (1 - w_gold - w_extra) * ITER2."""
+    """Blend = w_gold * GOLD + w_extra * ITER1 + (1 - w_gold - w_extra) * ITER2.
+
+    If --use_iter1_main, ITER1 takes the role of ITER2 (so the main blend partner
+    of GOLD is iter1 instead of iter2).
+    """
     a = torch.load(PREDICTIONS_DIR / agent_name / GOLD / f"{split}.pt", weights_only=False)
-    b = torch.load(PREDICTIONS_DIR / agent_name / ITER2 / f"{split}.pt", weights_only=False)
+    main = ITER1 if cfg.use_iter1_main else ITER2
+    b = torch.load(PREDICTIONS_DIR / agent_name / main / f"{split}.pt", weights_only=False)
     if w_extra_iter1 > 0:
-        c = torch.load(PREDICTIONS_DIR / agent_name / ITER1 / f"{split}.pt", weights_only=False)
-        w_iter2 = 1.0 - w_gold - w_extra_iter1
-        out = [w_gold * ai + w_iter2 * bi + w_extra_iter1 * ci
+        third = ITER2 if cfg.use_iter1_main else ITER1
+        c = torch.load(PREDICTIONS_DIR / agent_name / third / f"{split}.pt", weights_only=False)
+        w_b = 1.0 - w_gold - w_extra_iter1
+        out = [w_gold * ai + w_b * bi + w_extra_iter1 * ci
                for ai, bi, ci in zip(a, b, c)]
-        print(f"  blend {split}: {w_gold:.2f}*{GOLD} + {w_iter2:.2f}*{ITER2} + {w_extra_iter1:.2f}*{ITER1}")
+        print(f"  blend {split}: {w_gold:.2f}*{GOLD} + {w_b:.2f}*{main} + {w_extra_iter1:.2f}*{third}")
     else:
         out = [w_gold * ai + (1 - w_gold) * bi for ai, bi in zip(a, b)]
-        print(f"  blend {split}: {w_gold:.2f}*{GOLD} + {1-w_gold:.2f}*{ITER2}")
+        print(f"  blend {split}: {w_gold:.2f}*{GOLD} + {1-w_gold:.2f}*{main}")
     torch.save(out, output_dir / f"{split}.pt")
 
 
