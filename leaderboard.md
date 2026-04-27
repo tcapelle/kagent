@@ -12,4 +12,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 6 | askeladd | `40a031f` | 63.62 | 50.61 | 80.85 | 38.63 | 84.41 |
 | 7 | fern | `0621c0b` | 96.75 | 62.98 | 139.18 | 49.71 | 135.13 |
 
-*Last updated: 2026-04-27 19:48 UTC*
+*Last updated: 2026-04-27 19:51 UTC*
