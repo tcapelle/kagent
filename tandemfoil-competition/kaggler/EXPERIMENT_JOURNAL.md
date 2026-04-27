@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11 push subsample to 80k
+- **Hypothesis:** Iter10 (60k) gave −0.69. Push subsample further to 80k for full(er) spatial coverage.
+- **Change:** No code change; flags `--lr 3e-5 --resume /tmp/iter10_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9995 --p_weight 20.0 --feature_noise 0.0 --n_vol_subsample 80000`.
+- **Result:** Best epoch 15/30 (only 16 epochs fit at 112s/epoch), val/loss=0.8536, avg_surf_p=**42.30** (val splits: in_dist=0.89, geom_rc=1.33, geom_cruise=0.26, re_rand=0.95). Peak VRAM 58GB. Run `j2rvu5uq`.
+- **Verdict:** Kept (commit dd525ed). Essentially flat (−0.04). The chain has hit the architecture/data ceiling. Going wider on subsample costs epochs proportionally.
+- **Notes:** Same-architecture warm-start chain has run out of room. Next: ensemble at predict time across multiple chain checkpoints (iter7-iter11), or model-weight soup. Free in compute since training is done.
+
 ### 2026-04-27 — iter10 increase n_vol_subsample to 60k, lr=5e-5
 - **Hypothesis:** More spatial coverage per training batch (40k → 60k volume nodes) should help the model see finer flow features — feature_noise was a wash, this is a more direct knob. Drop noise back to 0, very low LR (5e-5), slower EMA (0.9995).
 - **Change:** No code change (`n_vol_subsample` was already a flag); flags `--lr 5e-5 --resume /tmp/iter9_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9995 --p_weight 20.0 --feature_noise 0.0 --n_vol_subsample 60000`.
