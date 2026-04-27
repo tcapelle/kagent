@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — ensemble3 + ensemble4 (diverse 2-seed ensembles)
+- **Hypothesis:** iter4 (chain seed-A) and iter6 (chain seed-B) have similar val (53.32 vs 53.87) but different optimization trajectories. Their averaged predictions should genuinely improve. ensemble3 = 50/50 split. ensemble4 adds iter3 (deeper chain seed-A) for slight extra weight on the A-trajectory.
+- **Change:** No code change. Two ensembles:
+  - ensemble3 (`32f0a18`): `python ensemble.py --sources bb24f96 be2989a --weights 0.5 0.5`
+  - ensemble4 (will save to next HEAD): TBD weights once iter7 starts.
+- **Result:** TBD pending scorer.
+- **Verdict:** TBD.
+- **Notes:** This is the *diverse* ensemble, unlike chain-only (ensemble2 was iter2+iter3+iter4 — all same seed).
+
 ### 2026-04-27 — iter6: chain warm-start iter5 bs=2 no_sub lr=2e-5 — second strong endpoint
 - **Hypothesis:** Mirror iter2's recipe but on iter5 (different seed). Should converge to a similar val ~54 endpoint with a *different* optimization trajectory than iter4 — that's the diversity that finally cracks ensembles open.
 - **Change:** No code change. CLI: `--warm_start /tmp/iter5_best.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --epochs 10 --warmup_epochs 1`. Run `fuc1h5pv`.
