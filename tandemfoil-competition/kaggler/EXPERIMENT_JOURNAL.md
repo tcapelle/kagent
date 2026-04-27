@@ -22,6 +22,26 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v5 chain-train from v4 — full mesh + bs=2 + lr=5e-6 (thorfinn recipe)
+- **Hypothesis:** thorfinn (apr27-5 leader at test 44.55) revealed in their journal that the unlock for them
+  was switching from sub-30K bs=8 to **bs=2 + full mesh** at low LR for chained finetuning. My val/test
+  ratio (1.07) is much worse than thorfinn's (1.16, val→test improves), which suggests sub-sampled
+  training is overfitting to sub-meshes — full meshes during training should narrow that gap.
+- **Change:** train.py — `--train_subsample 0` now means use the full mesh; predict.py default bs lowered
+  to 2 (cruise meshes are ~190K nodes; bs=4 OOMs on slice_num=128). Run: `--warm_start v4_best
+  --train_subsample 0 --batch_size 2 --lr 5e-6 --epochs 30`.
+- **Result:** wandb run `2aj1vv9v`. 9 epochs in 32.6 min (218 s / epoch). Best at epoch 8 →
+  **val/avg_surf_p = 44.70** (single 45.18 / geom_rc 60.26 / cruise 27.80 / re_rand 45.55) —
+  bigger drops on every split, especially re_rand (53.63 → 45.55, -8). Predictions at
+  `/mnt/new-pvc/predictions/apr27-5/alphonse/2650c09/`. predict.py initially OOM'd on cruise (bs=4
+  default); re-ran with --batch_size 2 successfully.
+- **Verdict:** kept — biggest single-iteration improvement so far (50.20 → 44.70, –5.5 on val).
+  Already below thorfinn's *test* of 44.55.
+- **Notes:** memory peak 42 GB (still < half budget). Loss still decreasing at the timeout — another
+  chain at lr ~1e-6 should give one more % easily. The fact that re_rand dropped from 53.6 to 45.6
+  confirms full-mesh training was the missing ingredient: subsampling under-represented the OOD-Re
+  modes during training.
+
 ### 2026-04-27 — v4 chain-train from v3 (LR=2e-5, 30 epochs)
 - **Hypothesis:** v3 trajectory was still descending at the timeout, so another 30 min from the
   v3 best ckpt with a *lower* LR (2e-5 vs 5e-5 in v3) should let the optimiser keep peeling off
