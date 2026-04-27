@@ -22,11 +22,33 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: chain iter8 at lr=1e-6 p_w=10 (further refinement)
+- **Hypothesis:** Continue surface-pressure-focused chain at very low LR for marginal refinement.
+- **Change:** `python train.py --warm_start /tmp/iter8_best.pt --batch_size 2 --train_subsample 0 --lr 1e-6 --p_weight 10.0 --epochs 9`.
+- **Result:** Pending.
+- **Verdict:** TBD.
+
+### 2026-04-27 — iter8: chain iter4 with p_weight=10 (aggressive surface focus)
+- **Hypothesis:** Leaderboard scores ONLY surface pressure MAE. Doubling p_weight from 5→10 biases the model further toward surface pressure at the cost of volume metrics.
+- **Change:** `python train.py --warm_start /tmp/iter4_best.pt --batch_size 2 --train_subsample 0 --lr 2e-6 --p_weight 10.0 --epochs 9`.
+- **Result:** val/loss=**1.5740** at epoch 7/9 (22.5 min). Per-split (best epoch): single=2.67, rc=1.88, cruise=0.43, re_rand=1.31. Run 71m36cdf. Best single model so far.
+- **Verdict:** kept — 0.4% improvement vs iter4. Surface focus paid off. Predictions saved to f4f410b (overwriting earlier ensemble there).
+
+### 2026-04-27 — iter6+iter7: slice_num=128 fresh + chain (architectural diversity)
+- **Hypothesis:** All my chain models are slice_num=64. A slice=128 model has different attention capacity and adds genuine ensemble diversity. iter7 applies the bs=2 full-mesh breakthrough recipe to a fresh slice=128 model.
+- **Change:** iter6 fresh `--slice_num 128 --batch_size 4 --train_subsample 40000 --epochs 25`. iter7 `--warm_start /tmp/iter6_best.pt --slice_num 128 --batch_size 2 --train_subsample 0 --lr 2e-5 --epochs 9` (32.9 min — exceeded MAX_TIMEOUT but ran all 9 epochs since timer checks at start of epoch).
+- **Result:** iter6 val/loss=1.9154 (25 ep, 27.8 min). iter7 val/loss=**1.6936** (9 ep, 32.9 min, 42.4 GB). Per-split iter7: single=2.73, rc=2.10, cruise=0.49, re_rand=1.46.
+- **Verdict:** kept both for ensembling — weaker individually but provide diversity.
+
+### 2026-04-27 — ensembles iter5/5b/8b: arch-mix wins
+- **Result:** ensemble all-4 chain (0.05/0.15/0.4/0.4 → 2cd6dad) scored 50.95, slightly WORSE than iter3 alone (50.83). Iter3+iter4 50/50 (→156a9c9) scored 50.70 — small gain. Iter3+iter4+iter7 (0.4/0.4/0.2 → f4f410b) scored **49.86** — biggest single-step gain (+1pt vs iter3 alone). 4-way iter3+iter4+iter7+iter8 (0.15/0.3/0.2/0.35 → 9d49165) pending.
+- **Verdict:** Architectural diversity (slice=128) clearly helps. Ensembling weak chain members (iter1/iter2) hurts.
+
 ### 2026-04-27 — iter5: ensemble all-4 chain (weights 0.05/0.15/0.4/0.4)
 - **Hypothesis:** Even highly correlated chain models can give a small ensemble gain via noise cancellation. Weight heavily on best two (iter3, iter4).
 - **Change:** Added `ensemble.py`. Ran `python ensemble.py --sources def6b08 04fc74d 6d4b236 d6baae4 --weights 0.05 0.15 0.4 0.4`. Output at apr27-4/alphonse/2cd6dad.
-- **Result:** Pending scoring. iter4 alone (d6baae4) also pending — submitted simultaneously. Edward leads at 43.73; I'm at 50.83 with iter3 (commit 6d4b236).
-- **Verdict:** kept (ensemble file added).
+- **Result:** scored 50.95, slightly worse than iter3 alone (50.83). iter4 alone (d6baae4) also pending. Edward leads at 43.73; I'm at 50.83 with iter3 (commit 6d4b236).
+- **Verdict:** discarded approach (weak members hurt) — kept ensemble.py file.
 - **Notes:** All models share chain history, so ensemble diversity is limited. Real diversity needs different architecture.
 
 ### 2026-04-27 — iter4: chain at lr=2e-6 with p_weight=5 (surface emphasis)
