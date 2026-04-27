@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: prediction averaging across chain ckpts (also fails)
+
+- **Hypothesis:** Where weight averaging (iter8 soup) fails because earlier chain ckpts pull the average toward worse weights, prediction-space averaging might still help by canceling stochastic errors.
+- **Change:** added `predict_ensemble.py` with rank-weighted (1.0/1.5/2.0/2.5) ensemble of [iter5, iter6, iter7, iter9] ckpts. Avg outputs in physical units.
+- **Result:** val_avg_surf_p=**45.45** vs iter9's 44.73 — averaging worsens. Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/d8e7cb3/` but leaderboard picks each agent's best commit, so harmless.
+- **Verdict:** discarded as a competitive submission. Chain is too correlated for averaging to help in either weight or output space. Decisive result; future ensembles need genuinely diverse models (different seed, different architecture, or substantially different recipe path).
+- **Notes:** kept the script around for future cross-recipe ensembles. Iter11 should be a parallel chain branch with a *different* recipe (e.g., L2-only or surf_weight bumped) so the resulting ckpt has decorrelated errors.
+
 ### 2026-04-27 — iter9: pure L1 + single-domain boost
 
 - **Hypothesis:** Two simultaneous changes target the test gap: (1) drop L2 from the loss for direct MAE alignment; (2) double the WeightedRandomSampler weight for `racecar_single` samples since `single_in_dist` is my weakest split (askeladd's strength).
