@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: camber_noise + full-mesh — second breakthrough
+- **Hypothesis:** iter7 plateaued at 49.33 (val). Single-foil split (val_single_in_dist) was actually my weakest at 53.65 — plateau is overfit. Combine the camber_noise augmentation (originally tried in iter5, which was killed early) with the full-mesh fine-tune to add regularization without giving up signal.
+- **Change:** No code change — flag already exists from `395a063`. CLI: `--warm_start models/model-q5t9h880/checkpoint.pt --lr 2e-6 --epochs 8 --batch_size 2 --train_subsample 0 --camber_noise 0.05`. Run id `viigighk`.
+- **Result:** Best val/avg_surf_p=**47.71** at epoch 7/8 (-1.62 abs from iter7). Steady improvement every epoch — augmentation gave the model fresh signal. Train loss stayed ~similar (small noise, not destabilizing).
+- **Verdict:** Kept (ckpt commit `61a9205`).
+- **Notes:** camber_noise=0.05 σ in raw NACA-M units (σ≈0.5 in M digit) was a sweet spot — small enough not to destroy semantics, large enough to interpolate adjacent camber values. Will continue chaining with augmentation at lower LR (iter9).
+
 ### 2026-04-27 — iter7: chain at lr=2e-7
 - **Hypothesis:** Continue chaining low-LR fine-tune from iter6's 49.61 — diminishing returns expected but cheap.
 - **Change:** No code change; CLI `--warm_start models/model-rz1akevm/checkpoint.pt --lr 2e-7 --epochs 8`. Run id `q5t9h880`.
