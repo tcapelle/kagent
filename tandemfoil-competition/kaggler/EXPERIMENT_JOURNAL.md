@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — final-5: per-split ensemble (val 44.00)
+- **Hypothesis:** Different test splits favor different ensemble weights — pick optimal weights per-split independently. Inspired by thorfinn's per-split routing (they jumped 45→37 with this trick).
+- **Change:** Added `predict_per_split.py` (uses YAML config for per-split weights) and `eval_per_split.py` (sweeps weights and reports per-split optima). Submitted with: single [0.7, 0.3], geom_rc [0.6, 0.4], cruise [0.5, 0.5], re_rand [0.6, 0.4] over [v7, v8].
+- **Result:** Per-split val=44.004 (vs uniform v7+v8 [0.6, 0.4]=44.022 → marginal -0.018).
+- **Verdict:** Submitted. Marginal improvement because my v3/v5/v7/v8 are all in the same model family — limited diversity. Thorfinn likely has 12 truly diverse models, hence their bigger gain.
+- **Notes:** Tested 4-way ensemble with v3+v7+v5+v8 — all per-split optima fell on v7+v8 family, didn't pick v3 or v5. To gain more, would need more diverse architectures (n_hidden=256, different activation, etc.). Time-limited so submitted current best. Run f233e58.
+
 ### 2026-04-27 — v8: chain v5 slice128 with lr=3e-5 (18ep) + final-4 ensemble v7+v8 [0.6, 0.4]
 - **Hypothesis:** Chain v5 (slice=128, val 52.00) at lower LR refines it to be a better ensemble partner. Once v8 is closer to v7's quality, the diversity between slice=64 and slice=128 should give a stronger ensemble than v7+v5.
 - **Change:** `--warm_start v5 --slice_num 128 --lr 3e-5 --epochs 18`. Then ensemble eval v7+v8 sweep, found [0.6, 0.4] best.
