@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: 2-way ensemble iter2 0.4 + iter3 0.6 (commit a00c6ea)
+- **Hypothesis:** iter2 (val 1.532) and iter3 (val 1.516) are sequentially-trained chain links — adding their predictions with iter3 weighted higher (since it's stronger) should reduce variance like SWA. Free win, no training.
+- **Change:** `python ensemble.py --sources 381bc71 e352f58 --weights 0.4 0.6`. Predictions written to `apr27/tanjiro/a00c6ea/`.
+- **Result:** TBD — will appear on leaderboard next refresh. Expected: marginal improvement over iter3 alone.
+- **Verdict:** kept. Free improvement to bank before continuing.
+- **Notes:** Frieren's apr23 history shows weighted ensemble of chain iterations beats single best by ~0.1-0.2 score points consistently.
+
 ### 2026-04-27 — iter3: chain link 2 — warm iter2 lr=5e-6 (commit e352f58)
 - **Hypothesis:** Following frieren's iter101 recipe: continue chain at 4× lower LR (5e-6) for further fine-tuning. Should give 1-2% val improvement and add ensemble diversity to iter2.
 - **Change:** `--warm_start /tmp/iter2_best.pt --lr 5e-6 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. Same architecture.
