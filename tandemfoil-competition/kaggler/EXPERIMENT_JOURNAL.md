@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — 🚀 5-way with iter15 = 43.28 (jumped 1.44 from 44.72)
+- ensemble at `a76e551` weights {iter4: 0.20, iter6: 0.20, iter9: 0.10, iter13: 0.15, iter15: 0.35} → **43.28** | sing=44.52 rc=59.81 cr=26.69 rer=42.10
+- iter15 alone (`22ff058`): 44.96 with sing=**41.88** (best single yet on test!) — but worse rc=62.50, cr=29.59, rer=45.88
+- The 256-hidden + single_boost combination produced a model with vastly better single_in_dist transfer than 192-hidden chains, and modest gains elsewhere.
+- Pending: 3d5fa98 (iter15=0.50), b89447b (3-way iter4+iter6+iter15).
+- iter16 in flight: chain iter15 lr=5e-6 to refine further.
+
 ### 2026-04-27 — iter14+iter15: 256-hidden BIG model + chain — best chain endpoint yet
 - **iter14** (`u30i6ovu`): 256-hidden 6-layer 6-head slice=64 mlp_ratio=2, bs=4 sub40K 30ep + single_boost=2. Val **57.06** at epoch 30 (vs 192-hidden iter1=81.37, iter7=68.35). Per-split val_loss: single=1.93, rc=1.77, cruise=0.49, re_rand=1.41 — beats every 192-hidden chain endpoint on single_in_dist.
 - **iter15** (`4cuo7s5w`): chain iter14 bs=2 no_sub lr=2e-5 8ep + single_boost=2. Val **52.33** — better than iter4 (53.32) and iter6 (53.87). Single=1.93 rc=1.69 cruise=0.42 re_rand=1.37.
