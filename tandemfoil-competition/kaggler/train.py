@@ -212,6 +212,7 @@ class Config:
     grad_clip: float = 1.0
     warmup_epochs: int = 2
     ema_decay: float = 0.999  # 0 disables EMA
+    feature_noise: float = 0.0  # std of Gaussian noise on NACA+AoA dims (post-norm) per sample
     resume: str | None = None  # path to checkpoint.pt to warm-start from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -386,6 +387,12 @@ def main():
 
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
+
+            # Per-sample augmentation on global geometry features (AoA + NACA dims).
+            # These dims are constant across all N nodes of a sample, so noise is per-sample.
+            if cfg.feature_noise > 0:
+                noise = torch.randn(x.shape[0], 1, 8, device=x.device) * cfg.feature_noise
+                x[..., 14:22] = x[..., 14:22] + noise
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 pred = model({"x": x})["preds"]
