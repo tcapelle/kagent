@@ -54,7 +54,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 import yaml
-from train import Transolver
+from models import Transolver
 
 ckpt_path = Path(cfg.checkpoint)
 config_path = ckpt_path.parent / "config.yaml"
