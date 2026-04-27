@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12: chain warm-start from iter11
+- **Hypothesis:** Continue the warm-start chain at lr=7e-5 (down from iter11 lr=1e-4) for finer convergence.
+- **Change:** train.py — lr 1e-4→7e-5. Initial checkpoint = iter11 (model-qfi1mn6t).
+- **Result:** Trained 30 epochs in 23.9 min. Best epoch 13, val/loss=1.75. Val mae_surf_p: single=45.35, geom_rc=65.20, geom_cruise=35.28, re_rand=52.98 (avg=49.70, vs iter11 51.84). W&B run 2qpz3rzk. Commit 8c687e1.
+- **Verdict:** kept (best yet). Below alphonse-test (49.19) on val — expect rank 4-5 on test.
+- **Notes:** Diminishing returns: iter5→iter10 -16%, iter10→iter11 -5.3%, iter11→iter12 -4.1%. Still going. Plan iter13 chain at lr=5e-5.
+
 ### 2026-04-27 — iter11: chain warm-start from iter10
 - **Hypothesis:** Warm-start cycles work — repeat the recipe with iter10 as starting point and even lower lr=1e-4 to keep refining.
 - **Change:** train.py — lr 1.5e-4→1e-4. Initial checkpoint = iter10 (model-hqd0w255). Same epochs=30 cosine schedule.
