@@ -207,7 +207,7 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 1e-4
+    lr: float = 3e-5
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 15.0
@@ -217,9 +217,7 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
-    init_checkpoint: str | None = (
-        "/mnt/new-pvc/kagent/apr27/thorfinn/checkpoints/model-sae8usmw/checkpoint.pt"
-    )
+    init_checkpoint: str | None = "checkpoints/best.pt"
 
 
 model_config = dict(
@@ -305,6 +303,10 @@ def main():
     global_step = 0
     train_start = time.time()
     huber_beta = 1.0  # SmoothL1 transition in normalized space.
+
+    # Persist the warm-start state immediately so we always have a usable checkpoint,
+    # even if no training epoch beats the initial state.
+    torch.save(model.state_dict(), model_path)
 
     for epoch in range(MAX_EPOCHS):
         if (time.time() - train_start) / 60.0 >= MAX_TIMEOUT:
