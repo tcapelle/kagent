@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6 pweight50-sw80-lr2e5 — chain plateaued
+
+- **Hypothesis:** Push pressure focus to extreme (`p_weight=50, v_weight=0, surf_weight=80`) at lr=2e-5 to squeeze the last few % out of the chain.
+- **Change:** `--resume checkpoints/best.pt --lr 2e-5 --surf_weight 80 --p_weight 50.0 --v_weight 0.0 --epochs 9`.
+- **Result:** Best epoch 4 (live) mean=71.94 (-0.3% vs iter5 72.14). Trajectory was almost flat — every epoch within ±0.05 of best. Submission `apr27/fern/ae0ba7c`.
+- **Verdict:** kept (technically better) but the chain is fully plateaued at ~72. Pressure focus was already saturated by iter5; iter6 essentially refined within the same minimum.
+- **Notes:** Three datapoints — ensemble(iter4, iter5)=72.68, ensemble(iter5_live, iter5_ema)=72.24, all *worse* than iter5 alone — confirm that prediction averaging across the chain doesn't help (models too correlated). iter7 needs to break out: try a **divergent** training path (resume from iter1 with iter5's pressure-focused recipe) to get a genuinely different ckpt for ensembling.
+
+### 2026-04-27 — iter5 pweight30-vweight0.05-sw50-lr5e5 — chain refinement
+
+- **Hypothesis:** Iter4's `p_weight=10` worked but barely; push it higher (30) and zero out velocity loss (v_weight=0.05) since velocity is not on the leaderboard. Drop LR further (5e-5) for fine refinement.
+- **Change:** `--resume checkpoints/best.pt --lr 5e-5 --surf_weight 50 --p_weight 30.0 --v_weight 0.05 --epochs 9`.
+- **Result:** Best epoch 6 (live) mean=72.14 (-2.4% vs iter4 73.90). Per-split: single=65.29, geom_rc=94.98, geom_cruise=52.90, re_rand=75.40. Submission `apr27/fern/fb7caed`.
+- **Verdict:** kept, marginal gain. Chain now firmly plateauing.
+- **Notes:** All splits improved a small amount but `geom_camber_rc` (unseen front foil camber, raceCar) is still the bottleneck (95). It remains hardest because we can't add training samples covering those geometries.
+
 ### 2026-04-27 — iter4 pweight10-vweight0.1-sw30 — pressure-focused chain
 
 - **Hypothesis:** *The leaderboard scores ONLY surface pressure MAE, not velocity.* (Confirmed: `avg/mae_surf_p` is the only ranking metric — Ux and Uy don't affect score.) Reweighting the loss to deeply focus on pressure should improve the metric without risking velocity-prediction accuracy that nobody scores.
