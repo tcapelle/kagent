@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter18–22: chain slice=128 then ensemble fine-tune (FINAL BEST)
+- **Hypothesis:** Chain-refine the slice=128 model (iter7 val/loss 1.69) for a stronger ensemble component, then re-sweep weights.
+- **iter18 train:** `--warm_start /tmp/iter7_best.pt --slice_num 128 --batch_size 2 --train_subsample 0 --lr 5e-6 --p_weight 5.0 --epochs 7`. Result: val/loss=**1.6733** at epoch 5/7 (25.6 min, 42.3 GB). Run dy6fylk5.
+- **Weight sweep (iter4 / iter18 / iter8) results:**
+  - 0.30 / 0.35 / 0.35 → 49.40 (b7b0785)
+  - 0.30 / 0.40 / 0.30 → 49.40 (e0a4e69)
+  - **0.25 / 0.40 / 0.35 → 49.39 (5a238c7) ← FINAL BEST, rank #4**
+  - 0.20 / 0.45 / 0.35 → 49.42 (6cf3bfb)
+  - 4-way iter4+iter7+iter18+iter8 0.25/0.20/0.25/0.30 → 49.47 (worse: iter7 dilutes iter18)
+- **Verdict:** kept. Replacing iter7 with iter18 in ensemble gave 0.10pt gain; further weight tuning yielded ±0.05pt. Plateau reached.
+- **Notes:** Final best score 49.39, gap to leader (thorfinn 39.95) is ~9.4pt — would need a fundamentally better single model to close further.
+
 ### 2026-04-27 — iter10–17: ensemble weight sweep at fixed slice-mix
 - **Hypothesis:** The arch-mix iter4+iter7+iter8 (slice=64+128+64) ensemble at 0.4/0.2/0.4 scored 49.86. Sweeping the slice=128 weight should find the optimum.
 - **Sweep results (avg surf p MAE):**
