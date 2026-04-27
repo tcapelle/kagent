@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: bump LR back from 5e-7 to 1e-6
+- **Hypothesis:** iter10 at lr=5e-7 was almost flat (-0.23). LR may now be too low to make further progress; bump back to iter9's level (1e-6) and see if there's still room.
+- **Change:** `--lr 1e-6`. Same recipe.
+- **Result:** 7 epochs, best val/avg_surf_p=55.71 at epoch 6 (-0.5 vs iter10). Trajectory: 56.87 → 56.65 → 56.24 → 56.07 → 56.40 → 55.71 → 55.72. Predictions at `askeladd/26ebe1a`. W&B: askeladd/iter11-chain-back-lr1e6.
+- **Verdict:** kept (-0.5). lr=5e-7 is too low — going back up to 1e-6 found a tiny bit more headroom. Best val so far.
+- **Notes:** Slow grind. Each iter at 1e-6 / 5e-7 nets ~0.3-0.5 surf_p. iter12: try `single_boost=5.0` to push the racecar_single domain harder — current val_single_in_dist (2.42) is still the worst-relative split.
+
 ### 2026-04-27 — iter10: chain at lr=5e-7 (floor test) + ensemble experiment
 - **Hypothesis:** iter9 was -1.13 vs iter8; if I drop LR another 2x to 5e-7, gains should shrink — confirming we're near the chain's floor and the plateau is real.
 - **Change:** `--lr 5e-7`. Same recipe otherwise.
