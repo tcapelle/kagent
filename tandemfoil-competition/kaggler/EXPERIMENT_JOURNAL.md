@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — sub20k-ema
+- **Hypothesis:** iter5 was still descending at epoch 29; halving subsample 30k→20k buys more epochs.
+- **Change:** train.py — `train_max_nodes=20000`.
+- **Result:** 39 epochs in 30.7 min (47s/epoch). Best epoch 39: avg_surf_p=98.53 (vs 99.20 iter5). Predictions to `apr27-4/fern/0621c0b`.
+- **Verdict:** kept (commit `d1cdf57`). Marginal 0.7% gain. val_geom_camber_rc actually got worse (2.05→2.47) — sparser per-sample meshes hurt camber generalization. Other splits compensated.
+- **Notes:** plateau forming. Curve flattened in the last 10 epochs. Fundamental capacity may be at limit; need either bigger model or warm-start finetune. Trade-off found: smaller subsample → more epochs but lower per-sample diversity.
+
 ### 2026-04-27 — sub30k-ema
 - **Hypothesis:** iter3 val curve was very wobbly (surf_p bouncing 113-148 in last 8 epochs); track exponential moving average of weights and evaluate that. Also subsample 40k→30k to fit more epochs (iter3 only got 24, was still descending).
 - **Change:** train.py — `EMA(model, decay=0.999)` shadow updated every step; eval and checkpoint use EMA weights; `train_max_nodes=30000`.
