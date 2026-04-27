@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13: EMA chain at lr=5e-7
+- **Hypothesis:** Continue EMA chain at lower LR — small but stable refinements.
+- **Change:** No code change. CLI `--warm_start models/model-13kcrwn3 --lr 5e-7 --ema_decay 0.99 --camber_noise 0.05`. Run id `p2atdl76`.
+- **Result:** Best val/avg_surf_p=46.59 at epoch 5/8 (-0.16 from iter12). Plateauing around 46.6.
+- **Verdict:** Kept (ckpt commit `b957b98`). Top-3 leaders: nezuko 35.20, thorfinn 35.20 (tied!) tanjiro 38.45 — they have something architectural I don't. Need fundamental change. Going for Fourier features (iter14).
+
+### 2026-04-27 — iter12: EMA + camber_noise chain (BREAKTHROUGH)
+- **Hypothesis:** Tanjiro uses `ema_decay`, nezuko has `fourier_*` flags. Add EMA (exponential moving average of weights) — known trick for plateaued models, costs little to implement.
+- **Change:** train.py: `ema_decay` flag, EMA shadow state updated each opt step, EMA weights used for validation and saved as the `best.pt`. Code commit `e4556eb`.
+- **Result:** Best val/avg_surf_p=46.75 at epoch 7 (-0.16 from iter10). EMA gave a small but real boost — first improvement in 3 iters of chaining.
+- **Verdict:** Kept. Will continue chaining with EMA.
+
 ### 2026-04-27 — iter11: AoA noise (regression)
 - **Hypothesis:** Add AoA noise alongside camber_noise to make the model robust to AoA perturbations and continue squeezing out gains.
 - **Change:** train.py: `aoa_noise` flag added to subsample collate. CLI `--aoa_noise 0.02 --camber_noise 0.05`. Run id `4y23f5f6`. Code commit `c3f8792`.
