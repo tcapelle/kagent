@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter21: ensemble iter16 (L1) + iter20 (MSE) — DISCARDED (commit 758d1c3)
+- **Hypothesis:** L1 + MSE losses produce decorrelated errors, ensemble at 0.8/0.2 should beat iter16 alone.
+- **Change:** `python ensemble.py --sources db4d762 c40c4d8 --weights 0.8 0.2`.
+- **Result:** **40.01 avg_surf_p** — *worse* than iter16 alone (38.60). MSE-trained model dilutes L1 quality, ensemble doesn't recover.
+- **Verdict:** discarded. MSE didn't add useful diversity (probably because iter20 is much weaker as a single model, the 20% weight pulls predictions toward worse outputs).
+
+### 2026-04-27 — iter22: fresh slice=128 192x6 L1 (commit a215e08)
+- **Hypothesis:** Larger slice_num (128 vs 64) gives different physics-attention capacity. Frieren noted slice=128 helps Re-generalization.
+- **Change:** `--slice_num 128 --epochs 25 --batch_size 4 --train_subsample 60000 --lr 5e-4 --warmup_epochs 3`. Fresh init.
+- **Result:** val/loss=2.1581 at epoch 20 (timeout, 91s/ep was slow). Per-split val: 3.23, 2.79, 0.80, 1.81. Worse than my L1 iter1 (1.997).
+- **Verdict:** kept as warm-start for iter23 (slice=128 mature via bs=2 step).
+- **Notes:** slice=128 is 45% slower than slice=64. For ensemble diversity, need to mature it.
+
 ### 2026-04-27 — iter20: MSE bs=2 fine-tune (commit c40c4d8)
 - **Hypothesis:** Apply bs=2/no-subsample to MSE iter19 base. Builds an MSE-mature model whose error patterns differ from L1 chain.
 - **Change:** `--warm_start /tmp/iter19_best.pt --loss_type mse --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
