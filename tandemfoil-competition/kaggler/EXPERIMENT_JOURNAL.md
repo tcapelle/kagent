@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: chain at lr=5e-7 (floor test) + ensemble experiment
+- **Hypothesis:** iter9 was -1.13 vs iter8; if I drop LR another 2x to 5e-7, gains should shrink — confirming we're near the chain's floor and the plateau is real.
+- **Change:** `--lr 5e-7`. Same recipe otherwise.
+- **Result:** 7 epochs in 30 min, best `val/avg_surf_p=56.21` at epoch 7. Trajectory: 56.66 → 56.59 → 56.31 → 56.43 → 56.45 → 56.47 → 56.21. Predictions at `askeladd/881f29e`. W&B: askeladd/iter10-chain-lr5e7-final.
+- **Ensemble experiments (eval_ensemble.py):**
+  - iter9 + iter10 (closest two): val/surf_p=56.24 — no help (chain ckpts are too correlated).
+  - iter6 + iter9 + iter10 (wider spread): val/surf_p=57.21 — worse (iter6's higher loss drags average up).
+  - All chain checkpoints lie along the same gradient path — averaging within the chain doesn't add diversity.
+- **Verdict:** kept (-0.23 vs iter9). Confirms the chain plateau at val/surf_p ≈ 56. Ensemble within the chain is not the right move; would need an independent training run with a different seed/architecture for diversity.
+- **Notes:** Test scores from iter9 (b977533) put me at 48.83 (rank 8 currently — others passed me). Top is at 35.24. Chain alone won't close the gap; need a structural change.
+
 ### 2026-04-27 — iter9: chain at lr=1e-6 (no perturbation)
 - **Hypothesis:** iter8 paid 1 epoch to recover from changing `surf_p_weight` mid-chain. Drop LR 2x to 1e-6, keep all other settings the same. No loss-shape change → no perturbation, just slower polish.
 - **Change:** `--lr 1e-6`. Everything else same as iter8.
