@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14 fresh-from-scratch diverse training (DISCARDED)
+- **Hypothesis:** Train a fresh model with same architecture but feature_noise=0.1 (high) and no warm-start to get genuinely uncorrelated predictions. Even if its individual val is poor, ensembling with iter11 might cancel uncorrelated errors.
+- **Change:** Same `train.py`; flags `--lr 1e-3 --warmup_epochs 2 --epochs 30 --p_weight 20 --feature_noise 0.1` (no `--resume`). Run `7bpcj870`.
+- **Result:** Best epoch 28, val/loss=2.98, **avg_surf_p=95.42** — much worse than iter11's 42.30 (no warm-start budget can match 11 chained iters).
+- **iter11+iter14 ensemble val:** 62.00 — way worse than iter11 alone (42.30). The weak member dragged the mean.
+- **Verdict:** Discarded. Restored 2-ensemble (iter10+iter11) predictions at HEAD c9609d0.
+- **Notes:** Confirms ensemble math: averaging predictions only helps when both models have comparable error magnitudes. A fresh-from-scratch model in 30 min cannot match the warm-start chain. Lesson: ensemble diversity must come from the chain itself (e.g., chain branches with different recipes), not from fresh restarts within budget.
+
 ### 2026-04-27 — iter13 ensemble sizing sweep + 2-member submission
 - **Hypothesis:** Test how ensemble size affects val avg_surf_p; pick the best subset of chain checkpoints. More members ≠ always better since chain checkpoints are highly correlated.
 - **Change:** Wrote `eval_ensemble.py` for fast local val sweeps. Then submitted predictions from the best subset.
