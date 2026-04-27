@@ -207,15 +207,18 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 7e-4
+    lr: float = 5e-5  # low LR — warm-starting from a strong checkpoint
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 20.0
-    p_weight: float = 3.0  # extra weight on pressure channel in loss (denorm range is huge)
-    epochs: int = 60
+    surf_weight: float = 10.0
+    p_weight: float = 3.0  # extra weight on pressure channel in loss
+    epochs: int = 40
     grad_clip: float = 1.0
-    train_subsample: int = 32768  # max nodes per sample at train time (full mesh during val)
+    loss: str = "l1"  # 'l1' (matches the leaderboard MAE metric) or 'mse'
+    train_subsample: int = 40000  # max nodes per sample at train time (full mesh during val)
     surface_oversample: float = 0.5  # fraction of subsampled nodes that must be surface nodes (if available)
+    warm_start: str | None = None  # path to a state_dict to load before training
+    skip_warmup: bool = True  # skip the first epoch of cosine warmup when warm-starting
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -250,14 +253,18 @@ def main():
         for name, ds in val_splits.items()
     }
 
+    # Architecture matches thorfinn's apr27-bis winner so we can warm-start
+    # from any of its checkpoints. fun_dim=24 with space_dim=0 means all 24
+    # input features (including raw position) feed the same MLP — no separate
+    # position channel.
     model_config = dict(
-        space_dim=2,
-        fun_dim=X_DIM - 2,
+        space_dim=0,
+        fun_dim=X_DIM,
         out_dim=3,
-        n_hidden=256,
-        n_layers=8,
-        n_head=8,
-        slice_num=64,
+        n_hidden=192,
+        n_layers=6,
+        n_head=6,
+        slice_num=128,
         mlp_ratio=2,
         output_fields=["Ux", "Uy", "p"],
         output_dims=[1, 1, 1],
@@ -265,6 +272,15 @@ def main():
 
     model = Transolver(**model_config).to(device)
     n_params = sum(p.numel() for p in model.parameters())
+
+    if cfg.warm_start:
+        ws_path = Path(cfg.warm_start)
+        sd = torch.load(ws_path, map_location=device, weights_only=True)
+        if isinstance(sd, dict) and "state_dict" in sd:
+            sd = sd["state_dict"]
+        missing, unexpected = model.load_state_dict(sd, strict=False)
+        print(f"Warm-started from {ws_path}; missing={len(missing)} unexpected={len(unexpected)}")
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
@@ -360,12 +376,14 @@ def main():
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 pred = model({"x": x})["preds"]
-            sq_err = (pred.float() - y_norm) ** 2 * chan_w
+            err = pred.float() - y_norm
+            err_loss = err.abs() if cfg.loss == "l1" else err ** 2
+            err_loss = err_loss * chan_w
 
             vol_mask = mask & ~is_surface
             surf_mask = mask & is_surface
-            vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-            surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            vol_loss = (err_loss * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (err_loss * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
             loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
@@ -406,12 +424,13 @@ def main():
                     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                         pred = model({"x": x})["preds"]
                     pred = pred.float()
-                    sq_err = (pred - y_norm) ** 2
+                    err_v = pred - y_norm
+                    err_v_loss = err_v.abs() if cfg.loss == "l1" else err_v ** 2
 
                     vol_mask = mask & ~is_surface
                     surf_mask = mask & is_surface
-                    val_vol += (sq_err * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
-                    val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
+                    val_vol += (err_v_loss * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
+                    val_surf += (err_v_loss * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
                     n_vb += 1
 
                     pred_orig = pred * stats["y_std"] + stats["y_mean"]
@@ -441,12 +460,17 @@ def main():
             val_loss_sum += split_loss
 
         mean_val_loss = val_loss_sum / len(val_loaders)
+        # Average surface pressure MAE across the 4 splits — this is the leaderboard metric.
+        avg_surf_p = sum(
+            split_metrics[name][f"{name}/mae_surf_p"] for name in VAL_SPLIT_NAMES
+        ) / len(VAL_SPLIT_NAMES)
         dt = time.time() - t0
 
         metrics = {
             "train/vol_loss": epoch_vol,
             "train/surf_loss": epoch_surf,
             "val/loss": mean_val_loss,
+            "val/avg_surf_p": avg_surf_p,
             "lr": scheduler.get_last_lr()[0],
             "epoch_time_s": dt,
             "global_step": global_step,
@@ -456,9 +480,10 @@ def main():
         wandb.log(metrics)
 
         tag = ""
-        if mean_val_loss < best_val:
-            best_val = mean_val_loss
-            best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
+        # Pick best checkpoint by val/avg_surf_p — directly the leaderboard metric.
+        if avg_surf_p < best_val:
+            best_val = avg_surf_p
+            best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "val_avg_surf_p": avg_surf_p}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
             torch.save(model.state_dict(), model_path)
@@ -476,12 +501,13 @@ def main():
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
         split_summary = "  ".join(
-            f"{name}={split_metrics[name][f'{name}/loss']:.4f}" for name in VAL_SPLIT_NAMES
+            f"{name.replace('val_', '')}={split_metrics[name][f'{name}/mae_surf_p']:.2f}"
+            for name in VAL_SPLIT_NAMES
         )
         print(
             f"Epoch {epoch+1:3d} ({dt:.0f}s) [{peak_gb:.1f}GB]  "
             f"train[vol={epoch_vol:.4f} surf={epoch_surf:.4f}]  "
-            f"val[{split_summary}]{tag}"
+            f"surf_p[avg={avg_surf_p:.2f}  {split_summary}]{tag}"
         )
 
     # --- Final ---
