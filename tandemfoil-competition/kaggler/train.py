@@ -56,6 +56,9 @@ class Config:
 
     warm_start: str | None = None  # path to checkpoint to warm-start from
     skip_warmup: bool = False  # skip warmup when warm-starting
+    # Comma-separated multipliers for [racecar_single, racecar_tandem, cruise].
+    # Default "1,1,1" = uniform domain sampling (same as data.py default).
+    domain_weights: str = "1,1,1"
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -97,7 +100,18 @@ if cfg.debug:
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True,
                               collate_fn=subsample_collate, **loader_kwargs)
 else:
-    sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
+    domain_w = [float(x) for x in cfg.domain_weights.split(",")]
+    domain_names = ["racecar_single", "racecar_tandem", "cruise"]
+    assert len(domain_w) == len(domain_names), f"need {len(domain_names)} domain weights"
+    import json as _json
+    with open(f"{cfg.splits_dir}/meta.json") as _f:
+        _meta = _json.load(_f)
+    weights = sample_weights.clone()
+    for name, w in zip(domain_names, domain_w):
+        for i in _meta["domain_groups"][name]:
+            weights[i] *= w
+    print(f"Domain weights: {dict(zip(domain_names, domain_w))}")
+    sampler = WeightedRandomSampler(weights, num_samples=len(train_ds), replacement=True)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, sampler=sampler,
                               collate_fn=subsample_collate, **loader_kwargs)
 
