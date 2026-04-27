@@ -61,8 +61,8 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    single: str = "thorfinn:1.0"
-    rc: str = "thorfinn:0.85,tanjiro:0.06,tanjiro2:0.04,thorfinn2:0.05"
+    single: str = "thorfinn:0.5,thorfinn5:0.5"
+    rc: str = "thorfinn:0.85,tanjiro:0.10,thorfinn2:0.05"
     cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
 
