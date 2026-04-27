@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12 4-checkpoint predict-time ensemble
+- **Hypothesis:** Single-model chain plateaued at 42.30. Average predictions (in normalized space) over 4 chain checkpoints (iter8 p_weight=20, iter9 +noise, iter10 60k, iter11 80k) — these have slightly different optima and an ensemble should reduce variance enough to break below frieren's 42.11.
+- **Change:** `predict.py` (commit 59a7ccf): `--checkpoint` now accepts comma-separated paths; multi-model load + mean predictions per batch. Ran with `--checkpoint /tmp/ens/iter{8,9,10,11}/checkpoint.pt`.
+- **Result:** 4-model ensemble predictions saved to `/mnt/new-pvc/predictions/apr27-4/nezuko/59a7ccf/`. Score awaiting leaderboard refresh; per-iter best is 42.30 (iter11).
+- **Verdict:** Pending — need leaderboard run to confirm gain.
+- **Notes:** All 4 ensemble members are 192/6/6/128 Transolver, identical architecture, all warm-start descendants — predictions are highly correlated, so expected ensemble gain is small (0.3–0.8). If it works, iter13 expands to 5–6 members.
+
 ### 2026-04-27 — iter11 push subsample to 80k
 - **Hypothesis:** Iter10 (60k) gave −0.69. Push subsample further to 80k for full(er) spatial coverage.
 - **Change:** No code change; flags `--lr 3e-5 --resume /tmp/iter10_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9995 --p_weight 20.0 --feature_noise 0.0 --n_vol_subsample 80000`.
