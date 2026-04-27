@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: chain at lr=2e-7
+- **Hypothesis:** Continue chaining low-LR fine-tune from iter6's 49.61 — diminishing returns expected but cheap.
+- **Change:** No code change; CLI `--warm_start models/model-rz1akevm/checkpoint.pt --lr 2e-7 --epochs 8`. Run id `q5t9h880`.
+- **Result:** Best val/avg_surf_p=49.33 at epoch 6/8 (-0.28 abs). Per-split: cruise=30.36, rc=64.97, re_rand=49.30, single=53.65.
+- **Verdict:** Kept (ckpt commit `53a2155`). The chain is plateauing; need new angle.
+- **Notes:** predict.py auto-run again OOM'd at split 3 — workaround: kill training procs, run predict manually. Single-foil split is now my weakest (53.65) — thorfinn beats me 40 vs 50 there. Need to focus next iter on regularization or augmentation.
+
 ### 2026-04-27 — iter6: chain at lr=5e-7
 - **Hypothesis:** iter5b's val/avg_surf_p=50.53 was still trending down at the timeout (epoch 9). Chain another fine-tune from that ckpt at a smaller LR to squeeze more out before plateauing. Frieren's `iter4-warm-bs2-nosub-lr2e6-chain3` shows chaining works.
 - **Change:** No code change — just CLI `--warm_start models/model-hahrr3i7/checkpoint.pt --lr 5e-7 --epochs 8 --batch_size 2 --train_subsample 0`. Run id `rz1akevm`.
