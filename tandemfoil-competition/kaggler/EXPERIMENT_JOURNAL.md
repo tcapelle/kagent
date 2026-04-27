@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13: warm-restart cycle + single_boost=4 (BIG JUMP)
+
+- **Hypothesis:** Iter11's plateau (-0.41 val gain) suggested the chain was stuck. Bump LR back up (3e-6 → 2e-5) for a warm-restart cycle and double single_boost (2→4) to drive harder on the single_in_dist split (test gap was 10 vs askeladd).
+- **Change:** `train.py`: WARMSTART=ii1fhq90, lr=2e-5, restored L2 (l1=1, l2=1), single_boost=4.0, 14 epochs.
+- **Result:** 14 epochs in 28 min. 44.32 → epoch 12 = **42.89** (best, -1.43 = 3.2% gain). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/8341fe2/`. Run `90uw6d5h`.
+- **Verdict:** kept — biggest single-iter gain since iter5. **Iter13 SCORED 36.55 on test → still #2, but gap to askeladd narrowed from 5.74 → 4.48**. Test breakdown: single=36.1 (was 39.8, -3.7!), geom_rc=52.5, geom_cruise=21.9, re_rand=35.7. Single-boost confirmed effective.
+- **Notes:** the LR cycle may matter more than I thought. The boosted single sampling worked exactly on the targeted split. Iter14 should: (a) continue chain with similar recipe; (b) add tandem-domain boost too — geom_rc gap is now my biggest weakness (7.5 vs askeladd).
+
+### 2026-04-27 — iter12: from-scratch hid=256 L=8 — ABANDONED
+
+- **Hypothesis:** Maybe a bigger model trained from scratch could break past chain plateau.
+- **Change:** `MODEL_CONFIG` to hid=256/L=8/S=128, no warmstart, lr=5e-4 with 1-epoch warmup.
+- **Result:** 6 epochs in 35 min before timeout. val=132.31 — far worse than chain. Test 121.82 (catastrophic).
+- **Verdict:** discarded — `git reset HEAD~1`. From-scratch hid=256 simply cannot reach competitive val in 30 min budget.
+- **Notes:** iter1 had the same lesson but with hid=192 from scratch reached val=93. The warm-start chain is essential for this competition's compute budget. Future bigger-model attempts must use weight expansion / distillation, not pure scratch.
+
 ### 2026-04-27 — iter11: ultra-low-LR continuation chain step
 
 - **Hypothesis:** One more chain step at lr=3e-6 → 1e-7. Final squeeze before pivoting to a different approach.
