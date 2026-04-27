@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: chain at LR 1e-5 + p_weight 12, fp32 inference
+- **Hypothesis:** Chain ramp keeps paying off (iter4: -1.31). p_weight 10→12 + LR 1.5e-5→1e-5 should add another small gain. Also default predict.py to fp32 (small free win — bf16 inference loses ~0.1pt on val/avg_surf_p).
+- **Change:** args + `predict.py`/`predict_ensemble.py` default `bf16=False`. New helpers `swa.py` (parameter-space averaging) and `eval_val.py` (val score for any checkpoint or ensemble).
+- **Result:** 28 epochs in 30.9 min. Best epoch 26 → val/avg_surf_p=47.06 (single=40.41, geom_rc=65.09, geom_cruise=32.76, re_rand=49.98). Run yd83krcc. Predictions at apr27-5/askeladd/969bc54.
+- **Verdict:** kept — improvement (48.06 → 47.06, -1.00).
+- **Notes (negative results):** SWA(iter4, iter5) → val 47.51 (worse than iter5 alone). Prediction ensemble (iter4, iter5) → val 47.45 (worse). Iter4+iter5 are too close on the same trajectory; averaging in either space hurts.
+
 ### 2026-04-27 — iter4: chain at LR 1.5e-5 + p_weight 10
 - **Hypothesis:** chain ramp continues to pay off (3→5: -3.5, 5→8: -2). Push p_weight 8→10 with another small LR drop (2e-5 → 1.5e-5) to keep walking down.
 - **Change:** args only. `--warm_start /mnt/new-pvc/kagent/apr27-5/askeladd/checkpoints/model-eck7oggk/checkpoint.pt --skip_warmup --lr 1.5e-5 --epochs 30 --p_weight 10.0`. Also added `predict_ensemble.py` and `eval_val.py` for upcoming ensemble work.
