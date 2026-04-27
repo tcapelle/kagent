@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — noise05 (DISCARDED)
+- **Hypothesis:** input noise was the iter8 win; pushing it from 0.03 → 0.05 should help further.
+- **Change:** `input_noise=0.05`.
+- **Result:** 32 epochs in 30.6 min. Best epoch 31: avg_surf_p=101.00 (worse than iter8's 93.62). val_geom_camber_rc=2.11 (worse than iter8's 1.98 too).
+- **Verdict:** discarded — `git reset --hard HEAD~1`. 0.03 was the sweet spot; more noise destroys signal even on the OOD track.
+- **Notes:** noise scaling is non-monotonic. Probably need feature-specific noise (less on positions, more on parametric features) to push further.
+
 ### 2026-04-27 — scale-224x8h8 (DISCARDED)
 - **Hypothesis:** with stronger regularization from iter8 (input noise + slice128), bigger model (n_hidden 192→224, n_head 6→8) might use the budget better.
 - **Change:** model_config n_hidden=224, n_head=8.
