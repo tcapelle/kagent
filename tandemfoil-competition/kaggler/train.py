@@ -165,7 +165,9 @@ print(f"Model params: {n_params/1e6:.2f}M")
 if cfg.warm_start:
     print(f"Warm-starting from {cfg.warm_start}")
     state = torch.load(cfg.warm_start, map_location=device, weights_only=True)
-    model.load_state_dict(state)
+    # strict=False: lets us load Fourier-adapted checkpoints into a Fourier
+    # model where `fourier_freqs_buf` is registered fresh on the new model.
+    model.load_state_dict(state, strict=False)
 
 # EMA shadow weights — initialised from current model. Updated each opt step.
 ema_state: dict | None = None
