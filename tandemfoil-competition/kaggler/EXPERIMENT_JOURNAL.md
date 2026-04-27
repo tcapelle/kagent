@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: ensemble iter1 + iter2 weighted 0.3/0.7
+- **Hypothesis:** iter1 (bs=4 sub=40k) and iter2 (bs=2 nosub) train on different mesh resolutions, so their errors should partially decorrelate. Weighted average favoring iter2 (the stronger one) should pull predictions toward iter2 while iter1 covers iter2's blind spots.
+- **Change:** Added `ensemble.py` that averages saved test predictions per-sample. `python ensemble.py --sources f2e8e4f 89eb6fd --weights 0.3 0.7`. Commit `9c8be71`.
+- **Result:** Pending scoring. (iter1 alone 58.60, iter2 alone 47.32.)
+- **Verdict:** TBD — depends on scorer.
+- **Notes:** If this clears 47.32, the diversity from sub=40k vs nosub paid off; otherwise ensemble dilutes iter2's edge and we should drop iter1 from blends.
+
+### 2026-04-27 — iter3: chain warm-start iter2 lr=2e-5 bs=2 nosub — plateau
+- **Hypothesis:** Continue chain: warm-start iter2 (val 1.4497) at lr=2e-5 with cosine, 10 ep, bs=2 no-sub. Frieren's chain saw 0.05/iter improvements; aim for ~0.05 → val 1.40.
+- **Change:** No code change. `train.py --warm_start models/model-f2pq4i1f/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --epochs 10 --warmup_epochs 0`. Commit `e9df9e1` (predictions landed there because the train.py infra-fix commit moved HEAD mid-run).
+- **Result:** 10 epochs in 25.1 min. Best epoch 1, val/loss=1.4502 — basically identical to iter2's 1.4497. Per-split val: single=2.37, rc=1.78, cruise=0.37, re_rand=1.28. Test: pending.
+- **Verdict:** discarded as a single-model improvement (no progress over iter2). Will retain for ensembles but expect minimal added diversity.
+- **Notes:** lr=2e-5 was too low to escape iter2's basin. The cosine tail just hovers. Frieren's chain plateaued similarly around iter21-23 (val 1.44). Time better spent on architecturally diverse models for ensembles.
+
 ### 2026-04-27 — iter2: warm-start iter1 with bs=2 no-subsample (frieren's breakthrough config) 🚀
 - **Hypothesis:** Apply frieren's iter93 trick: warm-start a converged base model with bs=2 + no subsampling. The 4x more gradient updates per epoch + full 240k-mesh inputs let the model learn Re-dependent field structure. Should jump val/loss meaningfully and unlock big surf_p gains.
 - **Change:** `train.py --warm_start models/model-wrz7s30a/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 5e-5 --epochs 10 --warmup_epochs 1`. No code changes; commit `89eb6fd`.
