@@ -22,6 +22,38 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14: ensemble iter13*2 + iter11
+
+- **Hypothesis:** iter13 (val_bs1=43.77) is the new best single model. Pairing
+  it with iter11 (44.76) — which was trained from a different surf_p_weight
+  basin (12 vs 16 implicit via iter10/iter11 chain) — should add diversity.
+- **Change:** No new training. Run `predict.py --checkpoints iter13,iter11
+  --weights 2,1`. New commit hash for fresh leaderboard entry.
+- **Result (bs=1 val):** **43.50** | single=38.84, geom_rc=61.54,
+  geom_cruise=28.91, re_rand=44.69. Best score yet.
+- **Verdict:** kept — small but consistent gain.
+- **Notes:** Tried many weight combos. Adding iter10 to the mix consistently
+  hurts (43.50 → 43.65); iter10 is now too weak relative to iter13/iter11.
+  Lesson: ensemble works when component models are similar strength;
+  weakest model drags. Ranking with thorfinn=39.52 is essentially tied;
+  this submission may break it.
+
+### 2026-04-27 — iter13: resume iter11 with same recipe (more time helps)
+
+- **Hypothesis:** iter11 still oscillating around 67–69 (bs=4) at the end of
+  training; another 30-min resume cycle could shake it loose into a lower
+  basin or at least average down the noise.
+- **Change:** No code change (same recipe as iter11). Run with
+  `--resume_from .../model-sumg2gb9/`.
+- **Result:** 25 epochs, best val_bs4 = **66.54** at epoch 21 (vs iter11's
+  67.72). Real bs=1 val: **43.77** (vs iter11's 44.76, -2.2%). Splits:
+  single=39.61, geom_rc=62.02, geom_cruise=28.47, re_rand=44.99.
+  Notably geom_cruise dropped 30.95→28.47 (-8%). Run `r9p6myvd`.
+- **Verdict:** kept — resume continues to give marginal gains.
+- **Notes:** geom_camber_cruise is now my best split — model is generalizing
+  to unseen camber for cruise foils nicely. geom_camber_rc still highest
+  (62.02), the consistent bottleneck.
+
 ### 2026-04-27 — iter12: ensemble iter11*2 + iter10 at predict time
 
 - **Hypothesis:** iter10 (sp_w=12) and iter11 (sp_w=16) trained from
