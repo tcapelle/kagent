@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: chain-resume lr=2e-5
+- **Hypothesis:** iter2 still trending down at E13. Another chain step at lr=2e-5 (2.5× lower) should keep improving with smaller updates near optimum.
+- **Change:** `python train.py --resume checkpoints/best.pt --lr 2e-5 --warmup_frac 0.01`. No code change.
+- **Result:** Best E13/14, avg_mae_surf_p = **55.46** (from 62.71, -11.6%). Per-split: single_in_dist=57.80, camber_rc=71.74, camber_cruise=37.54, re_rand=54.77. 29.2 min. W&B `o4p5rpiv`.
+- **Verdict:** Kept. Diminishing returns: iter1→2 was -30%, iter2→3 was -11.6%. Loss still shrinking E12→E13 by 0.6, so not yet plateaued.
+- **Notes:** geom_camber_rc is the worst split (71.74) — generalization to unseen front-foil camber is the bottleneck. **Next:** try training-loss change (pure L1 + surf_p_weight up to 5–6) to push surface pressure harder, plus continue chain.
+
 ### 2026-04-27 — iter2: chain-resume lr=5e-5
 - **Hypothesis:** iter1 was undertrained (loss still falling at E13). Chain-resume from `checkpoints/best.pt` at lr=5e-5 (4× lower) with short warmup (2%) should keep improving without diverging.
 - **Change:** `python train.py --resume checkpoints/best.pt --lr 5e-5 --warmup_frac 0.02`. No code change.
