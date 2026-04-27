@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14/15/16: chain3 finetune, 5-way ensemble, 4th base
+- **Iter14:** finetune iter13 → val/avg_mae_surf_p = **39.42** (new single-model best, beats iter4's 40.97 and iter11's 41.40). Run id `6vti4j15`.
+- **Iter15:** 5-way ensemble {iter4, iter6, iter9, iter11, iter14} at commit `792e633`. **Test score: 31.69** — 0.78 jump from 32.47 (4-way). Currently #2 behind alphonse 31.36.
+- **Iter16:** 4th base. 72 epochs, best val=66.87. Run id `eqzas7wk`. Auto-submit overwrote `792e633` again, restored.
+- **Notes:** alphonse keeps 0.3-0.6 ahead of us — they're likely also ensembling. Each new base/finetune chain adds ~0.5-0.8 to ensemble gain. Need iter17 finetune + iter18 6-way ensemble to potentially overtake.
+
 ### 2026-04-27 — iter12/13: 4-way ensemble + 3rd base
 - **Iter12:** 4-way ensemble {iter4 (37a85cf), iter6 (f088509), iter9 (ffcecba), iter11 (f4f626e)} averaged via `ensemble.py`, saved at `c0b78fe`. **Test score 32.47** — new #1, beating iter10's 32.59 and alphonse's 33.03. Per-split: single=35.39, rc=45.23, cruise=19.07, re=30.20.
 - **Iter13:** 3rd fresh base. 72 epochs, best epoch 71 with val/avg_mae_surf_p=**62.28** (vs iter3 84.20, iter8 68.65 — each base outperforming the previous, suggesting init/data-shuffle luck). Run id `g52d573w`. **Auto-submit overwrote c0b78fe again**, restored via `ensemble.py`.
