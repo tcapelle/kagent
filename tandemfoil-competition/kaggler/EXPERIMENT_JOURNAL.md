@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12: chain LR 2e-6 + p_weight 35
+- **Hypothesis:** continue chain ramp; expect ~0.1pt gain.
+- **Change:** args only.
+- **Result:** 28 epochs in 30.9 min. Best epoch **9** → val/avg_surf_p=45.03 (single=39.04, geom_rc=62.35, geom_cruise=31.34, re_rand=47.41). Run n1mpehia. Predictions at apr27-5/askeladd/908664e.
+- **Verdict:** kept — improvement (45.21 → 45.03, -0.18). Best again at an early epoch (9 of 28); the model hits a brief minimum then drifts.
+- **Notes:** Ensemble(iter11, iter12) val=45.07 (worse). Cumulative progress over 12 iters: 70.5 → 45.03. Each chain step still pays a little but trajectory wobble dominates around the basin.
+
 ### 2026-04-27 — iter11: chain + save_last_k=8 for in-training SWA
 - **Hypothesis:** the trajectory wobbles by ~0.1pt around the best epoch (iter10's best was at e12, then drift). Saving the last K epoch checkpoints and SWA-ing them should shave another 0.1–0.2pt by sitting at the basin centre.
 - **Change:** add `--save_last_k` arg → snaps `snap_e0NN.pt` for the last K epochs; mirrored to PVC alongside the best checkpoint. Same chain hyperparams as iter10.
