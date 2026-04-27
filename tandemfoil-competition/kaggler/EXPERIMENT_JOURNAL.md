@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter18: cycle-4 pretrain — saturated (commit 3b06a3d)
+- **Hypothesis:** Continue cycling pattern: warm iter16 bs=4 sub60K lr=1e-5 25ep.
+- **Change:** `--warm_start /tmp/iter16_best.pt --lr 1e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
+- **Result:** val/loss=1.1571 at epoch 1; later epochs flat/slight degradation. Per-split essentially identical to iter16.
+- **Verdict:** kept but adds nothing new. Cycling has plateaued at val ~1.16.
+- **Notes:** Confirmed with iter17 ensemble (39.10) > iter16 alone (38.60): chain checkpoints share trajectories, ensembling them doesn't help. Pivoting strategy: train a genuinely different model (MSE loss instead of L1) for real error decorrelation.
+
+### 2026-04-27 — iter17: 3-way ensemble iter10/iter14/iter16 (commit 21cdcd8)
+- **Hypothesis:** Average chain-cycle-best models with iter16 weighted highest. Different LR regimes might add ensemble value.
+- **Change:** `python ensemble.py --sources 3924526 d3350b0 db4d762 --weights 0.15 0.25 0.6`.
+- **Result:** **39.10** — slightly *worse* than iter16 alone (38.60). Confirms chain checkpoints have correlated errors.
+- **Verdict:** discarded. Chain ensembles don't help; need architectural/training-recipe diversity.
+- **Notes:** Same lesson as iter4 ensemble (48.89 vs iter3 48.70). The chain produces highly correlated solutions. Will try MSE-loss model in iter19 for real decorrelation.
+
 ### 2026-04-27 — iter16: cycle-3 bs=2 fine-tune NEW BEST (commit db4d762)
 - **Hypothesis:** Apply bs=2/no-subsample to iter15 (val 1.190). Lower LR (1e-5) since model is heavily converged.
 - **Change:** `--warm_start /tmp/iter15_best.pt --lr 1e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
