@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter16: chain step from iter15 (lr=5e-6)
+
+- **Hypothesis:** Chain step at lr=5e-6 cosine should consolidate iter15's gains.
+- **Change:** WARMSTART=er3i0nfe, lr=5e-6. Boosts kept (6, 4).
+- **Result:** 14 epochs. 41.12 → epoch 12 = **40.81** (best, -0.31). Predictions at `f66010c/`. Run `x00vprmc`.
+- **Verdict:** kept — gain is small but expected for a chain step. Warm-restart pattern remains the bigger lever.
+- **Notes:** confirms "chain after warm-restart" recovers ~half a point; "warm-restart cycle" recovers a full point. Iter17 should be another warm-restart with bumped boosts (single=8, tandem=5) and bumped LR.
+
 ### 2026-04-27 — iter15: warm-restart + bigger boosts (single=6, tandem=4)
 
 - **Hypothesis:** Iter13's recipe (warm-restart lr=2e-5 + boosted sampling) gave the biggest gain in many iters. Doubling down: keep lr=2e-5 warm-restart + bump single_boost to 6 and tandem_boost to 4.
