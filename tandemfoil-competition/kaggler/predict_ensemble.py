@@ -57,10 +57,10 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    single: str = "thorfinn:0.90,edward:0.05,thorfinn2:0.05"
+    single: str = "thorfinn:1.0"
     rc: str = "thorfinn:0.85,tanjiro:0.10,thorfinn2:0.05"
     cruise: str = "thorfinn:0.90,tanjiro:0.05,fern:0.05"
-    re_rand: str = "thorfinn:0.90,tanjiro:0.05,thorfinn2:0.05"
+    re_rand: str = "thorfinn:1.0"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
