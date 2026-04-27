@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: subsample volume nodes for 5× speedup
+- **Hypothesis:** train_surf was still falling at 30-min timeout in iter2. Volume nodes (~99% of mesh) dominate compute but contribute little to surface pressure. Randomly drop volume nodes during training (keep all surface) so each epoch is 5× faster — converting compute time into more epochs.
+- **Change:** train.py — added `_VolumeSubsample` dataset wrapper that keeps all surface nodes and samples up to 25k volume nodes per training sample. Validation runs on full mesh. surf_weight 20→25, epochs 15→25.
+- **Result:** Each epoch now ~48s (vs 245s) → completed all 25 epochs in 19.9 min. VRAM peak 10GB (down from 84GB). Best val/loss=3.86 (epoch 25, vs iter2 5.07). Val mae_surf_p: single=78.7, geom_rc=82.5, geom_cruise=64.8, re_rand=83.5 (avg=77.4). **Test leaderboard: 69.57 avg surf_p (rank 4/5, up from rank 4 at 105.58)**. W&B run 2ypzrvpq.
+- **Verdict:** kept (massive win — ~34% improvement on leaderboard).
+- **Notes:** Subsampling introduces train-noise but the lr schedule converges nicely. Train losses stable at vol≈0.10, surf≈0.03 by epoch 25. Headroom probably remains: try keeping more volume points (50k), bigger model now that VRAM is free, or longer training.
+
 ### 2026-04-27 — iter2: Fourier positional encoding + lr 5e-4
 - **Hypothesis:** Adding sinusoidal positional encoding on (x, z) coordinates (10 log-spaced freqs up to 16 cycles/unit) gives the MLP preprocess access to high-frequency spatial information that helps with turbulence. Lower lr=5e-4 + drop p_channel_weight should remove iter1 instability.
 - **Change:** models.py — added `n_pos_freqs`, `max_pos_freq` to Transolver; appends sin/cos features of (x,z) before preprocess MLP. train.py — n_pos_freqs=10, max_pos_freq=16, lr=1e-3→5e-4, p_channel_weight=2→1, epochs=12→15.
