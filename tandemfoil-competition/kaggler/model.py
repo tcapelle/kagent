@@ -4,6 +4,8 @@ Transolver: physics-aware attention over irregular meshes via slice tokens.
 Shared between train.py and predict.py.
 """
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -129,12 +131,42 @@ class TransolverBlock(nn.Module):
         return fx
 
 
+class FourierPosEnc(nn.Module):
+    """Multi-scale sinusoidal encoding for 2D positions (x, z).
+
+    Output: [sin(f*x), cos(f*x), sin(f*z), cos(f*z)] for each frequency,
+    so 4*n_freqs features. Frequencies are log-spaced over the input position scale.
+    """
+
+    def __init__(self, n_freqs: int = 8, max_freq: float = 32.0):
+        super().__init__()
+        if n_freqs == 0:
+            self.register_buffer("freqs", torch.zeros(0))
+        else:
+            freqs = 2.0 ** torch.linspace(0.0, math.log2(max_freq), n_freqs) * math.pi
+            self.register_buffer("freqs", freqs)
+        self.out_dim = 4 * n_freqs
+
+    def forward(self, pos):
+        # pos: [B, N, 2]
+        if self.freqs.numel() == 0:
+            return pos.new_zeros(*pos.shape[:-1], 0)
+        # [B, N, 2, F]
+        scaled = pos.unsqueeze(-1) * self.freqs.view(1, 1, 1, -1)
+        sin = torch.sin(scaled)
+        cos = torch.cos(scaled)
+        # concat sin/cos and flatten the (2, F) axes -> 4*F
+        return torch.cat([sin, cos], dim=-1).reshape(*pos.shape[:-1], -1)
+
+
 class Transolver(nn.Module):
     def __init__(self, space_dim=2, n_layers=5, n_hidden=256, dropout=0.0,
                  n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=3,
-                 slice_num=32):
+                 slice_num=32, pos_freqs=0, pos_max_freq=32.0):
         super().__init__()
-        self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
+        self.pos_enc = FourierPosEnc(pos_freqs, pos_max_freq) if pos_freqs > 0 else None
+        pos_extra = self.pos_enc.out_dim if self.pos_enc is not None else 0
+        self.preprocess = MLP(fun_dim + space_dim + pos_extra, n_hidden * 2, n_hidden,
                               n_layers=0, res=False, act=act)
         self.n_hidden = n_hidden
         self.space_dim = space_dim
@@ -161,6 +193,10 @@ class Transolver(nn.Module):
     def forward(self, data, **kwargs):
         x = data["x"]
         mask = data.get("mask")
+        if self.pos_enc is not None:
+            # x columns 0..space_dim-1 are spatial (normalized) positions.
+            pos = x[..., :self.space_dim]
+            x = torch.cat([x, self.pos_enc(pos)], dim=-1)
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for block in self.blocks:
             fx = block(fx, mask=mask)

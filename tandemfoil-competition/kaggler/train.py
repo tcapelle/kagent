@@ -103,9 +103,11 @@ model_config = dict(
     n_hidden=192,
     n_layers=8,
     n_head=6,
-    slice_num=64,
+    slice_num=96,
     mlp_ratio=2,
-    dropout=0.0,
+    dropout=0.05,
+    pos_freqs=8,
+    pos_max_freq=32.0,
 )
 
 model = Transolver(**model_config).to(device)
