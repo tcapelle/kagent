@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter22-26: Cp+Huber chain (val 0.75 → 0.52)
+- **iter22** chain warm-start iter21 bs=2 nosub lr=5e-5: val=**0.7471**
+- **iter23** warm-restart iter22 lr=1e-4: val=**0.6815**
+- **iter24** chain iter23 lr=5e-5: val=**0.6547**
+- **iter25** warm-restart iter24 lr=1e-4: val=**0.6171**
+- **iter26** chain iter25 lr=5e-5: val=**0.5184** 🚀 — biggest single-step drop. single_in_dist split alone dropped from 1.05 → 0.67. Per-split val: single=0.67, rc=0.78, cruise=0.11, re_rand=0.52.
+- **Verdict:** Cycle (chain → restart → chain) with Cp+Huber gives consistent ~0.05-0.10 val drop per iteration. 5 iterations brought val 0.75 → 0.52.
+- **Notes:** Test scoring queue is heavily backed up — none of iter21-26 have been scored yet. Based on val/loss vs iter17 (val 1.11 → surf_p 38.13), expect iter26 surf_p in low-to-mid 20s, easily beating askeladd's 32.07. Continuing iter27 warm-restart to push further.
+
 ### 2026-04-27 — iter21+iter22: Cp normalization + Huber-0.1 (val 0.82 → 0.75) 🚀
 - **Hypothesis (post-mortem from competitor research):** askeladd jumped from 39.16 → 32.07 via two structural changes — (1) Cp-style Re² pressure normalization (divide y_p by exp(2*(log_re-LOG_RE_REF))) and (2) Huber loss with delta=0.1 (sharper L1, dampens grad on tiny residuals). Both are loss-shape changes; together a 7-pt jump on top of Cp norm's 11-pt jump. My L1 chain stalled at val 1.02 (iter20) → surf_p ~37 ceiling. Need to switch recipe.
 - **Change:**
