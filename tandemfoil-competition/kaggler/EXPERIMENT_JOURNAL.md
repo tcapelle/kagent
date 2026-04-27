@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v4: fresh slice_num=128 for ensemble diversity (40ep target)
+- **Hypothesis:** A fresh model with double the slice tokens (different inductive bias) gives ensemble diversity vs v3's slice=64 chain — even if individually worse, complementary errors should help when averaged.
+- **Change:** `--slice_num 128 --epochs 40` (no warm_start). 67s/epoch (vs 46s for slice=64) due to 2x slice tokens.
+- **Result:** Best val avg_surf_p=71.95 at epoch 26 (timeout-limited at 27/40 epochs). Per-split: single_in_dist=79.08, geom_rc=90.55, geom_cruise=50.00, re_rand=68.20. 30 min total, 15.2 GB peak VRAM.
+- **Verdict:** Kept as ensemble component — solo too weak (71.95 vs v3 46.26), but this is the trade-off for diversity. Will chain v5 from v4 to refine before ensembling with v3.
+- **Notes:** Cosine targeted 40 epochs but only got 27, so LR didn't fully decay. Consistent with thorfinn's slice=128 fresh result (70.52). Run `f72q8jpo`.
+
 ### 2026-04-27 — v3: second chain warm-start from v2 (lr=3e-5, 25ep)
 - **Hypothesis:** Even gentler chain (3x lower LR than v2) lets cosine refine the v2 minimum further without disrupting it.
 - **Change:** `--warm_start v2.checkpoint --lr 3e-5 --epochs 25` (no warmup, plain cosine).
