@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: stronger single_boost + bigger surf_p_weight
+- **Hypothesis:** iter7 showed single_boost works without hurting other splits. Push it harder: `single_boost 2.5→3.5`, `surf_p_weight 10→12`. Same lr=2e-6, nosub, bs=2.
+- **Change:** Just CLI args. No code change.
+- **Result:** 7 epochs in 30 min, best `val/avg_surf_p=57.57` at epoch 7. Trajectory: 63.36 → 59.05 → 58.51 → 58.35 → 57.82 → 57.96 → 57.57. Predictions at `askeladd/01851f9`. W&B: askeladd/iter8-singleboost3.5-spw12.
+- **Verdict:** kept (-0.85 vs iter7). Smaller win; epoch 1 was 63.36 — bumping `surf_p_weight` from 10→12 perturbed warm-started weights and cost ~1 epoch of recovery.
+- **Notes:** Trade-off showed up: `val_single_in_dist` actually regressed (iter7 final 2.17 → iter8 final 2.50) while overall surf_p improved — the model traded single-foil accuracy for the other splits. Lesson: bumping the `surf_p_weight` in the *middle* of a chain costs an epoch of warm-start advantage; if the loss is good keep it stable. iter9: keep iter8's recipe but drop LR another 2x to 1e-6 (no loss change → no perturbation, just polish).
+
 ### 2026-04-27 — iter7: single_boost=2.5 to push the racecar_single domain
 - **Hypothesis:** Per-split test gap analysis from iter5 showed `test_single_in_dist` was my biggest weakness (69.6 vs top 50.0). The training sampler is balanced 1/3 per domain {racecar_single, racecar_tandem, cruise}; upweighting racecar_single in the WeightedRandomSampler should give the model more single-foil exposure.
 - **Change:** `train.py`: added `single_boost: float` config; multiplies sample_weights for samples in the `racecar_single` domain group (read from `meta.json`). Run with `--single_boost 2.5` and the same chain recipe (lr=2e-6, nosub, bs=2, 4-weight loss).
