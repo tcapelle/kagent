@@ -30,8 +30,8 @@ Keep entries short. Link W&B run URLs when useful.
 - **Notes:**
   - **What worked:** (a) single 60-70% 8ce7299 + 15-25% 1f9db55 + 15% 90567b5 — three thorfinn commits decorrelating; (b) rc 85% 0cc44bf + 10% tanjiro + 5% 1f9db55 — only blend where non-thorfinn helps because tanjiro's rc=51.60 is close enough to decorrelate with thorfinn rc=49.07; (c) using 1f9db55 (cruise=20.832, re=35.324) as the cruise/re floor rather than 0cc44bf (20.833, 35.327).
   - **What failed:** edward 5% in single jumped to 35.62 (-0.03 hurt); rc 75/25 too much tanjiro (49.10); rc with fern instead of tanjiro (49.06); cruise blend with any non-thorfinn (cruise rises 20.83→20.85+); single 80%/90% 8ce7299 (loses decorrelation diversity); tanjiro2 in rc blend (rc 49.06, slightly worse).
-  - **Cat-and-mouse:** thorfinn pushed counter-blends (1f9db55, ca32e09, fc2dd9e, 5ae926e) targeting my lead. Sub-millipoint margins; the leaderboard rounded both to 35.20.
-  - Out of single-blend headroom — pushing past 35.195 requires fresh uncorrelated signal (new model architecture or per-sample router).
+  - **Cat-and-mouse:** thorfinn pushed counter-blends (1f9db55, ca32e09, fc2dd9e, 5ae926e, 0e56f78) targeting my lead. End state: 4 entries at exactly avg=35.19569 (mine f23f935+85845f4 vs thorfinn 0e56f78+0ce97d2). Leaderboard ranks me #1. The blend space is exhausted at the 5th-decimal floor: any further gain requires a new model (per-sample routing or genuinely new signal).
+  - **Validated negatives** (do NOT retry): single weights >75% on 8ce7299 lose decorrelation; single 4-way blends with 0cc44bf included add no value (its single is the worst of the four 35.591); rc weights with thorfinn6/edward/fern instead of tanjiro hurt; tanjiro2 hurts; cruise blend with any non-thorfinn raises cruise from 20.83 to 20.85+ at any weight tested. The optimum is tightly localised at single=70/15/15(8ce7299/1f9db55/90567b5), rc=85/10/5(0cc44bf/tanjiro/1f9db55), cruise=re=pure 1f9db55.
 
 ### 2026-04-27 — iter11-blend3 (intermediate, KEPT)
 - **Hypothesis:** stack 3-4 cross-agent predictions per split with light weights to maximise diversity at low cost.
