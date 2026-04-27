@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4 + ensemble2 (chain only)
+- **Hypothesis (iter4):** lr=2e-6, 8ep, no warmup — squeeze the last bit out of the chain. Expecting ~0.2pt val gain.
+- **Result iter4:** 8 epochs, 20.0 min. Val 53.86→53.52→53.54→53.43→53.49→53.34→53.36→**53.32**. Best epoch 8. Predictions at `bb24f96`.
+- **Hypothesis (ensemble2):** ensemble1 (iter1+iter2+iter3) scored 47.67 — WORSE than iter3 alone (46.87) because iter1 (val 81) was too weak and dragged the average down. Drop iter1, keep only chain endpoints {iter2, iter3, iter4} with weights tilted toward iter4 (0.25/0.30/0.45).
+- **Change:** No code change. `python ensemble.py --sources 031565e 8c116e8 bb24f96 --weights 0.25 0.30 0.45`. Output saves to current HEAD.
+- **Result:** TBD pending scorer.
+- **Verdict iter4:** Kept. **Verdict ensemble2:** TBD. Chain ckpts saved to `/tmp/iter{1,2,3,4}_best.pt`.
+- **Notes:** Big lesson from ensemble1: ensemble of imbalanced models is dragged by the weakest member. Apr23 iter12 (3-way at 0.3/0.5/0.2) worked because *all three* were within ~10% val of each other. Here iter1 was 50% worse than iter2/3/4. Going forward: only ensemble models within ~20% val of best.
+
 ### 2026-04-27 — ensemble1: iter1+iter2+iter3 weighted (0.1/0.35/0.55) — submitted at `8c66656`
 - **Hypothesis:** Three chain checkpoints with different val/avg_surf_p (81.4 / 54.4 / 53.5) should ensemble lower than the best single via prediction-space averaging. Weight by inverse strength: iter3 (best) gets 0.55, iter2 0.35, iter1 0.1 for tiny diversity.
 - **Change:** No code change. `python ensemble.py --sources 7ceb221 031565e 8c116e8 --weights 0.1 0.35 0.55` while iter4 is training. Output goes to commit `8c66656` (current HEAD = iter3 journal commit).
