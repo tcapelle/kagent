@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: pure L1 + single-domain boost
+
+- **Hypothesis:** Two simultaneous changes target the test gap: (1) drop L2 from the loss for direct MAE alignment; (2) double the WeightedRandomSampler weight for `racecar_single` samples since `single_in_dist` is my weakest split (askeladd's strength).
+- **Change:** `train.py`: `l2_weight=0.0`, `single_boost=2.0`, lr=5e-6, 14 epochs. Chain from iter7 best (4hbvu7xe).
+- **Result:** 14 epochs in 32 min. 45.46 → epoch 14 = **44.73** (best). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/bc229da/`. Run `qsywg20y`.
+- **Verdict:** kept — gain of -0.73, modest. **NOTE — iter7 (819c1d1) just scored 38.87 on test, putting me at #1 on the leaderboard, beating askeladd's 39.16!** Per-split test breakdown for iter7: single=42.4, geom_rc=53.8, geom_cruise=22.6, re_rand=36.7. Expected test for iter9 ≈ 38.2.
+- **Notes:** val improvement attribution unclear — single-boost vs L1-only. Comparing iter7 (single_loss=1.99) vs iter9 (1.97) — boost moved the needle a bit on single. L1-only may have helped indirectly. Iter10 should isolate one of these effects, or pivot to ensembling.
+
 ### 2026-04-27 — iter8: model soup ensemble across chain checkpoints
 
 - **Hypothesis:** Averaging the weights of multiple chain checkpoints (a la Model Soup) should reduce variance and outperform any single ckpt.
