@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter2: warm-start iter1 ckpt @ lr=2e-4, 25 epochs (cosine to 0)
+
+- **Hypothesis:** Iter1 cosine schedule was set for 200 epochs but only ran 21 → LR barely decayed and val bounced 103–128. Warm-starting and giving the schedule full decay over a 25-epoch budget should let the model fine-tune.
+- **Change:** Added `--warm_start <path>` arg; loaded `checkpoints/best.pt` (15.8 MB, 256/L8/sl96/h8). lr=2e-4 (was 5e-4), warmup_epochs=0, epochs=25 so cosine fully decays in budget.
+- **Result:** 21 epochs in 30 min. Best val avg_mae_surf_p=**87.57 at E9** (improved 16% from 103.14). Splits: single=70.1, geom_rc=129.4, geom_cruise=60.8, re_rand=90.0. After E9, geom_camber_rc kept worsening (129→152) while easy splits kept improving — clear OOD overfitting.
+- **Verdict:** kept — biggest single-iter improvement so far.
+- **Notes:** geom_camber_rc (M=6–8 unseen camber) is now ~2× worse than the other splits and drives the average. Other agents likely beat me here via mirror augmentation or larger-scale training. Next iter: another warm-start at even lower lr (1e-4), or add architectural changes (Fourier features, FiLM on Re).
+
 ### 2026-04-27 — iter1: leader-class Transolver + bf16 + smooth_L1 + sub40k
 
 - **Hypothesis:** Default Transolver was 128/L5/sl64 → 112.94 surf_p (rank 7/7). Combine leader sizing (256/L8/sl96/h8 from frieren/thorfinn) with alphonse's speed/loss tricks (bf16, smooth_L1+p_weight=3, train_subsample=40000, warmup, grad_clip=1.0). Get many more epochs into the 30-min budget.
