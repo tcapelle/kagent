@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v14: chain v13 lr=2e-5 (11ep) → 3-way per-split val=43.47
+- **Hypothesis:** Even gentler chain on v13 refines toward a tighter slice=32 minimum, improving the 3-way ensemble.
+- **Change:** `--warm_start v13 --slice_num 32 --lr 2e-5 --epochs 15`. 36s/epoch, 9 min total.
+- **Result:** v14 alone val=53.38 at epoch 11 (vs v13=54.87 → 1.49 improvement). Per-split: single=48.32, geom_rc=71.70, cruise=38.52, re_rand=54.99. **3-way per-split (v7+v10+v14)** = **43.47** vs v13 ensemble 43.55. Optima: single (0.62,0.30,0.08)=39.53; geom_rc (0.5,0.30,0.20)=59.11; cruise (0.5,0.40,0.10)=29.03; re_rand (0.5,0.30,0.20)=46.21. 4-way (v7+v10+v13+v14) marginally worse — v14 dominates v13.
+- **Verdict:** Submitted at 43cbfd5. Cumulative -0.40 val from baseline 43.87.
+- **Notes:** Each chain step (v12 fresh → v13 lr=1e-4 → v14 lr=2e-5) improved both v_alone and ensemble. Diminishing returns by v14. Run `mj69t5iv`. Next: try fresh truly-different arch (n_head=12 or n_hidden=224) for further diversity.
+
 ### 2026-04-27 — v13: chain v12 lr=1e-4, no noise (24ep) → 3-way per-split val=43.55
 - **Hypothesis:** Refining v12 (val=79, undertrained) with a normal LR chain (no noise) brings it close enough to v7/v10 quality to actually pull the per-split ensemble down. v12 alone helped only on geom_rc with weight 0.09; a stronger v13 should help all four splits.
 - **Change:** `--warm_start v12 --slice_num 32 --lr 1e-4 --epochs 25` (no noise during chain). 36s/epoch, 15 min total.
