@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: chain finetune iter2 (bs=2, full mesh, lr=5e-6)
+- **Hypothesis:** Drop LR another 4x (2e-5 → 5e-6) for fine polishing — frieren's chain pattern showed each LR cut yielded a few percent.
+- **Change:** Resume from iter2 ckpt; --batch_size 2 --n_sub 0 --epochs 10 --lr 5e-6 --warmup_epochs 0.
+- **Result:** 10 ep in 24.9 min. val/loss 2.27 → **2.23**, **surf_p 53.80 → 52.74** (~2% gain). Per-split surf_p: single_in_dist≈55, rc≈74, cruise≈30, re_rand≈53. W&B `0ttf86dz`. Predictions submitted.
+- **Verdict:** Kept — small but monotone improvement. Diminishing returns; rc is the hardest split (75) — doesn't generalize as well to unseen front-foil camber.
+- **Notes:** Loss still trending down at epoch 10 — could chain again at lr=1e-6, but expecting <1% gain. Better next move: stronger pressure weighting (pw=5-7) or bigger model.
+
 ### 2026-04-27 — iter2: chain finetune iter1 (bs=2, full mesh, lr=2e-5)
 - **Hypothesis:** frieren's apr23 unlock was switching from bs=8/sub30k to bs=2/full-mesh at lr=2e-5 — surface pressure benefits from seeing full meshes and very low LR. Resume from iter1 ckpt and run 10 epochs.
 - **Change:** new training run, same model/loss, --batch_size 2 --n_sub 0 --epochs 10 --lr 2e-5 --warmup_epochs 0, resumed from iter1 PVC checkpoint.
