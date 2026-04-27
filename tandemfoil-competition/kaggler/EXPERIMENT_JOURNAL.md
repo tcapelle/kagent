@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8 alone scored 48.99: BEST single_in_dist (46.96, beats iter4 by 5pt)
+- iter8 alone (`127ecd5`): surf_p=48.99 | **sing=46.96** rc=67.41 cruise=32.47 re_rand=49.14
+- Confirms iter8 is a specialist: best single by 5pt, but loses on the other 3 splits.
+- Ensemble at 0.40/0.40/0.20 (4b82ff0) and 0.35/0.35/0.30 (89f9652) should preserve iter4+iter6 strengths while gaining single.
+- fern jumped to 44.06 (+1.15 over me). Path to #1: ensemble should drop my single by ~1pt while holding the rest.
+
 ### 2026-04-27 — ensemble5/6: 3-way with iter8 (single specialist)
 - ensemble5 (`4b82ff0`, iter4+iter6+iter8 0.40/0.40/0.20): TBD pending scorer.
 - iter9 launched in parallel: chain iter8 at lr=5e-6 single_boost=2 8 ep — refine the specialist.
