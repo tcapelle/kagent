@@ -211,12 +211,46 @@ class Config:
     n_vol_subsample: int = 40000
     grad_clip: float = 1.0
     warmup_epochs: int = 2
+    ema_decay: float = 0.999  # 0 disables EMA
     resume: str | None = None  # path to checkpoint.pt to warm-start from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+
+
+class EMA:
+    """Exponential moving average of model parameters, validated/checkpointed on shadow weights."""
+
+    def __init__(self, model: nn.Module, decay: float):
+        self.decay = decay
+        self.shadow = {
+            k: v.detach().clone()
+            for k, v in model.state_dict().items()
+            if v.dtype.is_floating_point
+        }
+        self.backup: dict[str, torch.Tensor] = {}
+
+    @torch.no_grad()
+    def update(self, model: nn.Module):
+        for k, v in model.state_dict().items():
+            if k in self.shadow:
+                self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1 - self.decay)
+
+    @torch.no_grad()
+    def apply_to(self, model: nn.Module):
+        sd = model.state_dict()
+        self.backup = {k: sd[k].detach().clone() for k in self.shadow}
+        for k, v in self.shadow.items():
+            sd[k].copy_(v)
+
+    @torch.no_grad()
+    def restore(self, model: nn.Module):
+        sd = model.state_dict()
+        for k, v in self.backup.items():
+            sd[k].copy_(v)
+        self.backup = {}
 
 
 def make_subsample_collate(n_vol: int):
@@ -283,6 +317,7 @@ def main():
         model.load_state_dict(state)
     n_params = sum(p.numel() for p in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    ema = EMA(model, cfg.ema_decay) if cfg.ema_decay > 0 else None
 
     steps_per_epoch = max(1, len(train_loader))
     warmup_steps = cfg.warmup_epochs * steps_per_epoch
@@ -368,6 +403,8 @@ def main():
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
             scheduler.step()
+            if ema is not None:
+                ema.update(model)
             global_step += 1
             wandb.log({
                 "train/loss": loss.item(),
@@ -382,7 +419,9 @@ def main():
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
-        # --- Validate ---
+        # --- Validate (on EMA weights if enabled) ---
+        if ema is not None:
+            ema.apply_to(model)
         model.eval()
         val_loss_sum = 0.0
         avg_surf_p = 0.0
@@ -469,8 +508,12 @@ def main():
             }
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+            # Save EMA-validated weights (currently loaded into model)
             torch.save(model.state_dict(), model_path)
             tag = " *"
+
+        if ema is not None:
+            ema.restore(model)
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
         split_summary = "  ".join(
