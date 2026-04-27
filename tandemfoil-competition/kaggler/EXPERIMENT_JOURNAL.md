@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: warm-start from iter5, low-LR fine-tune
+- **Hypothesis:** Iter5's training loss was still falling at the 30-min cutoff. Loading its weights and continuing for another 30 min with cosine schedule restarted at lr=1.5e-4 should let optimization push past iter5's plateau.
+- **Change:** train.py — added `--init_ckpt` to load weights at start, lr=5e-4→1.5e-4, epochs=38→30. Reverted iter8's slice/mlp tweaks back to iter5 model_config (must match the checkpoint).
+- **Result:** Trained 30 epochs in 23.9 min. Best epoch 30 (final), val/loss=2.41 (vs iter5 2.90, -17%). Val mae_surf_p: single=51.9, geom_rc=71.8, geom_cruise=37.7, re_rand=57.2 (avg=54.7, vs iter5 65.0). W&B run hqd0w255. Predictions auto-submitted to commit 839aa0d.
+- **Verdict:** kept (best yet — should beat iter5 on leaderboard).
+- **Notes:** The very first epoch after warm-start gave an LR-shock (val regressed to 2.88 then bounced back), but cosine decay through 30 epochs ended at a clean optimum. Warm-start cycles are a strong lever — could iterate (warm-start iter10 → iter11). Still falling at epoch 30, so another cycle should help.
+
+### 2026-04-27 — iter9: ensemble iter5 + iter8 (commit 2516cbc)
+- **Hypothesis:** Iter8 (val 67.4) is closer to iter5 (val 65.0) than iter3 was, so an iter5+iter8 ensemble should work better than the iter3+iter5 attempt.
+- **Change:** Reused predict_ensemble.py with iter5 (xqti3sr8) + iter8 (zcy58guy) checkpoints. Submitted at commit 2516cbc (created via trivial journal commit since the ensemble overwrote the iter8 commit dir).
+- **Result:** Awaiting leaderboard scoring. Iter5 alone: 59.94. Iter8 alone: 62.43. Naive mean: 61.19.
+- **Verdict:** TBD on score; iter10 has likely surpassed both anyway.
+- **Notes:** Ensemble is still a free additional submission to fall back on.
+
+### 2026-04-27 — iter8: complementary arch (slice=64, mlp_ratio=4) for ensemble
+- **Hypothesis:** Train a high-quality model with slightly different inductive bias (smaller slice_num, larger mlp) for ensembling with iter5.
+- **Change:** train.py model_config — slice_num 96→64, mlp_ratio 2→4. Same epochs/lr as iter5.
+- **Result:** Trained 38 epochs in 25.8 min (41s/epoch — faster than iter5 due to smaller slice). Best epoch 32, val/loss=3.14. Val mae_surf_p avg=67.4. **Test 62.43 (commit 8bb8cae)**. W&B run zcy58guy.
+- **Verdict:** kept as ensemble component; weaker than iter5 standalone.
+- **Notes:** Didn't beat iter5 on its own; useful only for ensembling.
+
 ### 2026-04-27 — iter7: ensemble iter3 + iter5 predictions (regression)
 - **Hypothesis:** Averaging two trained checkpoints in physical space should reduce error vs either alone (free ensemble win).
 - **Change:** Added `predict_ensemble.py`. Averaged iter3 (model-2ypzrvpq, val 65.0) and iter5 (model-xqti3sr8, val 65.0… wait, iter5 val 65.0, iter3 val 77.4) predictions, applied no-slip post-hoc.
