@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter2/iter3 chain training + ensemble exploration
+- **Hypothesis:** Lower-LR chain training from iter1 (lr=1e-5 then 5e-6) keeps converging on val. Ensembling new model with the original `model-e3itadc2` should beat either alone on test, since per-split test scores show iter2/iter3 are **better** than warm-start on `single_in_dist` (40.28 vs 42.84) and `geom_camber_cruise` (27.95 vs 28.16) but **worse** on `re_rand` (57.80 vs 51.05) — error structure is decorrelated.
+- **Change:** iter2: `lr=1e-5`, warm-start from iter1 best, 25 epochs → val 51.84 (test 47.15). iter3: `lr=5e-6`, warm-start from iter2 best, 25 epochs → val 50.81 (test pending). Submitted four ensemble variants at separate marker commits (A=warm+iter3 50/50 at `6781889`, B=warm+iter3 70/30 at `436b41c`, C=warm+iter2+iter3 33/33/33 at `a48ed0b`, D=warm 2x + iter2 + iter3 at `aa9b0d0`).
+- **Result:** Single best on test still `4318185` warm-start at 45.94. Iter2 (47.15) and iter1 (48.28) regress on `re_rand`. SWA of iter2+iter3 weights gives val 51.22 — no improvement over iter3 alone. Ensemble val numbers are pulled toward warm-start's high val (it has a wide val/test gap), so val is a poor proxy for ensemble test performance — only the scorer can tell us.
+- **Verdict:** Pending — depends on which (if any) ensemble variant beats 45.94 on test. Frieren now at 46.87, closing in.
+- **Notes:** The val/test mismatch on the warm-start (val 70.52 vs test 45.94) is striking; my fine-tuned models have ratio ~0.93 between val and test, while warm-start has ~0.65. Possible cause: warm-start's training data sampler/recipe specialized differently on test-like patterns. Don't trust val for ranking ensembles — submit and read scores.json instead.
+
 ### 2026-04-27 — iter1 warm-start fine-tune (surf-p heavy L1)
 - **Hypothesis:** Warm-start from prior thorfinn checkpoint (`model-e3itadc2`, leaderboard test 45.94) and fine-tune with a loss that weights surface pressure ~6× and surface velocity 1×, plus a small volume term, since the leaderboard ranks only by avg surface pressure MAE.
 - **Change:** Rebuilt `model.py` (Transolver 192/6/6/slice=128/mlp_ratio=2), `train.py` (per-channel L1 in physical units divided by y_std, surf_p_weight=6, surf_uv_weight=1, vol weights 0.5; bf16 autocast; subsample 40k volume nodes/sample; warmup_frac=0; cosine over 50; lr=5e-5; grad_clip=1.0); `predict.py` reads `config.yaml` next to checkpoint.
