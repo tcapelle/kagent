@@ -57,3 +57,4 @@ Keep entries short. Link W&B run URLs when useful.
 - **Verdict:** kept — strong baseline matching frieren's iter4 (1.91). Predictions submitted to apr27-4/alphonse/def6b08.
 - **Notes:** ~46s/epoch (375 batches). Ready for iter2 = warm-start bs=2 no-subsample full-mesh (breakthrough recipe).
 
+# tweak: iter3+iter4 50/50 ensemble
