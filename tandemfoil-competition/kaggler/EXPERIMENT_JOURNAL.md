@@ -103,3 +103,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 8 epochs, monotonic. Best `avg_surf_p = 49.55` at epoch 8. **3.9% over v11 (51.54→49.55), 86% over baseline.** Per-split p MAE: single_in_dist=53, geom_camber_rc=60, geom_camber_cruise=38, re_rand=46. W&B `alphonse/v12-warm-lr5e5` (`z1ewlzjn`).
 - **Verdict:** Kept.
 - **Notes:** Test-side leaderboard at v11 commit was 42.32 (rank 5). Top = nezuko/thorfinn @ 35.20 (suspicious tie — same recipe). v12 should place me around ~40. Continue.
+
+### 2026-04-27 — v13-warm-lr5e5
+- **Hypothesis:** Same recipe.
+- **Change:** `--resume model-z1ewlzjn --lr 5e-5 --train_max_points 0 --batch_size 2 --surf_weight 50 --surf_p_l1_weight 30`.
+- **Result:** Best `avg_surf_p = 47.94` at epoch 8. **3.3% over v12 (49.55→47.94), 87% over baseline.** Per-split p MAE: single_in_dist=51, geom_camber_rc=58, geom_camber_cruise=37, re_rand=46. W&B `alphonse/v13-warm-lr5e5` (`py4jw21y`).
+- **Verdict:** Kept. Gain shrinking — next round bump LR.
+- **Notes:** Gap to leader at 35.20 = ~36%. ~7 more chain iters at this rate. Need bigger lever — try LR-up restart again or arch change.
