@@ -54,6 +54,8 @@ class Config:
     huber_beta: float = 0.1         # SmoothL1 transition; lower → more L1-like
     fourier_dim: int = 0            # 0 = off; otherwise N random Fourier frequencies on spatial coords
     fourier_sigma: float = 5.0      # std of Fourier-feature frequencies (chord units ≈ 1)
+    film_re: bool = False           # FiLM (AdaLN) conditioning on log(Re), zero-init
+    film_emb_dim: int = 64
     warm_start: str | None = None   # path to checkpoint to load (e.g. checkpoints/best.pt)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -129,6 +131,8 @@ model_config = dict(
     mlp_ratio=cfg.mlp_ratio,
     fourier_dim=cfg.fourier_dim,
     fourier_sigma=cfg.fourier_sigma,
+    film_re=cfg.film_re,
+    film_emb_dim=cfg.film_emb_dim,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
