@@ -22,6 +22,56 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: predict batch_size 2→1 + iter8 single (HUGE WIN)
+
+- **Hypothesis (initial):** ensemble iter4+iter7+iter8 at predict time should
+  smooth predictions and lower MAE.
+- **Surprise discovery:** while implementing the ensemble I evaluated each
+  ckpt on val with `batch_size=1` and got **massively** lower scores than
+  reported during training. iter8 dropped from val=70.62 (training, bs=4) to
+  **val=52.16** (bs=1). Why: batched samples are pad-collated to the largest
+  mesh in the batch, and the Transolver's slice attention doesn't mask padding —
+  so the slice-token aggregation gets noise from zero-padded nodes, which
+  corrupts the surface predictions. Smaller batch = less padding = better
+  predictions, with bs=1 (no padding at all) being optimal.
+- **Change:** `predict.py` — `batch_size: 2 → 1` default. Also added
+  `--checkpoints` (comma-separated) for ensemble support, but ensemble of
+  iter4+iter7+iter8 was *worse* than iter8 alone (54.0 vs 52.2 with bs=1).
+- **Result (val with bs=1):** iter8=52.16, iter7+iter8=52.60, all-three=54.00.
+  Resubmitted iter8 alone with bs=1 (commit `bd5ea0b`). Expect test ≈ 46–52
+  (val-test ratio was ~0.88 for prior bs=2 submissions; bs=1 likely tighter).
+- **Verdict:** kept — a one-line predict-time change for a 26% drop in val
+  MAE without retraining. The biggest win in the run so far.
+- **Notes:** This implies my model selection during training was using a
+  noisy metric (bs=4 padding-degraded val). The chosen ckpt is still good on
+  both metrics, so the impact is small for model selection — but for future
+  iterations, fixing train-time val to bs=1 (or at least bs=2) would pick
+  cleaner ckpts. Cost: ~4× slower val passes per epoch (probably ~15 fewer
+  total epochs in 30 min — likely not worth it). Leaderboard competitors are
+  almost certainly *also* affected by this — their submitted predictions
+  used whatever batch_size their predict.py shipped, and many probably ran
+  at bs=2 too. So the absolute jump for me may translate to a relative jump
+  vs everyone else.
+
+### 2026-04-27 — iter8: resume iter7 with lr=5e-5
+
+- **Hypothesis:** iter7 was still descending at the timeout (last epochs
+  72.7→72.7) but cosine LR had decayed to ~1.75e-5. A fresh resume cycle
+  with peak lr=5e-5 (lower than the iter4-resume's 1.5e-4) gives a gentler
+  fine-tune, better suited to a near-converged starting point.
+- **Change:** `train.py` — resume-mode default lr `1.5e-4 → 5e-5`. Run with
+  `--resume_from .../model-e5uc7jqw/checkpoint.pt`.
+- **Result:** 40 epochs, best val avg_surf_p (bs=4) = **70.62** at epoch 32
+  → roughly plateaued (last 10 epochs all 70.6–71.4). Real val (bs=1) is
+  much lower; see iter9. Splits at training (bs=4): single=55.71,
+  geom_rc=100.65, geom_cruise=52.86, re_rand=73.25. Run `6gjpl7q3`, commit
+  `6b3b9f5`. Test scoring (bs=2 predict): pending — replaced by iter9.
+- **Verdict:** kept — modest 3% gain over iter7 at the bs=4 metric, but the
+  ckpt is now my best base for ensembling/predicting.
+- **Notes:** Fine-tune basically stopped improving after epoch 10. The lr
+  was probably too low to escape the iter7 basin meaningfully — but it did
+  consolidate slightly (single 58.6→55.7 was the biggest gain).
+
 ### 2026-04-27 — iter7: revert to 256x6, surf_p_weight 4→12, resume from iter4
 
 - **Hypothesis:** the metric is purely surface pressure MAE. Pushing the
