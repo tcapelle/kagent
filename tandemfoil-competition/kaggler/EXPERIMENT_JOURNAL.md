@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: bigger model 256/6/8 slice=128, p_weight=1, from scratch → val/loss=0.76, avg_surf_p=66.41
+- **Hypothesis:** The chain plateau (iter3=51.27) suggests a capacity/diversity ceiling for the 192/6/64 architecture. Train a bigger, distinct model from scratch (n_hidden=256, slice_num=128, n_head=8, p_weight=1 instead of 3) to add ensemble diversity.
+- **Change:** Configurable model dims via CLI in `train.py`; predict.py reads `config.yaml` from the checkpoint dir. Run with `--n_hidden 256 --slice_num 128 --n_head 8 --p_weight 1.0 --epochs 28`.
+- **Result:** stopped at epoch 19 (timeout 29.5 min, 20.2GB peak). val/loss=**0.7618**, avg_surf_p=**66.41** (single=0.75, rc=1.00, cruise=0.51, re_rand=0.79). Worse than iter1-3 single models, but trained with very different objective (no p_weight) → high ensemble diversity. 3.04M params (1.8x iter1).
+- **Verdict:** kept for ensemble; surf_p alone wouldn't beat anything but diversity matters. Final ensemble (iter1+iter2+iter3+iter5 weighted 0.15/0.2/0.4/0.25) submitted under `b3f1560`.
+- **Notes:** 28-epoch target was too ambitious — only got 19, schedule didn't finish cosine. Auto-submit predict.py died with OOM (something else briefly grabbed 88GB), ran predict manually after kill. Plan iter6: continue iter5 chain with bs=2 + full mesh + p_weight=3 to drive its solo score down, then 5-way ensemble.
+
 ### 2026-04-27 — iter4: 3-way ensemble of iter1+iter2+iter3 (weights 0.2/0.3/0.5)
 - **Hypothesis:** Even chain-correlated models can give a small boost when blended (frieren saw 35.27→34.41 with 6-way ensembles). Worth a quick win while a fresh diverse model trains.
 - **Change:** New `ensemble.py` reading per-split prediction tensors from N source commits and averaging. Submitted with weights 0.2/0.3/0.5 favoring iter3 (best single model).
