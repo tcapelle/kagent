@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9 add feature_noise=0.05 on AoA+NACA dims
+- **Hypothesis:** Geom_rc plateau (1.32 across iter6-8) is generalization-bound, not optimization-bound. Augment by adding per-sample Gaussian noise (std 0.05 in normalized space) to AoA + NACA dims (channels 14-21) to make the model robust to small geometry perturbations and improve OOD camber.
+- **Change:** `train.py` (commit 376de75): added `feature_noise` config; injected noise post-normalization, broadcasting per-sample across all N nodes. Ran with `--lr 1e-4 --resume /tmp/iter8_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 20.0 --feature_noise 0.05`.
+- **Result:** Best epoch 24/30, val/loss=0.8570, avg_surf_p=**43.03** (val splits: in_dist=0.90, geom_rc=1.30, geom_cruise=0.27, re_rand=0.97). Run `oy6v0hkh`.
+- **Verdict:** Kept (commit acffa12). Marginal gain (-0.17 vs iter8) — feature noise *did* help geom_rc (1.32 → 1.30) but slightly hurt in_dist (0.87 → 0.90). Net positive but small. Best was epoch 24 not 28 — noise made training noisier so EMA selected an earlier epoch.
+- **Notes:** Augmentation is real but ceiling is still close. Next: increase n_vol_subsample to 60k for more spatial context per batch, drop noise (small benefit, slows convergence), keep p_weight=20.
+
 ### 2026-04-27 — iter8 p_weight=20, lr=8e-5
 - **Hypothesis:** Continue chain at p_weight=20 with slightly lower LR (8e-5) — still gaining at p_weight=15.
 - **Change:** No code change; flags `--lr 8e-5 --resume /tmp/iter7_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 20.0`.
