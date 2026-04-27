@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 7 — diverse-loss warm-start, then 4-way ensemble
+- **Hypothesis:** Iter 5 plateaued ~82.6 single-model. To improve via ensembling we need *diverse* snapshots, not more of the same. Train iter 7 with loss in the opposite regime: `sw=5`, `pw=1`, `lr=1e-4` — strongly different from iter 3/4/5 — so its prediction errors decorrelate.
+- **Change:** invocation only — `--resume model-q5ckvos5/checkpoint.pt --lr 1e-4 --surf_weight 5 --p_weight 1`. After it finished, ran `predict_ensemble.py` averaging four checkpoints (iter3 `aglmomxf` + iter4 `2v94v7an` + iter5 `q5ckvos5` + iter7 `tdafguoe`). Wandb run `tdafguoe`.
+- **Result:** Iter-7 single best epoch 9, `val/loss=0.878`, avg surf_p MAE = **82.8** (basically tied with iter 5). Val curve was very bouncy (82–116) — the high LR + low sw drove the optimum to a different basin, which is exactly what the ensemble wants. 4-way ensemble predictions saved to `nezuko/fbdab5dc/`. Scorer pending.
+- **Verdict:** Single model not an improvement, but kept the snapshot for ensembling.
+- **Notes:** Iter 6 (T-256-8-8 from scratch, batch=2) was killed at epoch 2 — converged ~2× slower than iter 5 warm-start (avg surf_p still 224 after 2 epochs vs iter-5's 86 at epoch 1), confirming "scale up + train from scratch in 30 min" doesn't beat "warm-start + tune". Also: train.py's auto-`predict.py` OOM'd because the training process hadn't released GPU memory yet — had to re-run the ensemble manually.
+
 ### 2026-04-27 — Iter 5 — third warm-start (lr=2e-5, sw=30, pw=3) + 3-way ensemble
 - **Hypothesis:** Iter 4 plateaued at avg surf_p ≈ 86.4. Push the surface objective harder (`sw=30`, `pw=3`) and drop LR another step (`2e-5`). Even if the single model only gains a few points, averaging predictions from three different `(lr, sw, pw)` snapshots should lower variance further.
 - **Change:** invocation only (no code) — `--resume model-2v94v7an/checkpoint.pt --lr 2e-5 --surf_weight 30 --p_weight 3`. After it finished, ran new `predict_ensemble.py` to average predictions of iter-3 (`aglmomxf`), iter-4 (`2v94v7an`) and iter-5 (`q5ckvos5`) checkpoints. Wandb run `q5ckvos5`.
