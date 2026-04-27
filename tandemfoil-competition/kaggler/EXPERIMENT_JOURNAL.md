@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14: chain + tandem_boost=3
+
+- **Hypothesis:** geom_rc is now my biggest test gap (7.5 vs askeladd). Add a `tandem_boost=3.0` so the racecar_tandem domain (which generalizes to geom_rc) gets 3x sampling weight. Continue chain from iter13.
+- **Change:** `train.py`: extended boost mechanism to support `tandem_boost`. WARMSTART=90uw6d5h, lr=1e-5 (smaller than iter13's 2e-5 since further along chain), single_boost=4, tandem_boost=3.
+- **Result:** 13 epochs in 30 min. 42.89 → epoch 13 = **42.26** (best). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/4c57389/`. Run `wwki4ao9`.
+- **Verdict:** kept — gain of -0.63, smaller than iter13's -1.43 but still real. Expected test ~36.0.
+- **Notes:** tandem boost slightly nudged geom_rc loss (1.19→1.18) but most of the val gain was on single_in_dist (1.82) and re_rand (1.02). Maybe single_boost is doing the heavy lifting still.
+
 ### 2026-04-27 — iter13: warm-restart cycle + single_boost=4 (BIG JUMP)
 
 - **Hypothesis:** Iter11's plateau (-0.41 val gain) suggested the chain was stuck. Bump LR back up (3e-6 → 2e-5) for a warm-restart cycle and double single_boost (2→4) to drive harder on the single_in_dist split (test gap was 10 vs askeladd).
