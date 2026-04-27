@@ -40,6 +40,9 @@ SRC = {
     "thorfinn6": ("thorfinn", "90567b5"),  # single 35.588 cruise 20.871
     "thorfinn7": ("thorfinn", "ae15980"),  # single 35.591 cruise 20.833
     "thorfinn8": ("thorfinn", "5ae926e"),  # single 35.588 (avg 35.197)
+    "thorfinn9": ("thorfinn", "9379993"),  # rc 49.04154 (LOWEST), re 35.32366
+    "thorfinnA": ("thorfinn", "0ce97d2"),  # single 35.58553, rc 49.04155, re 35.32366
+    "thorfinnB": ("thorfinn", "0e56f78"),  # single 35.58551 (matches my floor)
     # External models — best per split (non-thorfinn)
     "edward":   ("edward",   "c773fa7"),  # single 36.25, cruise 23.73
     "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08
@@ -62,11 +65,12 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # 5-way single with all four best thorfinn singles: 8ce7299 + 1f9db55 + 90567b5 + 5ae926e + 0cc44bf
-    single: str = "thorfinn5:0.55,thorfinn:0.15,thorfinn6:0.15,thorfinn8:0.10,thorfinn0:0.05"
-    rc: str = "thorfinn0:0.85,tanjiro:0.10,thorfinn:0.05"
+    # Use 9379993 (best rc), 0e56f78 (best single), 0ce97d2 — all are thorfinn's blends already
+    # incorporating the rc-tanjiro mix. So 9379993 alone might already be the floor.
+    single: str = "thorfinnB:1.0"
+    rc: str = "thorfinn9:1.0"
     cruise: str = "thorfinn:1.0"
-    re_rand: str = "thorfinn:1.0"
+    re_rand: str = "thorfinn9:1.0"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
