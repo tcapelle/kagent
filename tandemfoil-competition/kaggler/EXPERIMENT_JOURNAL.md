@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter2: warm-start iter1 with bs=2 no-subsample (frieren's breakthrough config) 🚀
+- **Hypothesis:** Apply frieren's iter93 trick: warm-start a converged base model with bs=2 + no subsampling. The 4x more gradient updates per epoch + full 240k-mesh inputs let the model learn Re-dependent field structure. Should jump val/loss meaningfully and unlock big surf_p gains.
+- **Change:** `train.py --warm_start models/model-wrz7s30a/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 5e-5 --epochs 10 --warmup_epochs 1`. No code changes; commit `89eb6fd`.
+- **Result:** 10 epochs in 25 min (149s/ep, 29 GB peak). **val/loss 1.4497** at epoch 10 (vs iter1's 1.6789). Per-split val: single=2.37, rc=1.78, cruise=0.37, re_rand=1.29 — all four splits improved, especially re_rand (-15%) and rc (-12%). **Test: avg_surf_p 47.32** (single=52.20, rc=63.89, cruise=27.87, re_rand=45.31). Jumped rank 5→3, only 5.21 behind #1 (frieren 42.11).
+- **Verdict:** kept. Confirms the bs=2 + no-sub recipe transfers. Big single-step gain (-11.28 surf_p).
+- **Notes:** Mesh memory peak 29 GB (vs 10 GB with sub=40k) — well under the 96 GB budget. Each step still ~5 it/s. Next: continue chain at lr=2e-5 to squeeze the cosine tail further.
+
 ### 2026-04-27 — iter1: replicate proven recipe (192x6, L1, p_weight=3, slice=64, bs=4, sub=40k)
 - **Hypothesis:** Replicate frieren's apr23 mid-iteration recipe (their iter15 era). 192x6 Transolver, L1 loss, p_weight=3, surf_weight=10, bs=4, subsample=40k, 30 epochs with 3-epoch warmup + cosine. Should give a clean, well-converged base ~val 1.7 → ~80 surf_p.
 - **Change:** Extracted `Transolver` to `model.py`. Rewrote `train.py` with bf16 autocast, subsample collate, warm-start support. Fixed `predict.py` to load via `config.yaml`. Commit `f2e8e4f`.
