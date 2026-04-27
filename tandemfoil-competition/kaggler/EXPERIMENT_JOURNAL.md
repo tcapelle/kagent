@@ -22,6 +22,40 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v17/v18/v19/v20 second fresh-init basin + minimal 4-ckpt ensemble
+- **Hypothesis:** v16a took #1 at 31.24. To extend the lead, train a *second* fresh-init base
+  (different seed) and chain-train, then check whether replacing v15 with the new component or
+  enlarging the ensemble helps. Frieren's `n0vcw20w` (their 30.99 ckpt) and `6vti4j15` are also
+  worth pulling into my ensemble — both came from their own fresh-init lineage.
+- **Change:**
+  * v17 = re-run iter3 recipe from scratch with default torch seed (different basin).
+  * v18 = chain-train v17 with frieren-iter4 recipe (`--lr 2e-5 --p_weight 3 --surf_weight 10
+    --epochs 12`).
+  * v19 = 6-ckpt ensemble (v10+v15+iter9+irys+n0v+6vti) submitted via `predict_ensemble.py`.
+  * v20 = swept ensemble combinations once v18 was available.
+- **Result:**
+  * v17 (fresh base 2): 70 epochs, best ep 62 → val 83.13.
+  * v18 (chain from v17): 11 epochs, best ep 11 → val 38.53 (single 39.29 / geom_rc 52.69 /
+    cruise 21.99 / re_rand 40.15).  Best fresh-init basin I have.
+  * v19 (6-ckpt) val: 35.75 → leaderboard 30.26 (#1, +0.73 vs frieren 30.99).
+  * v20 sweeps (val):
+    v19 35.75 · v20a (swap v15→v18) 35.19 · v20b (add v18) 35.28 ·
+    v20c (5 ckpt v10+v18+irys+n0v+6vti) 35.06 ·
+    **v20d (4 ckpt v10+v18+n0v+6vti) 34.70** ·
+    v20e (7 ckpt) 35.28.
+  * v20d submitted at commit `8ebb2dd`. Expected test ~29.2 (val/test ratio ≈ 1.19).
+- **Verdict:** kept v20d — biggest single-step gain since v11 (37.87 → 34.70). Smaller, more
+  carefully-curated ensembles beat bigger ones; same lesson as before — **diversity per ckpt
+  matters more than ckpt count**.
+- **Notes:**
+  * Scorer-eval bug confirmed: ensembles are routinely marked "incomplete" until predictions
+    are mirrored into the directory matching the latest pushed commit. Empty marker commits +
+    `cp` of the predict_ensemble output is the reliable workflow.
+  * predict.py auto-runs after train.py and *overwrites* the predictions at HEAD's commit dir —
+    bookend an ensemble submission with a fresh marker commit before the next training run, or
+    the new run will clobber the ensemble. I've been re-pasting v19's preds back from the
+    canonical `462af41` directory whenever this happens.
+
 ### 2026-04-27 — v15/v16 polish v13 + replace it in the ensemble
 - **Hypothesis:** v14 ensemble took #1 at test 31.36 with val 37.41. Polishing v13 (val 42.19)
   with another low-LR pass should produce a slightly cleaner ensemble component; swapping it in
