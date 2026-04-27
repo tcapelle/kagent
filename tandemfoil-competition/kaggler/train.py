@@ -207,11 +207,12 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 1e-5
+    lr: float = 8e-6
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 15.0
     surf_p_weight: float = 1.5  # gentle pressure-channel emphasis
+    ema_decay: float = 0.999  # set to 0 to disable EMA
     epochs: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -305,6 +306,11 @@ def main():
     train_start = time.time()
     huber_beta = 1.0  # SmoothL1 transition in normalized space.
 
+    # EMA shadow weights — often improve generalization a fraction of a point.
+    ema_state: dict[str, torch.Tensor] | None = None
+    if cfg.ema_decay > 0:
+        ema_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
     # Persist the warm-start state immediately so we always have a usable checkpoint,
     # even if no training epoch beats the initial state.
     torch.save(model.state_dict(), model_path)
@@ -348,6 +354,14 @@ def main():
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+            if ema_state is not None:
+                d = cfg.ema_decay
+                with torch.no_grad():
+                    for k, v in model.state_dict().items():
+                        if v.dtype.is_floating_point:
+                            ema_state[k].mul_(d).add_(v.detach(), alpha=1 - d)
+                        else:
+                            ema_state[k].copy_(v)
             global_step += 1
             wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -359,7 +373,12 @@ def main():
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
-        # --- Validate ---
+        # --- Validate (use EMA weights if enabled) ---
+        if ema_state is not None:
+            backup_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            model.load_state_dict(ema_state)
+        else:
+            backup_state = None
         model.eval()
         val_loss_sum = 0.0
         split_metrics: dict[str, dict] = {}
@@ -432,6 +451,8 @@ def main():
         wandb.log(metrics)
 
         # Select checkpoint by leaderboard metric (avg surface pressure MAE).
+        # Note: validation above ran on EMA weights when enabled — so the avg_surf_p
+        # we are scoring is the EMA model's, and we save the EMA state.
         tag = ""
         if avg_surf_p < best_val:
             best_val = avg_surf_p
@@ -440,6 +461,11 @@ def main():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
             torch.save(model.state_dict(), model_path)
             tag = " *"
+
+        # Restore live training weights so the next epoch's optimizer keeps stepping
+        # the actual model, not the EMA shadow.
+        if backup_state is not None:
+            model.load_state_dict(backup_state)
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
         split_summary = "  ".join(
