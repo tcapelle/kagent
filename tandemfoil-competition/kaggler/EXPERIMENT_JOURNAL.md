@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — 🥇 ensemble3 takes #1: 45.21 (beats thorfinn 45.25 by 0.04)
+- ensemble3 (`32f0a18`, iter4+iter6 50/50): **45.21** — single=50.25, rc=61.10, cruise=27.03, re_rand=42.48
+- ensemble4 (`a89882c`, iter3+iter4+iter6 0.30/0.35/0.35): 45.34 — adding iter3 (chain seed-A) hurt slightly because correlation with iter4
+- thorfinn moved to `1733088` at 45.25 (single=40.28, re_rand=51.05) — they're iterating too
+- My biggest gap is still single_in_dist (50.25 vs 40.28 = 10pt). I dominate re_rand (42.48 vs 51.05 = -9pt advantage).
+- iter7 (single_boost=2x) is targeting single_in_dist directly.
+
 ### 2026-04-27 — ensemble3 + ensemble4 (diverse 2-seed ensembles)
 - **Hypothesis:** iter4 (chain seed-A) and iter6 (chain seed-B) have similar val (53.32 vs 53.87) but different optimization trajectories. Their averaged predictions should genuinely improve. ensemble3 = 50/50 split. ensemble4 adds iter3 (deeper chain seed-A) for slight extra weight on the A-trajectory.
 - **Change:** No code change. Two ensembles:
