@@ -55,6 +55,7 @@ class Config:
     grad_clip: float = 1.0
     train_max_nodes: int = 20000   # per-sample subsample target during training
     ema_decay: float = 0.999       # EMA decay for evaluation; set 0.0 to disable
+    input_noise: float = 0.03      # gaussian noise stddev on normalized inputs at train time
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -121,7 +122,7 @@ model_config = dict(
     n_hidden=192,
     n_layers=8,
     n_head=6,
-    slice_num=96,
+    slice_num=128,
     mlp_ratio=2,
     dropout=0.05,
     pos_freqs=8,
@@ -208,6 +209,11 @@ for epoch in range(MAX_EPOCHS):
 
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
+
+        if cfg.input_noise > 0:
+            # Noise only on real (non-padded) nodes so padding stays exact zero.
+            noise = torch.randn_like(x) * cfg.input_noise * mask.unsqueeze(-1).float()
+            x = x + noise
 
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             pred = model({"x": x, "mask": mask})["preds"]
