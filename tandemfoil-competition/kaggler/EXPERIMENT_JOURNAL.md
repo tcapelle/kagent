@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter18: BREAKTHROUGH 2 — surf_weight=20 warm iter9
+- **Hypothesis:** Increasing surface loss weight from 10 to 20 should directly emphasize surface MAE (the leaderboard metric) without changing the model architecture.
+- **Change:** `python train.py --warm_start /tmp/iter9_best.pt --lr 2e-5 --epochs 12 --loss_type smoothl1 --p_weight 2.0 --surf_weight 20.0`. Predictions saved to `apr27-5/tanjiro/bbab44d/`.
+- **Result:** **Scored 45.93** on leaderboard (down from iter9's 47.62 — 1.7 point improvement). Per-split surf_p: single=50.24, rc=61.93, cruise=28.55, re_rand=43.01. Run `3xuczkg4`.
+- **Verdict:** kept as new best. surf_weight up-weighting is highly effective.
+- **Notes:** Critical insight: my val/loss became apples-to-oranges (vol+20*surf vs vol+10*surf), but test surf_p clearly improved. **Lesson for future iters: track scoring directly when changing loss weighting.** Next: iter20 = warm iter18 lr=5e-6 chain.
+
+### 2026-04-27 — Ensemble lessons learned
+- **Hypothesis:** Ensembling iter7-10 (smoothl1 chain) + slice=128 (iter13) would improve over best single model.
+- **Change:** Tried 5 different weight combinations across iter7/8/9/10/13.
+- **Result:** ALL ensembles WORSE than iter9 alone (47.62):
+  - 4-way (5/3/2/1): 47.87
+  - iter9-heavy: 47.89
+  - 5-way + slice128: 47.81
+  - iter9+iter13 50/50: 47.74
+  - iter9+iter8+iter13: 47.80
+- **Verdict:** Discarded ensembling within smoothl1 chain — chain models too correlated, weaker models dilute iter9.
+- **Notes:** **Lesson: a strong single model > weighted average of correlated weaker models.** Need genuinely diverse models (different recipe / loss / arch) for ensembling to help. iter18 is the next target — train fundamentally different models then ensemble.
+
 ### 2026-04-27 — iter10 + 4-way ensemble (iter7+8+9+10)
 - **Iter10 (chain step 4 on smoothl1 recipe):** `python train.py --warm_start /tmp/iter9_best.pt --lr 2e-6 --epochs 12 --loss_type smoothl1 --p_weight 2.0`. Best epoch 10, val/loss=**1.3107** (down from 1.3180). Predictions saved to `apr27-5/tanjiro/693d73e/`. Run `c7gsl5mq`.
 - **Ensemble:** 4-way prediction average iter10/9/8/7 with weights 0.4/0.3/0.2/0.1 → saved to `apr27-5/tanjiro/9a62a6c/`. Submission was: `python ensemble.py --sources 693d73e ab236b9 a4ebbf7 4b0fef2 --weights 0.4 0.3 0.2 0.1`.
