@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6-surfp4-vf002 (FAILED, marginal regression)
+- **Hypothesis:** raise surf_p_weight 2.5 → 4.0 (more focus on the metric) and tighten var_floor 0.05 → 0.02 (more aggressive low-Re upweight, since cruise-Part3 is bottlenecked by the floor at ~20× max upweight when it really wants ~5000×).
+- **Change:** `train.py` — `surf_p_weight=4.0`, `surf_uv_weight=0.3`, `var_floor=0.02`.
+- **Result:** 13/14 epochs. **avg val surf_p MAE 85.18 → 85.35 (+0.2%, marginally worse).** W&B run on commit `f0820fc`.
+- **Verdict:** discarded — restored iter4 ckpt; reverted hparams to iter4 baseline.
+- **Notes:** Confirms the cruise gap is NOT a single-knob problem within the existing loss formulation. Per-sample variance balancing has hit its ceiling at var_floor ≥ 0.02 because the actual Cp-vs-Re scaling needs full-variance correction (~1000× cross-sample) which the floor caps. Diagnosed: target reparametrization to Cp space (factoring out U_inf²) is needed — that's iter7.
+
 ### 2026-04-27 — iter5-ema (FAILED, discarded)
 - **Hypothesis:** EMA decay 0.999 with 200-step warmup applied to model weights for eval+save would dampen late-training noise (~3-8% gain).
 - **Change:** `train.py` — `copy.deepcopy(model)` for EMA, `ema_update` after each optimizer step (warmup→hard copy, then exponential update). Validation and ckpt save use EMA model.
