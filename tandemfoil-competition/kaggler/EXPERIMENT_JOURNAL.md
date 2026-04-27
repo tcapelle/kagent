@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: add FiLM-on-Re (AdaLN) conditioning + Fourier + warm-start
+
+- **Hypothesis:** re_rand split is one of my worst on the leaderboard (test 119.91 vs leaders ~37–44). The model only sees `log(Re)` as one of 24 input features; explicit AdaLN-style FiLM conditioning lets each block's LayerNorm be modulated by Re globally. Zero-init the FiLM linear weights so warm-start preserves iter6 behavior; SGD then learns to use the Re signal.
+- **Change:** model.py: `TransolverBlock` now takes `film_dim`; if >0 builds a `Linear(film_dim, 4*hidden)` (zero-init) for `(γ1,β1,γ2,β2)` and applies `LN(x)*(1+γ)+β` before each sub-layer. `Transolver` adds an `re_embed` MLP (1→64→64) that maps a per-sample `log(Re)` scalar (taken from `x[:, 0:1, 13]`) into the conditioning vector. train.py: new `--film_re` and `--film_emb_dim` flags; warm-start with `strict=False` so the new FiLM and re_embed params keep their zero/init state. Restored iter6's `best.pt` from git history (94495c7) before launching, since iter7 had clobbered it with worse weights. Run with `--lr 1e-4 --p_weight 3 --weight_decay 2e-4 --warmup_epochs 2 --epochs 25`.
+- **Result:** 19 epochs (each ~100s vs prior 89s — FiLM overhead). Best val avg_mae_surf_p=**83.49 at E15** — beats iter6's 83.56 by 0.07. Splits: single=55, geom_rc=135, cruise=55, re_rand=88.
+- **Verdict:** kept — new SOTA for me, FiLM contributed a small but real improvement on re_rand (90→88) at no harm elsewhere.
+- **Notes:** FiLM took ~10 epochs to escape the warm-start basin and another 5 to reach a slightly better one. Plateau still essentially the same: geom_camber_rc=135 is the hard wall (M=6–8 OOD camber). Pushed 4-model ensemble (iter4 no-Fourier + iter5 Fourier + iter6 Fourier+lower-LR + iter8 Fourier+FiLM) at commit 06e2ef3 — should reduce variance on the OOD splits.
+
 ### 2026-04-27 — iter6: warm-start iter5 @ lr=3e-5, p_weight=4
 
 - **Hypothesis:** Drop LR another 3× and bump p_weight 3→4 for one more fine-tune pass on the new (Fourier-featured) architecture.
