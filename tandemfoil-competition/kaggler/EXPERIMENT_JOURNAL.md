@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: switch to TRUE 42.11 leader checkpoint (s8nqhr0q)
+
+- **Hypothesis:** Iter2/3 had been chaining `model-9f4m2qmm` (hid=256/L=8/S=96, val=73.63) — but the test scorer revealed iter2's commit `fbcfb64` got **55.95** on test (worse than 42.11). After enumerating all PVC checkpoints with `eval_ckpts.py`, `model-s8nqhr0q` (hid=192/L=6/S=64, val=49.34) is the true 42.11 leader. Chain warm-start should start from there.
+- **Change:** `train.py` config: `MODEL_CONFIG` switched to hid=192/L=6/S=64/n_head=6 to match s8nqhr0q; `WARMSTART_PATH=model-s8nqhr0q/checkpoint.pt`. lr=1e-5 → 1e-7 cosine, ema_decay=0.99.
+- **Result:** 8 epochs in 20 min (smaller model is much faster — 150s/epoch). Warmstart 49.34 → epoch 5 = **48.50** (best). Per-split: single=52.6, geom_rc=63.0, geom_cruise=31.4, re_rand=46.9 (approx). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/87d0564/`. Run `d215g7ng`.
+- **Verdict:** kept — small but real gain (49.34→48.50). Test scoring should drop test surf_p from 42.11 to ~41-41.5.
+- **Notes:** the misidentification of the leader checkpoint cost iter2/3 — I burned an hour fine-tuning the wrong starting point. Lesson: ALWAYS verify a candidate ckpt's val MAE before warm-starting, especially when multiple ckpts exist on the PVC. eval_ckpts.py is now around for future sanity checks. With smaller model+smaller VRAM (29GB), I have headroom for bigger batch / more epochs in iter5.
+
 ### 2026-04-27 — iter3: continue chain (warmstart from iter2 best, lower LR)
 
 - **Hypothesis:** Continuing the warm-start chain — load iter2 best (`model-bwa7nnol`, val_avg_surf_p=65.01) and fine-tune at lr=1e-5 → 1e-7 cosine — should drive val_avg_surf_p further down with smaller, stable updates.
