@@ -90,10 +90,10 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter36: 3-way rc R+T+Q (slight quality penalty from Q, but adds decorrelation).
-    # Single 4-way, cruise R, re U as proven.
+    # iter37: try iter15-warm at 2% weight on rc (smallest quality gap to thorfinn floor).
+    # If errors decorrelate, blend MAE drops; if not, my floor commit 3f750ef is preserved.
     single: str = "thorfinnL:0.30,thorfinnM:0.30,thorfinnK:0.20,thorfinnI:0.20"
-    rc: str = "thorfinnR:0.40,thorfinnT:0.40,thorfinnQ:0.20"
+    rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
     cruise: str = "thorfinnR:1.0"
     re_rand: str = "thorfinnU:1.0"
 
@@ -110,12 +110,20 @@ def parse_mix(spec: str) -> list[tuple[str, float]]:
     return [(n, w / s) for n, w in out]
 
 
+LOCAL_BLEND_CACHE = Path(__file__).parent / "blend_cache"
+
+
 def blend_split(split_file: str, mix: list[tuple[str, float]]) -> list[torch.Tensor]:
     """Weighted mean of per-sample predictions across listed sources."""
     sources = []
     for src_name, w in mix:
-        agent, commit = SRC[src_name]
-        preds = torch.load(PRED / agent / commit / f"{split_file}.pt", weights_only=False)
+        if src_name.startswith("local_"):
+            # Local source: blend_cache/<dirname>/<split>.pt
+            dirname = src_name[len("local_"):]
+            preds = torch.load(LOCAL_BLEND_CACHE / dirname / f"{split_file}.pt", weights_only=False)
+        else:
+            agent, commit = SRC[src_name]
+            preds = torch.load(PRED / agent / commit / f"{split_file}.pt", weights_only=False)
         sources.append((src_name, w, preds))
 
     tensors = None
