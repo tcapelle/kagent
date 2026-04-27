@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15 chain w_p=12, LR=1e-5 (KEPT, plateauing)
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 1e-5 --w_p 12.0`. Chain from iter14.
+- **Result:** Best epoch 10, **val avg_surf_p=42.49** (Δ -0.55), **test avg_surf_p=37.08** (Δ -0.40). Still rank 3, 0.99 behind frieren (36.09).
+- **Verdict:** Kept (commit `90a0899`).
+- **Notes:** Channel-weighting chain Δ shrinking iter11=−1.55 → iter15=−0.55. Confirmed `z` is always positive (range [0.04, 9.59]), so z-flip TTA is invalid. Iter16 will be a structural pivot — Re-aware pressure scaling (predict p / Re² then rescale at inference). The pressure target spans Re² regimes; a sample-conditioned scale should reduce target variance.
+
 ### 2026-04-27 — iter14 chain w_p=8, LR=2e-5 (KEPT — rank 3)
 - **Hypothesis:** Push pressure weighting harder (w_p=8) since w_p=5 was still helping.
 - **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 2e-5 --w_p 8.0`.
