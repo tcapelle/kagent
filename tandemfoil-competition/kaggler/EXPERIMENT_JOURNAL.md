@@ -55,3 +55,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 67.04` at epoch 8. **5% over v4 (70.55→67.04), 81% over baseline.** Per-split p MAE: single_in_dist=72, geom_camber_rc=82, geom_camber_cruise=49, re_rand=66. W&B `alphonse/v5-warm-fullmesh-lr2e5-surfw50` (`26rinnut`).
 - **Verdict:** Kept — gain shrinking (29%→8%→5%). Time for a structural change.
 - **Notes:** Plain warm-start chain at this rate would need ~10+ more iters to catch thorfinn (46). Trying L1 surface-p loss next — directly matches the metric.
+
+### 2026-04-27 — v6-warm-fullmesh-l1surfp10
+- **Hypothesis:** L1 on surface pressure directly aligns gradient with the metric (MAE). Add `surf_p_l1_weight=10` on top of warm-start chain.
+- **Change:** `train.py`: new `surf_p_l1_weight` knob computing L1 only on surface pressure channel. Run: `--resume model-26rinnut --lr 2e-5 --batch_size 2 --train_max_points 0 --surf_weight 50 --surf_p_l1_weight 10`.
+- **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 63.39` at epoch 8. **5.5% over v5 (67.04→63.39), 82% over baseline.** Per-split p MAE: single_in_dist=68, geom_camber_rc=78, geom_camber_cruise=46, re_rand=62. W&B `alphonse/v6-warm-fullmesh-l1surfp10` (`wv3ygsye`).
+- **Verdict:** Kept — small win, L1 helps but not a breakthrough. Chain still going.
+- **Notes:** Cruise camber is now <50; geom_camber_rc is the lagging split (78). Maybe try heavier L1 next.
