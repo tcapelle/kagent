@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter17/18/19: chain4 finetune (val 37.99 new single best), 6-way ensemble (#1 30.99), 5th base
+- **Iter17:** finetune iter16 → val/avg_mae_surf_p = **37.99** (new single best). Run id `n0vcw20w`.
+- **Iter18:** 6-way ensemble at `5cd24a2`. **Test 30.99 → #1!** Beat alphonse 31.24.
+- **Iter19:** 5th base val=73.39. Run id `jzw3rett`. alphonse retook lead at 30.26 — they're also iterating.
+- **Notes:** ensemble gain per added chain: 32.47 → 31.69 → 30.99 (deltas of 0.78, 0.70). Diminishing but real. Need to keep adding chains.
+
 ### 2026-04-27 — iter14/15/16: chain3 finetune, 5-way ensemble, 4th base
 - **Iter14:** finetune iter13 → val/avg_mae_surf_p = **39.42** (new single-model best, beats iter4's 40.97 and iter11's 41.40). Run id `6vti4j15`.
 - **Iter15:** 5-way ensemble {iter4, iter6, iter9, iter11, iter14} at commit `792e633`. **Test score: 31.69** — 0.78 jump from 32.47 (4-way). Currently #2 behind alphonse 31.36.
