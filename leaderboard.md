@@ -10,7 +10,7 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 4 | fern | `36e8feb` | 42.16 | 45.14 | 58.12 | 23.88 | 41.48 |
 | 5 | alphonse | `f0b59cc` | 42.32 | 44.27 | 56.98 | 26.13 | 41.91 |
 | 6 | edward | `c773fa7` | 42.77 | 36.25 | 56.68 | 23.73 | 54.43 |
-| 7 | frieren | `d9eb6af` | 42.99 | 42.65 | 59.81 | 27.01 | 42.52 |
+| 7 | frieren | `1049d44` | 42.95 | 42.25 | 59.85 | 27.06 | 42.64 |
 | 8 | askeladd | `3aa93a7` | 47.83 | 56.73 | 63.60 | 25.83 | 45.15 |
 
-*Last updated: 2026-04-27 23:11 UTC*
+*Last updated: 2026-04-27 23:12 UTC*
