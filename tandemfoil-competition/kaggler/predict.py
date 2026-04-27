@@ -53,6 +53,17 @@ model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_on
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
+# Load Cp normalization runtime info if present
+runtime_path = ckpt_path.parent / "runtime.yaml"
+cp_normalize = False
+LOG_RE_REF = 0.0
+if runtime_path.exists():
+    with open(runtime_path) as f:
+        rt = yaml.safe_load(f)
+    cp_normalize = bool(rt.get("cp_normalize", False))
+    LOG_RE_REF = float(rt.get("log_re_ref", 0.0))
+    print(f"  cp_normalize={cp_normalize}, LOG_RE_REF={LOG_RE_REF}")
+
 # Load stats
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
@@ -91,6 +102,12 @@ for split in TEST_SPLITS:
 
             pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
             pred = pred_norm * y_std + y_mean
+
+            if cp_normalize:
+                # Convert Cp prediction back to physical pressure: p = Cp * exp(2*(log_re - LOG_RE_REF))
+                log_re = x_pad[..., 13]
+                re_factor = torch.exp(2.0 * (log_re - LOG_RE_REF))
+                pred[..., 2] = pred[..., 2] * re_factor
 
             for j, x in enumerate(xs):
                 predictions.append(pred[j, :x.shape[0]].cpu())

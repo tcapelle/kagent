@@ -49,6 +49,7 @@ class Config:
     agent: str | None = None
     debug: bool = False
     warm_start: str | None = None  # path to checkpoint for fine-tuning
+    cp_normalize: bool = False  # divide pressure by exp(2*(log_re - LOG_RE_REF)) before training
 
 
 cfg = sp.parse(Config)
@@ -59,6 +60,55 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
+
+
+# --- Cp normalization ---
+# Pressure scales as ρU^2 ∝ Re^2 in kinematic units. Across Re-regimes the std
+# of pressure varies wildly (17 to 304). Dividing by exp(2*(log_re - LOG_RE_REF))
+# flattens to a roughly-O(1) Cp coefficient, much easier to learn.
+LOG_RE_REF = 0.0
+P_MEAN_CP = stats["y_mean"][2].clone()
+P_STD_CP = stats["y_std"][2].clone()
+if cfg.cp_normalize:
+    print("Computing Cp-normalization stats from 200 train samples...")
+    log_res = []
+    for i in range(min(200, len(train_ds))):
+        xi, _, _ = train_ds[i]
+        log_res.append(xi[0, 13].item())
+    LOG_RE_REF = float(torch.tensor(log_res).median())
+    p_cp_vals = []
+    for i in range(min(200, len(train_ds))):
+        xi, yi, _ = train_ds[i]
+        log_re = xi[0, 13].item()
+        re_factor = torch.exp(torch.tensor(2.0 * (log_re - LOG_RE_REF)))
+        p_cp_vals.append(yi[:, 2] / re_factor)
+    all_p_cp = torch.cat(p_cp_vals)
+    P_MEAN_CP = all_p_cp.mean().to(device)
+    P_STD_CP = all_p_cp.std().to(device)
+    # Override pressure stats so the normalization in training uses Cp values
+    stats["y_mean"] = stats["y_mean"].clone()
+    stats["y_std"] = stats["y_std"].clone()
+    stats["y_mean"][2] = P_MEAN_CP
+    stats["y_std"][2] = P_STD_CP
+    print(f"  LOG_RE_REF={LOG_RE_REF:.4f}, p_mean_cp={P_MEAN_CP.item():.4f}, p_std_cp={P_STD_CP.item():.4f}")
+
+
+def cp_transform_y(x_unnorm, y):
+    """Divide pressure channel y[..., 2] by re_factor in-place, return new y."""
+    log_re = x_unnorm[..., 13]  # [B, N]
+    re_factor = torch.exp(2.0 * (log_re - LOG_RE_REF))  # [B, N]
+    y = y.clone()
+    y[..., 2] = y[..., 2] / re_factor
+    return y
+
+
+def cp_undo_pred(x_unnorm, pred_phys):
+    """Multiply predicted pressure channel back by re_factor."""
+    log_re = x_unnorm[..., 13]
+    re_factor = torch.exp(2.0 * (log_re - LOG_RE_REF))
+    pred_phys = pred_phys.clone()
+    pred_phys[..., 2] = pred_phys[..., 2] * re_factor
+    return pred_phys
 
 
 def subsample_collate(batch):
@@ -156,6 +206,16 @@ model_path = model_dir / "checkpoint.pt"
 with open(model_dir / "config.yaml", "w") as f:
     yaml.dump(model_config, f)
 
+# Save Cp normalization stats so predict.py can apply the same transform
+cp_runtime = {
+    "cp_normalize": bool(cfg.cp_normalize),
+    "log_re_ref": float(LOG_RE_REF),
+    "p_mean_cp": float(P_MEAN_CP.item()),
+    "p_std_cp": float(P_STD_CP.item()),
+}
+with open(model_dir / "runtime.yaml", "w") as f:
+    yaml.dump(cp_runtime, f)
+
 best_val = float("inf")
 best_metrics: dict = {}
 global_step = 0
@@ -186,6 +246,8 @@ for epoch in range(MAX_EPOCHS):
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
+        if cfg.cp_normalize:
+            y = cp_transform_y(x, y)
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
@@ -234,8 +296,10 @@ for epoch in range(MAX_EPOCHS):
                 is_surface = is_surface.to(device, non_blocking=True)
                 mask = mask.to(device, non_blocking=True)
 
+                x_unnorm = x  # keep for Cp transform
                 x = (x - stats["x_mean"]) / stats["x_std"]
-                y_norm = (y - stats["y_mean"]) / stats["y_std"]
+                y_for_norm = cp_transform_y(x_unnorm, y) if cfg.cp_normalize else y
+                y_norm = (y_for_norm - stats["y_mean"]) / stats["y_std"]
 
                 with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=cfg.bf16):
                     pred = model({"x": x})["preds"]
@@ -249,6 +313,8 @@ for epoch in range(MAX_EPOCHS):
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
+                if cfg.cp_normalize:
+                    pred_orig = cp_undo_pred(x_unnorm, pred_orig)
                 err = (pred_orig - y).abs()
                 mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))
