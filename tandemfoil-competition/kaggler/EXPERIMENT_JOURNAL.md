@@ -22,6 +22,36 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter17: ensemble iter16+iter15 (val_bs1=42.03)
+
+- **Hypothesis:** iter16 alone (42.78) is slightly worse than iter15 alone
+  (42.43), but they were trained from different cosine resume cycles —
+  diverse enough that averaging helps even when component is weaker.
+- **Change:** No new training. `predict.py --checkpoints iter16,iter15
+  --weights 1,1`.
+- **Result (bs=1 val):** **42.03** — new best. single=36.60, geom_rc=59.82,
+  geom_cruise=28.03, re_rand=43.68. Equal weights edged weighted variants.
+- **Verdict:** kept — diversity-from-different-resume-cycles ensembling
+  gives the best of both. ~1% gain on top of iter15 alone.
+- **Notes:** Adding iter13 dilutes (42.03 → 42.26 with [1,1,1]). The
+  resume chain has narrowed the diversity — only adjacent ckpts in the
+  chain ensemble well together.
+
+### 2026-04-27 — iter16: resume iter15 (val_bs1=42.78, slight regression alone)
+
+- **Hypothesis:** continue resume chain with iter15.
+- **Change:** No code change. `--resume_from .../model-i4xb7o2y/`.
+- **Result:** 25 epochs, best val_bs4 = **66.09** at epoch 14 (lowest bs4
+  so far). Real bs=1 val: **42.78** (vs iter15's 42.43 — *worse* alone).
+  Splits: single=37.51, geom_rc=60.52, geom_cruise=28.28, re_rand=44.80.
+  Auto-submit went to commit `e0934f4`. Run `snvf1y5m`.
+- **Verdict:** kept the ckpt for ensembling — iter16+iter15 ensemble
+  beats either alone (42.03). Solo it's a regression.
+- **Notes:** This is the first resume that didn't strictly improve val_bs1
+  alone. The cosine schedule may have descended past the bs1 sweet spot.
+  Need a different recipe to break out — capacity, augmentation, or just
+  better selection.
+
 ### 2026-04-27 — iter15: resume iter13 (NEW BEST 42.43)
 
 - **Hypothesis:** the resume chain keeps yielding ~1–2% per cycle. iter13
