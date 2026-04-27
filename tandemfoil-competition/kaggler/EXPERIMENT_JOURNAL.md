@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: chain from iter6 with even lower LR
+
+- **Hypothesis:** Continue the chain — warmstart from iter6 best (`6ulvj74p`, val=46.14), drop peak LR (8e-6 → 5e-6) for finer fine-tuning. Expect another ~1.0 val improvement.
+- **Change:** `train.py`: `WARMSTART=model-6ulvj74p`, `lr=5e-6`. Otherwise same as iter6 (p_weight=5, 14 epochs).
+- **Result:** 13 epochs in 32 min. 46.14 → epoch 13 = **45.46** (best). Per-split: single=49.7, geom_rc=58.1, geom_cruise=27.7, re_rand=43.6 (approx). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/819c1d1/`. Run `4hbvu7xe`.
+- **Verdict:** kept — gain of -0.68 (1.5%). Diminishing returns confirmed; chain about tapped out.
+- **Notes:** **iter6 already scored — frieren/840db61: test surf_p=39.49**. That puts me at #2; askeladd #1 with 39.16. Need a different lever to win — probably multi-checkpoint ensemble (free) or specialized single-foil model (askeladd's strength). single_in_dist (val=49.7, askeladd test=34.79) is my biggest weakness. Iter8 should target single-foil generalization.
+
 ### 2026-04-27 — iter6: chain from iter5 + p_weight=5 + 14 epochs
 
 - **Hypothesis:** Boosting p_weight further (3→5) and adding more epochs (12→14, capped to 12 by 30-min budget) should continue the gains from iter5.
