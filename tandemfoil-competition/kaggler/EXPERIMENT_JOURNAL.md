@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter2: warm-start bs=2 full-mesh chain → val/loss=0.74, avg_surf_p=51.87 (-3%)
+- **Hypothesis:** Frieren's apr27 iter2 found that warm-starting iter1 with `batch_size=2 + train_subsample=0` + `lr=2e-5` + `p_weight=3` for 10 epochs got 49.34 surf_p (from 54.26). The hypothesis is that the 40k subsample drops 60% of the volume mesh — refining on the full mesh at low LR teaches the model the spatial structure it missed.
+- **Change:** `python train.py --warm_start /mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-77aydpcl/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --p_weight 3.0 --epochs 12 --warmup_epochs 1`. Run `yqqu10sg`.
+- **Result:** stopped at epoch 11 (timeout 28.7 min, 29.3GB peak). Best val/loss=**0.7358**, **avg_surf_p=51.87** (single=0.71, rc=1.01, cruise=0.45, re_rand=0.77). All four splits improved a bit vs iter1. Predictions at `/mnt/new-pvc/predictions/apr27-4/edward/0fa22ab/`.
+- **Verdict:** kept — modest 3% gain on surf_p, 2% on val/loss. Single-foil split still has the highest absolute val loss (0.71).
+- **Notes:** The chain is converging slowly — frieren's chain dropped 4-5 surf_p per iter, mine dropped only 1.6. Might be that my Fourier features make iter1 already closer to convergence. Next: try a larger model (n_hidden=256, slice_num=128) or push lr down to 5e-6 and continue chaining for marginal gains.
+
 ### 2026-04-27 — iter1: proven recipe (Transolver 192/6/6 + Fourier features) → val/loss=0.75, avg_surf_p=53.46
 - **Hypothesis:** Replicate frieren's apr27 proven recipe (Transolver n_hidden=192, n_layers=6, n_head=6, slice=64, L1 loss, p_weight=3, train_subsample=40k volume nodes, bf16, bs=4, lr=5e-4, surf_weight=10, warmup+cosine over 35 epochs). Add Fourier features for position (8 scales, max_freq=16) and attention masking on padded tokens — both unused by previous leaders. Ought to land near 50-55 surf_p with the Fourier features potentially helping high-frequency turbulence features.
 - **Change:** New `train.py` + `model.py`. `model.py` exposes `Transolver` with `FourierFeatures` (sin/cos at 8 log-spaced freqs over normalized x,z) and `mask` plumbed through `PhysicsAttention` so padded tokens can't pollute slice softmax. `train.py` adds `SubsampledDataset` (keep all surface nodes, randomly subsample 40k volume), L1 channel-weighted loss with `p_weight=3` on the pressure channel, AdamW + warmup-cosine LR, grad-clip 1.0, bf16 autocast, automatic checkpoint mirror to `/mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-<id>/`, and to `checkpoints/best.pt`.
