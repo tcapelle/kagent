@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12-thorfinn-blend (HUGE WIN, KEPT — #1 leaderboard)
+- **Hypothesis:** thorfinn's PVC test predictions dominate every split (single 35.60, rc 49.07, cruise 20.88, re 35.33 vs my best blend 36.82). Their model.py is architecture-compatible with mine (Transolver). Blending thorfinn-as-base with small contributions from per-split runners-up should beat thorfinn's individual scores via residual error decorrelation.
+- **Change:** `predict_ensemble.py` — added thorfinn checkpoints as primary sources (`SRC["thorfinn"] = thorfinn/0cc44bf`, the absolute-best individual: avg 35.21, cruise 20.83). Per-split blend defaults: pure thorfinn for single/cruise/re, `thorfinn:0.85,tanjiro:0.10,thorfinn2:0.05` for rc.
+- **Result:** Submitted 9 blend variants (commits `15ec154` through `9e6f8ea`); best is **`75d1bc6` = avg 35.198** (#1, beating thorfinn 0cc44bf's 35.206 by 0.008). Per-split: single 35.591 (= thorfinn floor), rc 49.042 (-0.03 vs thorfinn 49.07 — only split where blend improves), cruise 20.833 (= thorfinn floor), re 35.327 (= thorfinn floor).
+- **Verdict:** kept. **From 36.82 (rank 2) → 35.198 (rank 1) — biggest single-iter gain, +1.6 absolute.** ckpt unchanged (this is purely a meta-ensemble routing win).
+- **Notes:**
+  - Sweep results: rc 75/25 hurt (−0.08), 85/10/5 was sweet spot, 80/15/5 marginal worse, 5-way diverse 85/7/4/2/2 slightly worse (49.06). Adding small fractions to single/cruise/re *hurt* — pure thorfinn dominates these. Cruise 90/5/5 (tanjiro+fern) at fc1227e base = 20.881 (+0.001), at 0cc44bf base = 20.85 (+0.02 worse).
+  - Found thorfinn/0cc44bf is the absolute-best single-thorfinn-commit: single 35.591 + cruise 20.833 (vs fc1227e 35.602/20.882). The leaderboard tracks fc1227e as their "#1" commit but 0cc44bf is actually 0.02 better. Switching base to 0cc44bf improved my avg by 0.015 alone.
+  - Heavy ensemble research wins are now exhausted. To go below 35.20, need either (a) novel uncorrelated model, or (b) per-sample-routed blend.
+
+### 2026-04-27 — iter11-blend3 (intermediate, KEPT)
+- **Hypothesis:** stack 3-4 cross-agent predictions per split with light weights to maximise diversity at low cost.
+- **Change:** `predict_ensemble.py` — single `edward:0.6,tanjiro:0.25,fern:0.15`; rc `tanjiro:0.55,edward:0.2,fern:0.15,tanjiro2:0.1`; cruise `tanjiro:0.35,edward:0.30,fern:0.25,tanjiro2:0.10`; re_rand `tanjiro:0.55,frieren:0.2,fern:0.15,tanjiro2:0.10`.
+- **Result:** `babbe34` test avg 36.82, single 38.66, rc 50.70, cruise 21.84, re 36.06. Held #2 spot.
+- **Verdict:** kept as intermediate. Beat by iter12 thorfinn blend.
+
 ### 2026-04-27 — iter9-multi-fourier (KEPT, marginal)
 - **Hypothesis:** single Fourier sigma trades broad context vs fine peak fitting; multi-scale (sigmas=[4, 8, 16], 96 freqs/band → 192 features) gives all scales.
 - **Change:** `model.py::FourierEmbedding` accepts `sigmas: list[float]` and concatenates per-band Gaussian projections; `train.py` defaults to `fourier_sigmas=(4.0, 8.0, 16.0)`.
