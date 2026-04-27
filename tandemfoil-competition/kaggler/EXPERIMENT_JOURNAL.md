@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: from-scratch new seed (different optimization trajectory)
+- **Hypothesis:** Chain-correlated ensembles barely help (ensemble2: 46.90 ≈ iter3 solo 46.87). Apr23 lesson: a from-scratch model with a different seed adds *real* prediction-diversity (iter12 made the apr23 ensemble PB possible). iter5 = exact same recipe as iter1 (192x6, bs=8, sub40K, L1, p_w=3, 35 ep) but different RNG seed (no warm_start).
+- **Change:** No code change. CLI: `--batch_size 8 --train_subsample 40000 --lr 5e-4 --epochs 35`. Run `ioyh70am`.
+- **Result:** 35 epochs, 26.8 min, peak 20.8 GB. Val curve has more late-stage variance than iter1 (e30=80.0, e34=78.80, e35=78.81). Best epoch 34: val/avg_surf_p=**78.80** (vs iter1's 81.37 — slightly better). Predictions OVERWROTE 7deba03 because HEAD didn't move (the scorer cached the previous ensemble2 score, so iter5 alone is not directly scoreable here — that's fine, iter5 is for diversity not direct submission).
+- **Verdict:** Kept as ensemble member. Saved to `/tmp/iter5_best.pt`.
+- **Notes:** Slightly better than iter1 — random variance. Now warm-start it via bs=2 no_sub (iter6) to bring val to ~55 and ensemble {iter3, iter4, iter6} for real diversity.
+
 ### 2026-04-27 — iter4 + ensemble2 (chain only)
 - **Hypothesis (iter4):** lr=2e-6, 8ep, no warmup — squeeze the last bit out of the chain. Expecting ~0.2pt val gain.
 - **Result iter4:** 8 epochs, 20.0 min. Val 53.86→53.52→53.54→53.43→53.49→53.34→53.36→**53.32**. Best epoch 8. Predictions at `bb24f96`.
