@@ -41,8 +41,14 @@ TEST_SPLITS = [
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str
+    """Generate test predictions from a trained checkpoint.
+
+    Pass a single `--checkpoint` for one-model prediction, or
+    `--checkpoints a,b,c` (comma-separated) to ensemble (mean of preds).
+    All ensembled checkpoints must share the same model_config.
+    """
+    checkpoint: str = ""
+    checkpoints: str = ""  # comma-separated paths for ensemble
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 2
@@ -52,15 +58,22 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-ckpt_path = Path(cfg.checkpoint)
+ckpt_paths = [Path(p) for p in cfg.checkpoints.split(",") if p.strip()] \
+    if cfg.checkpoints else [Path(cfg.checkpoint)]
+assert ckpt_paths, "Must pass --checkpoint or --checkpoints"
+ckpt_path = ckpt_paths[0]  # for downstream config + mirror
 cfg_path = ckpt_path.parent / "config.yaml"
 with open(cfg_path) as f:
     model_config = yaml.safe_load(f)
 
-model = Transolver(**model_config).to(device)
-model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
-model.eval()
-print(f"Loaded model from {cfg.checkpoint}")
+models = []
+for p in ckpt_paths:
+    m = Transolver(**model_config).to(device)
+    m.load_state_dict(torch.load(p, map_location=device, weights_only=True))
+    m.eval()
+    models.append(m)
+    print(f"Loaded model from {p}")
+print(f"Ensemble of {len(models)} model(s)")
 
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
@@ -99,7 +112,8 @@ for split in TEST_SPLITS:
                 x_pad[j, :x.shape[0]] = x.to(device)
 
             with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=use_amp):
-                pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"].float()
+                x_in = (x_pad - x_mean) / x_std
+                pred_norm = sum(m({"x": x_in})["preds"].float() for m in models) / len(models)
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
