@@ -22,6 +22,11 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12/13: 4-way ensemble + 3rd base
+- **Iter12:** 4-way ensemble {iter4 (37a85cf), iter6 (f088509), iter9 (ffcecba), iter11 (f4f626e)} averaged via `ensemble.py`, saved at `c0b78fe`. **Test score 32.47** — new #1, beating iter10's 32.59 and alphonse's 33.03. Per-split: single=35.39, rc=45.23, cruise=19.07, re=30.20.
+- **Iter13:** 3rd fresh base. 72 epochs, best epoch 71 with val/avg_mae_surf_p=**62.28** (vs iter3 84.20, iter8 68.65 — each base outperforming the previous, suggesting init/data-shuffle luck). Run id `g52d573w`. **Auto-submit overwrote c0b78fe again**, restored via `ensemble.py`.
+- **Notes:** consistent pattern — fresh bases keep getting better. Could be the WeightedRandomSampler giving different sample exposures across runs. Next: finetune iter13 (iter14) → 5-way ensemble (iter15).
+
 ### 2026-04-27 — iter10/11: cross-basin ensemble + iter9 deep finetune
 - **Hypothesis (iter10):** averaging predictions from {iter4 (chain1 mid), iter6 (chain1 final), iter9 (chain2 finetune)} should beat any single model since iter9 is from a DIFFERENT random init than iter4/6 — errors should partially cancel.
 - **Change (iter10):** updated `ensemble.py` to point at `[37a85cf, f088509, ffcecba]`, ran it, predictions saved at `d10ff73`.
