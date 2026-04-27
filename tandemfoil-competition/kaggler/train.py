@@ -253,18 +253,16 @@ def main():
         for name, ds in val_splits.items()
     }
 
-    # Architecture matches thorfinn's apr27-bis winner so we can warm-start
-    # from any of its checkpoints. fun_dim=24 with space_dim=0 means all 24
-    # input features (including raw position) feed the same MLP — no separate
-    # position channel.
+    # Architecture matches frieren's apr27-5 leader so we can warm-start
+    # from their best checkpoint (val 40.97 → test 35.05).
     model_config = dict(
-        space_dim=0,
-        fun_dim=X_DIM,
+        space_dim=2,
+        fun_dim=X_DIM - 2,
         out_dim=3,
         n_hidden=192,
         n_layers=6,
         n_head=6,
-        slice_num=128,
+        slice_num=64,
         mlp_ratio=2,
         output_fields=["Ux", "Uy", "p"],
         output_dims=[1, 1, 1],
