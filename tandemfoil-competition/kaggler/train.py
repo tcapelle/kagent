@@ -118,7 +118,7 @@ model_config = dict(
     slice_num=96,
     mlp_ratio=4,
     ff_n_freqs=32,
-    ff_sigma=2.0,
+    ff_sigma=1.0,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
