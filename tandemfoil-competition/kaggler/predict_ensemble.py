@@ -86,9 +86,8 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter30: thorfinn pushed further to 34.8014 with 2ce0b4f. Route to it for rc/cruise/re.
-    # Per-split bests: single=4-way L+M+K+I (35.2140), rc=Q (48.5926), cruise=Q (20.5841), re=Q (34.7652).
-    # New floor: (35.2140 + 48.5926 + 20.5841 + 34.7652)/4 = 34.7890
+    # iter31: re-submit iter30's blend (got overwritten by predict.py auto-launch).
+    # Same per-split-best routing: single=4-way (35.2140), rc/cruise/re=Q (2ce0b4f best).
     single: str = "thorfinnL:0.30,thorfinnM:0.30,thorfinnK:0.20,thorfinnI:0.20"
     rc: str = "thorfinnQ:1.0"
     cruise: str = "thorfinnQ:1.0"
