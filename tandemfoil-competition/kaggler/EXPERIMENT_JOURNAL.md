@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: warm-start iter3 lr=5e-6 12ep (chain step 3)
+- **Hypothesis:** Lower LR continues fine-tuning toward minimum without disturbing the converged weights. Expect ~0.03 val/loss improvement.
+- **Change:** `python train.py --warm_start /tmp/iter3_best.pt --lr 5e-6 --epochs 12`. Placeholder commit `ebd8537`.
+- **Result:** Best epoch 12, val/loss=**1.6989** (down from 1.7301). Per-split val: single=2.69, rc=2.02, cruise=0.57, re_rand=1.51. Train e12 vol=0.43 surf=0.30. Many epochs no longer marked best — improvements are tiny (~0.005 per epoch). Predictions saved to `apr27-5/tanjiro/ebd8537/`. Run `xwfp925c`.
+- **Verdict:** kept. Diminishing returns confirmed: iter3→iter4 was 0.03 vs iter2→iter3 was 0.13. Chain is converging.
+- **Notes:** Leaderboard placed iter3 at rank 4 (53.24 avg_surf_p, gap to lead = 7). Per-split surf_p: single=60.45, rc=67.89, cruise=34.01, re_rand=50.60 — re_rand strong, single weak. Next: iter5 = warm iter4 lr=2e-6 12ep (last chain step). After that, consider slice=128 fresh for ensemble diversity.
+
 ### 2026-04-27 — iter3: warm-start iter2 lr=2e-5 12ep (chain step 2)
 - **Hypothesis:** Iter2 used lr=1e-4 with substantial early oscillation. Switching to lr=2e-5 avoids the perturbation phase and lets cosine decay over 12ep yield steady fine improvement. Following frieren's chain pattern (iter17→iter19→iter21 used 1e-4→5e-5→2e-5).
 - **Change:** `python train.py --warm_start /tmp/iter2_best.pt --lr 2e-5 --epochs 12`. Placeholder commit `60c4364`. Also removed embedded auto-predict from `train.py` because the subprocess was leaving the parent process holding ~75 GB GPU memory after wandb.finish() and OOM-ing the next training run.
