@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: n_layers 6→8 fresh (UNDER-TRAINED, ckpt kept)
+
+- **Hypothesis:** iter4 plateaued at val=77 with 256x6, suggesting capacity
+  limit. A deeper model (256x8, +33% params) should have a higher ceiling
+  given enough training.
+- **Change:** `train.py:86` — `n_layers: 6 → 8`. Fresh from random init.
+- **Result:** 28 epochs, best val avg_surf_p = **112.86** at epoch 28. Slower
+  per-epoch (~57s vs 45s) so fewer total epochs in 30 min. Run `xurnwxz0`,
+  commit `87f3f68`. Auto-submitted predictions to leaderboard for that commit.
+- **Verdict:** kept the commit (vs reset) so the iter5 ckpt remains usable
+  as an init for iter6 resume. As a standalone score it's clearly worse than
+  iter4 (77) — the deeper model just didn't converge in 30 min from scratch.
+- **Notes:** iter6 = resume from iter5 ckpt, giving the deeper model another
+  30 min of training to test whether the extra capacity pays off when
+  properly trained.
+
 ### 2026-04-27 — iter4: resume from iter2 best, lr=1.5e-4, warmup=100
 
 - **Hypothesis:** iter2 stopped at epoch 37/39 still descending; the 30-min
