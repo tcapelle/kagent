@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5 push p_weight from 3 → 6
+- **Hypothesis:** The leaderboard metric is surface pressure MAE. By doubling the per-channel weight on pressure (3 → 6), the optimizer should focus more on what we're scored on, even at small cost to volume MAE we don't care about.
+- **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter4_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 6.0`.
+- **Result:** Best epoch 28/30, val/loss=1.0365, avg_surf_p=**47.13** (val splits: in_dist=1.45, geom_rc=1.37, geom_cruise=0.30, re_rand=1.03). Run `89vpw2ay`.
+- **Verdict:** Kept (commit cc7c719). Bigger gain than iter4 (−2.08 vs −1.76) — re-weighting toward the actual scoring metric helps even when warm-started. Now ~5 behind frieren's 42.11.
+- **Notes:** Push further next iter (p_weight=10) or try fresh frieren-style 256/8/8/96 architecture as a parallel branch.
+
 ### 2026-04-27 — iter4 chain at lr=1e-4
 - **Hypothesis:** Continue the warm-start chain at lower LR (1e-4) and slightly slower EMA (0.9995, averaging ~2000 steps) to grind further down the loss curve.
 - **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter3_best.pt --ema_decay 0.9995 --epochs 30 --warmup_epochs 1`.
