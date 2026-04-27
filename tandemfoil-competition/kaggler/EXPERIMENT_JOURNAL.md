@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13: chain LR 1.5e-6 + p_weight 42
+- **Hypothesis:** continue chain ramp; expect ~0.05-0.1pt gain.
+- **Change:** args only.
+- **Result:** 28 epochs in 30.9 min. Best epoch 19 → val/avg_surf_p=44.97 (single=39.06, geom_rc=62.37, geom_cruise=31.14, re_rand=47.33). Run wez5fz41. Predictions at apr27-5/askeladd/7842039.
+- **Verdict:** kept — improvement (45.03 → 44.97, -0.06).
+- **Notes:** SWA over saved snapshots (epochs 23-28) all gave 45.12-45.20 — none beat the e19 best (44.97). e19 was a particularly low point; saving more snapshots earlier would help SWA. Bumping `save_last_k` to 15 in iter14.
+
 ### 2026-04-27 — iter12: chain LR 2e-6 + p_weight 35
 - **Hypothesis:** continue chain ramp; expect ~0.1pt gain.
 - **Change:** args only.
