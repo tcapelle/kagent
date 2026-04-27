@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — pos-freq12-mxf64 (DISCARDED)
+- **Hypothesis:** richer positional encoding might capture finer geometry — bump pos_freqs 8→12 and pos_max_freq 32→64.
+- **Change:** model_config pos_freqs=12, pos_max_freq=64.
+- **Result:** 32 epochs in 30.6 min. Best epoch 32: avg_surf_p=98.68 (worse than iter8's 93.62). val_geom_camber_rc=2.04 (about same as iter8 1.98).
+- **Verdict:** discarded — `git reset --hard HEAD~1`. Higher max-freq Fourier features probably add noise; iter3's pos_max_freq=32 with 8 freqs was already covering the relevant scales.
+- **Notes:** spent epoch budget on extra MLP input dims with no benefit. Don't push pos encoding further.
+
 ### 2026-04-27 — cosine35 (DISCARDED)
 - **Hypothesis:** epochs=80 cosine never decays in our 30 min budget; setting epochs=35 lets cosine fully anneal to ~0 LR for a sharper minimum.
 - **Change:** `epochs: 80 → 35`.
