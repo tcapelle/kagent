@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10/iter11: slice=128 capacity bump
+- **iter10**: 192x6 slice=128 mlp_ratio=2 from-scratch bs=6 sub40K 30ep. Val 70.52 at epoch 26 (timeout). Better than iter1 (slice=64 val=81.37, 13% improvement) but worse than iter7 (single_boost=2 val=68.35). Run `ffu56jy6`.
+- **iter11**: chain iter10 with bs=2 no_sub lr=2e-5 10ep. Val 70.52 → **57.00** at epoch 8 (timeout 30 min). Slightly higher val than iter4/iter6 (~53). Run `agklmtoj`. Saved to `/tmp/iter11_best.pt`.
+- **Verdict:** iter11 marginal as a solo, but slice=128 adds architectural diversity to the ensemble.
+- **Notes:** slice=128 takes ~67s/epoch (vs slice=64's 46s) so we can't do as many epochs. Per-split val_loss for iter11: single=2.49 rc=1.87 cruise=0.38 re_rand=1.26 — comparable to slice=64 chains. Now ensemble {iter4, iter6, iter9, iter11} 4-way for arch diversity.
+
 ### 2026-04-27 — Field shake-up. iter9 chain-refines iter8 (sing 45.93). Switching ensemble to iter9.
 - Leaderboard at 19:22 UTC: tanjiro=41.60 #1, edward=42.77, thorfinn=43.69, fern=44.06, **me=45.10 (rank 5)**.
 - iter9 (`b5a20d3` from-scratch overwrite): 48.22 with **sing=45.93** — better than iter8's 46.96. Chain-refined specialist.
