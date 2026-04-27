@@ -35,7 +35,7 @@ from viz import visualize
 # ---------------------------------------------------------------------------
 
 class FourierFeatures(nn.Module):
-    """Random Fourier features applied to 2D position channels."""
+    """Random Gaussian Fourier features on 2D positions."""
     def __init__(self, n_freqs: int = 16, sigma: float = 5.0):
         super().__init__()
         B = torch.randn(2, n_freqs) * sigma
@@ -45,6 +45,24 @@ class FourierFeatures(nn.Module):
         proj = pos @ self.B
         return torch.cat([torch.sin(proj * 2 * torch.pi),
                           torch.cos(proj * 2 * torch.pi)], dim=-1)
+
+
+class MultiScaleFourier(nn.Module):
+    """Multi-scale sin/cos features on 2D position (Edward's pattern).
+
+    Output dim = 2 (sin/cos) * 2 (axes x,z) * num_scales.
+    """
+    def __init__(self, num_scales: int = 8, max_freq: float = 16.0):
+        super().__init__()
+        freqs = 2 ** torch.linspace(0.0, float(np.log2(max_freq)), num_scales)
+        self.register_buffer("freqs", freqs)
+
+    def out_dim(self):
+        return 2 * 2 * self.freqs.numel()
+
+    def forward(self, pos):
+        x = pos.unsqueeze(-1) * self.freqs * torch.pi
+        return torch.cat([x.sin(), x.cos()], dim=-1).flatten(-2)
 
 
 class ResMLPBlock(nn.Module):
@@ -161,14 +179,28 @@ class TransolverNet(nn.Module):
         return {"preds": self.head(h)}
 
 
-# Backwards-compat alias so old checkpoints / predict.py keep loading.
 class ResMLP(nn.Module):
+    """Per-node MLP with residual blocks. Backwards-compatible with iter 1/2 ckpts.
+
+    Two FF modes:
+      ff_kind="random": random Gaussian Fourier features (n_freqs, sigma)
+      ff_kind="multiscale": multi-scale sin/cos (fourier_scales, fourier_max_freq)
+    """
+
     def __init__(self, in_dim: int = 24, hidden: int = 512, n_blocks: int = 8,
                  out_dim: int = 3, expansion: int = 4, dropout: float = 0.0,
-                 n_freqs: int = 32, fourier_sigma: float = 4.0):
+                 n_freqs: int = 32, fourier_sigma: float = 4.0,
+                 ff_kind: str = "random",
+                 fourier_scales: int = 8, fourier_max_freq: float = 16.0):
         super().__init__()
-        self.fourier = FourierFeatures(n_freqs=n_freqs, sigma=fourier_sigma)
-        embed_in = in_dim + 2 * n_freqs
+        self.ff_kind = ff_kind
+        if ff_kind == "multiscale":
+            self.fourier = MultiScaleFourier(num_scales=fourier_scales,
+                                             max_freq=fourier_max_freq)
+            embed_in = in_dim + self.fourier.out_dim()
+        else:
+            self.fourier = FourierFeatures(n_freqs=n_freqs, sigma=fourier_sigma)
+            embed_in = in_dim + 2 * n_freqs
         self.embed = nn.Sequential(nn.Linear(embed_in, hidden), nn.GELU())
         self.blocks = nn.ModuleList([
             ResMLPBlock(hidden, expansion, dropout) for _ in range(n_blocks)
@@ -201,7 +233,9 @@ class Config:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 20.0
+    surf_weight: float = 10.0
+    p_weight: float = 3.0     # extra weighting on pressure channel in loss
+    loss_type: str = "l1"     # "l1" or "l2"
     epochs: int = 60
     warmup_steps: int = 300
     train_subsample: int = 40000
@@ -210,24 +244,31 @@ class Config:
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    warm_start: str | None = None
     # model
-    arch: str = "transolver"  # "transolver" or "resmlp"
-    hidden: int = 320
-    n_layers: int = 8
+    arch: str = "resmlp"  # "transolver" or "resmlp"
+    hidden: int = 384
+    n_layers: int = 6
     heads: int = 8
     dim_head: int = 40
     slice_num: int = 64
-    mlp_ratio: int = 2
+    mlp_ratio: int = 4
     dropout: float = 0.0
+    # Fourier features
+    ff_kind: str = "multiscale"   # "multiscale" or "random"
+    fourier_scales: int = 8
+    fourier_max_freq: float = 16.0
     n_freqs: int = 32
     fourier_sigma: float = 4.0
     # bf16 autocast
     amp: bool = True
     # validate every N epochs (after epoch 1)
     val_every: int = 2
-    # cosine LR target ~= this many epochs (set higher than expected actual epochs
-    # so LR doesn't decay to zero mid-run)
-    cosine_epochs: int = 80
+    # cosine LR target ~= this many epochs
+    cosine_epochs: int = 60
+    # EMA
+    ema_decay: float = 0.9995
+    ema_start_step: int = 500
 
 
 def subsample_batch(x, y, is_surface, mask, k_vol):
@@ -379,11 +420,20 @@ def main():
             out_dim=3,
             expansion=cfg.mlp_ratio,
             dropout=cfg.dropout,
+            ff_kind=cfg.ff_kind,
+            fourier_scales=cfg.fourier_scales,
+            fourier_max_freq=cfg.fourier_max_freq,
             n_freqs=cfg.n_freqs,
             fourier_sigma=cfg.fourier_sigma,
         )
         model_kwargs = {k: v for k, v in model_config.items() if k != "arch"}
         model = ResMLP(**model_kwargs).to(device)
+
+    if cfg.warm_start:
+        state = torch.load(cfg.warm_start, map_location=device, weights_only=True)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        print(f"Warm-started from {cfg.warm_start} "
+              f"(missing={len(missing)} unexpected={len(unexpected)})")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model params: {n_params/1e6:.2f}M")
 
@@ -431,6 +481,20 @@ def main():
     with open(model_dir / "config.yaml", "w") as f:
         yaml.dump(model_config, f)
 
+    # EMA shadow weights — averaged params used at val/inference time.
+    ema_state: dict[str, torch.Tensor] | None = None
+    if cfg.ema_decay > 0:
+        ema_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
+    chan_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=device)
+
+    def channel_loss(pred, y_norm, mask_pts):
+        diff = pred - y_norm
+        err = diff.abs() if cfg.loss_type == "l1" else diff ** 2
+        err = err * chan_w
+        masked = err * mask_pts.unsqueeze(-1)
+        return masked.sum() / mask_pts.sum().clamp(min=1) / chan_w.sum()
+
     best_surf_p = float("inf")
     best_metrics: dict = {}
     global_step = 0
@@ -460,19 +524,28 @@ def main():
 
             with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.amp):
                 pred = model({"x": x})["preds"]
-                sq_err = (pred.float() - y_norm) ** 2
+            pred = pred.float()
 
-                vol_mask = mask & ~is_surface
-                surf_mask = mask & is_surface
-                vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-                surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-                loss = vol_loss + cfg.surf_weight * surf_loss
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = channel_loss(pred, y_norm, vol_mask)
+            surf_loss = channel_loss(pred, y_norm, surf_mask)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             scheduler.step()
+
+            # EMA update (after the optimiser step, only after warmup).
+            if ema_state is not None and global_step >= cfg.ema_start_step:
+                with torch.no_grad():
+                    for k, v in model.state_dict().items():
+                        if v.dtype.is_floating_point:
+                            ema_state[k].mul_(cfg.ema_decay).add_(v.detach(), alpha=1.0 - cfg.ema_decay)
+                        else:
+                            ema_state[k].copy_(v.detach())
             global_step += 1
             wandb.log({
                 "train/loss": loss.item(),
@@ -489,12 +562,21 @@ def main():
         epoch_vol /= n_batches
         epoch_surf /= n_batches
 
-        # Validate on epoch 1 always, then every val_every epochs, and last epoch.
+        # Validate on epoch 1 always, then every val_every epochs.
         do_val = (epoch == 0) or ((epoch + 1) % cfg.val_every == 0)
         if do_val:
-            mean_val_loss, mean_surf_p, split_metrics = _validate(
-                model, val_loaders, stats, device, cfg.surf_weight, amp=cfg.amp,
-            )
+            # Validate using EMA weights once EMA has begun; otherwise live weights.
+            if ema_state is not None and global_step >= cfg.ema_start_step:
+                live_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+                model.load_state_dict(ema_state)
+                mean_val_loss, mean_surf_p, split_metrics = _validate(
+                    model, val_loaders, stats, device, cfg.surf_weight, amp=cfg.amp,
+                )
+                model.load_state_dict(live_state)
+            else:
+                mean_val_loss, mean_surf_p, split_metrics = _validate(
+                    model, val_loaders, stats, device, cfg.surf_weight, amp=cfg.amp,
+                )
         else:
             mean_val_loss, mean_surf_p, split_metrics = float("nan"), float("nan"), {}
 
@@ -518,7 +600,9 @@ def main():
             best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "mean_surf_p": mean_surf_p}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-            torch.save(model.state_dict(), model_path)
+            # Save EMA weights if available, else live weights.
+            save_state = ema_state if (ema_state is not None and global_step >= cfg.ema_start_step) else model.state_dict()
+            torch.save(save_state, model_path)
             tag = " *"
 
         peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
