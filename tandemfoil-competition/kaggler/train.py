@@ -58,9 +58,10 @@ MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
 
 # Resume mode: when continuing from a checkpoint, default to a lower LR and a
 # tiny warmup (the model is already trained — no need to ramp from zero).
+# 5e-5 is appropriate for repeat-resume fine-tuning; first-resume can override.
 if cfg.resume_from is not None:
     if cfg.lr == 5e-4:
-        cfg.lr = 1.5e-4
+        cfg.lr = 5e-5
     if cfg.warmup_steps == 1000:
         cfg.warmup_steps = 100
     print(f"Resume mode: lr={cfg.lr}, warmup={cfg.warmup_steps}")
