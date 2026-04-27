@@ -374,6 +374,13 @@ if best_metrics:
                 "global_step": global_step,
             })
 
+# Free GPU memory before launching predict subprocess
+del model, optimizer, scheduler
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
+wandb.finish()
+
 # --- Auto-submit predictions ---
 if best_metrics and not cfg.debug:
     import subprocess
@@ -385,5 +392,3 @@ if best_metrics and not cfg.debug:
     print(result.stdout)
     if result.returncode != 0:
         print(f"predict.py failed:\n{result.stderr[-500:]}")
-
-wandb.finish()
