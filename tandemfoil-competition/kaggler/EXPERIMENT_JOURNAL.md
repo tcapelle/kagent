@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: AoA noise (regression)
+- **Hypothesis:** Add AoA noise alongside camber_noise to make the model robust to AoA perturbations and continue squeezing out gains.
+- **Change:** train.py: `aoa_noise` flag added to subsample collate. CLI `--aoa_noise 0.02 --camber_noise 0.05`. Run id `4y23f5f6`. Code commit `c3f8792`.
+- **Result:** Best val/avg_surf_p=47.00 at epoch 2, then drifted up to 47.4 by epoch 8. Slightly worse than iter10's 46.91.
+- **Verdict:** Discarded checkpoint (iter10 still best). aoa_noise=0.02 is too aggressive — AoA std is only 0.07-0.09 raw, so noise=0.02 is ~25% of std, which destabilizes physics. Code change kept (flag is useful).
+- **Notes:** Tested SWA averaging of iter5b/6/7/8/9/10 weights — all worse than iter10 alone. Models too correlated (same chain lineage). Need different angle.
+
+### 2026-04-27 — iter10: continue chain at lr=1e-6
+- **Hypothesis:** iter9 still descending at timeout. Continue chaining at same LR to push past 47.
+- **Change:** No code change. CLI `--warm_start models/model-4cx1uha0/checkpoint.pt --lr 1e-6 --camber_noise 0.05 --epochs 8 --batch_size 2 --train_subsample 0`. Run id `w0gqy59p`.
+- **Result:** Best val/avg_surf_p=46.91 at epoch 6/8 (-0.34 abs from iter9). Plateau forming.
+- **Verdict:** Kept (ckpt commit `7ae71a8`, predictions at `fern/a8e19c5`).
+- **Notes:** Diminishing returns from chaining. Need new angle: EMA, Fourier features, larger model, or TTA in predict.
+
 ### 2026-04-27 — iter9: chain camber_noise at lr=1e-6
 - **Hypothesis:** iter8 was still descending at the timeout (best at epoch 7 of 8). Continue chaining at lower LR with camber noise to squeeze more.
 - **Change:** No code change. CLI `--warm_start models/model-viigighk/checkpoint.pt --lr 1e-6 --epochs 8 --camber_noise 0.05 --train_subsample 0 --batch_size 2`. Run id `4cx1uha0`.
