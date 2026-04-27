@@ -45,6 +45,7 @@ SRC = {
     "nezuko":   ("nezuko",   "08cdd12"),  # 60.92 alone (worst), but fully different model
     "nezuko2":  ("nezuko",   "a6bcbcd"),  # JUMP! 37.39 (single 38.62, rc 51.78, cr 21.78, re 37.39)
     "nezuko3":  ("nezuko",   "012619a"),  # 38.32 (single 40.93, rc 51.60, cr 23.55, re 37.20)
+    "nezuko4":  ("nezuko",   "babbe34"),  # NEW! 36.82 (single 38.66, rc 50.70, cr 21.84, re 36.06)
     "askeladd2": ("askeladd", "b977533"),  # NEW askeladd 48.83
     "frieren":  ("frieren",  "32f0a18"),  # re 42.48 (best frieren)
     "frieren2": ("frieren",  "0596f0e"),  # re 42.53
