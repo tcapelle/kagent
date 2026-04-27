@@ -90,12 +90,12 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter40: iter39 hit 34.7173 — still scaling with iter15-warm weight (2% gave more gain than 1%).
-    # Push to 5% on cruise/re; rc at 3% (less headroom there since rc gap is smaller).
+    # iter41: iter40 hit 34.6753 — 5% on cruise/re GREAT. rc at 3% slightly worse than 2%, revert.
+    # Push iter15-warm to 8% on cruise/re; rc at 2%.
     single: str = "thorfinnL:0.30,thorfinnM:0.30,thorfinnK:0.20,thorfinnI:0.20"
-    rc: str = "thorfinnR:0.485,thorfinnT:0.485,local_iter15_warm:0.03"
-    cruise: str = "thorfinnR:0.95,local_iter15_warm:0.05"
-    re_rand: str = "thorfinnU:0.95,local_iter15_warm:0.05"
+    rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
+    cruise: str = "thorfinnR:0.92,local_iter15_warm:0.08"
+    re_rand: str = "thorfinnU:0.92,local_iter15_warm:0.08"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
