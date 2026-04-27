@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15: bump single_boost 5 → 8
+- **Hypothesis:** sb=5 gain plateaued (-0.16 in iter14). Push to sb=8 to keep the racecar_single signal dominant — model may have absorbed sb=5 already.
+- **Change:** `--single_boost 8.0`. Same lr=1e-6 otherwise.
+- **Result:** 7 epochs, best val/avg_surf_p=53.77 at epoch 7 (-0.59 vs iter14). Trajectory: 55.10 → 54.56 → 54.55 → 54.28 → 54.09 → 53.83 → 53.77. Predictions at `askeladd/6343096`. W&B: askeladd/iter15-sb8-lr1e6.
+- **Verdict:** kept (-0.59). Bigger gain than expected when bumping single_boost mid-chain — confirms racecar_single was still under-represented even at sb=5.
+- **Notes:** val_single_in_dist 2.34 → 2.29. iter16: continue at sb=8 to consolidate, but watch for over-emphasis (other splits not regressing yet).
+
 ### 2026-04-27 — iter14: chain at sb=5 + lr=1e-6 (more grinding)
 - **Hypothesis:** Same recipe; iter13 dropped 0.74. See if chain still has slack.
 - **Change:** None.
