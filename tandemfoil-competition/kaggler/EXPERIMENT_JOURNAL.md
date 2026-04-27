@@ -76,3 +76,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 59.10` at epoch 8. **4.1% over v7 (61.60→59.10), 84% over baseline.** Per-split p MAE: single_in_dist=64, geom_camber_rc=72, geom_camber_cruise=42, re_rand=58. W&B `alphonse/v8-warm-lr3e5-l1surfp30` (`2behuc15`).
 - **Verdict:** Kept — LR-up restart worked again, confirming apr23 lesson.
 - **Notes:** Gap to thorfinn now ~22% (59 vs 46). Continue chain with another LR-up restart.
+
+### 2026-04-27 — v9-warm-lr5e5-l1surfp30 (LR restart up, 2nd time)
+- **Hypothesis:** v8's LR-up worked (4.1%), try one more bump 3e-5 → 5e-5 (matches v4's LR).
+- **Change:** `--resume model-2behuc15 --lr 5e-5 --train_max_points 0 --batch_size 2 --surf_weight 50 --surf_p_l1_weight 30`. Also extended `predict.py` to support comma-separated checkpoints (ensemble averaging).
+- **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 56.18` at epoch 8. **4.9% over v8 (59.10→56.18), 84% over baseline.** Per-split p MAE: single_in_dist=60, geom_camber_rc=68, geom_camber_cruise=42, re_rand=55. W&B `alphonse/v9-warm-lr5e5-l1surfp30` (`p6r6oy7j`).
+- **Verdict:** Kept. LR-up restart pattern continues to work — stays in the 4-5% per-iter bucket.
+- **Notes:** Gap to thorfinn ~18%. Chain still has room.
