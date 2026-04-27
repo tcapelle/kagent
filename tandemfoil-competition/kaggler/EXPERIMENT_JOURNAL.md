@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13: chain at sb=5 + lr=1e-6 (consolidate)
+- **Hypothesis:** iter12's `single_boost=5.0` win wasn't a fluke. Continue same recipe to consolidate.
+- **Change:** None — same as iter12.
+- **Result:** 7 epochs, best val/avg_surf_p=54.52 at epoch 6 (-0.74 vs iter12). Trajectory: 55.96 → 55.74 → 55.29 → 55.25 → 54.80 → 54.52 → 54.56. Predictions at `askeladd/ea6e94a`. W&B: askeladd/iter13-chain-sb5.
+- **Verdict:** kept (-0.74). Bigger gain than iter12 — single_boost is still pushing improvements through. All 4 splits dropped.
+- **Notes:** Per-split val: single_in_dist 2.34, geom_camber_rc 3.57, geom_camber_cruise 1.48, re_rand 2.67. Single is improving ~0.05/iter; the others tiny. iter14: same recipe, see if we keep grinding down.
+
 ### 2026-04-27 — iter12: bump single_boost 3.5 → 5.0
 - **Hypothesis:** val_single_in_dist is still my worst-relative split. iter7's `single_boost=2.5` and iter8's 3.5 both gave small wins; try 5.0.
 - **Change:** `--single_boost 5.0`. Keep lr=1e-6, single_boost was the only knob moved.
