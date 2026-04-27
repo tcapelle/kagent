@@ -61,10 +61,9 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # Use thorfinn 1f9db55 as primary (best single 35.588, cruise 20.832, re 35.324),
-    # blend with 8ce7299 for single decorrelation. RC blend with tanjiro stays.
-    single: str = "thorfinn:0.5,thorfinn5:0.3,thorfinn6:0.2"
-    rc: str = "thorfinn0:0.85,tanjiro:0.10,thorfinn:0.05"  # 0cc44bf base for rc (49.07)
+    # thorfinn 1f9db55 is now best per-split for single/cruise/re. RC: blend on 1f9db55 base.
+    single: str = "thorfinn5:0.5,thorfinn:0.3,thorfinn6:0.2"
+    rc: str = "thorfinn:0.85,tanjiro:0.10,thorfinn0:0.05"
     cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
 
