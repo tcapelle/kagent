@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: warm-chain iter5 (256/6/8) on full mesh → val/loss=0.78, avg_surf_p=57.51 (-13%)
+- **Hypothesis:** Apply the same bs=2 + train_subsample=0 + lr=2e-5 + p_weight=3 chain that took iter1 from 53→51 to the bigger iter5 model (66.41 surf_p). The bigger model has more capacity and may benefit more from the full-mesh fine-tune. Adds further ensemble diversity to iter1+iter2+iter3+iter5.
+- **Change:** `python train.py --warm_start /mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-rh634jvn/checkpoint.pt --n_hidden 256 --slice_num 128 --n_head 8 --batch_size 2 --train_subsample 0 --lr 2e-5 --p_weight 3.0 --epochs 9 --warmup_epochs 1`. Run `bxq8ylix`.
+- **Result:** stopped at epoch 6 (timeout 30.2 min, 56.4GB peak — 5min/epoch with the bigger model on full mesh). val/loss=**0.7834**, avg_surf_p=**57.51**. Per-split val/loss: single=0.77, rc=1.03, cruise=0.50, re_rand=0.83. Auto-submit predict.py succeeded this time (added `del model; torch.cuda.empty_cache()` before subprocess fork).
+- **Verdict:** kept; -13% on iter5's surf_p, but still well above iter3 (51.27). Useful for the ensemble.
+- **Notes:** Bigger model is much more memory-hungry (56GB vs 30GB). Final 5-way ensemble (iter1+iter2+iter3+iter5+iter6 weighted 0.1/0.15/0.4/0.15/0.2) submitted under `6b96924`. Best single still iter3 at 51.27; ensemble should clean up some single-model noise.
+
 ### 2026-04-27 — iter5: bigger model 256/6/8 slice=128, p_weight=1, from scratch → val/loss=0.76, avg_surf_p=66.41
 - **Hypothesis:** The chain plateau (iter3=51.27) suggests a capacity/diversity ceiling for the 192/6/64 architecture. Train a bigger, distinct model from scratch (n_hidden=256, slice_num=128, n_head=8, p_weight=1 instead of 3) to add ensemble diversity.
 - **Change:** Configurable model dims via CLI in `train.py`; predict.py reads `config.yaml` from the checkpoint dir. Run with `--n_hidden 256 --slice_num 128 --n_head 8 --p_weight 1.0 --epochs 28`.
