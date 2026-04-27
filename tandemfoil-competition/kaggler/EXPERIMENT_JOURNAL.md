@@ -22,6 +22,26 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12 weighted ensemble [iter11:0.6, iter10:0.4] — submitted
+
+- **Hypothesis:** Average iter11 + iter10 (the two best chain ckpts) for one last small ensemble lift before pivoting.
+- **Change:** Sweep over weights; best at `[iter11:0.6, iter10:0.4]` = val 70.80 (vs iter11 alone 70.84).
+- **Result:** Submission `apr27/fern/041f75f`. Marginal val gain 0.04 — same story as every chain ensemble: too correlated.
+- **Verdict:** kept as a submission, but the ensembles never beat the latest chain ckpt by more than rounding error.
+- **Notes:** Leaderboard refreshed after I'd been training ~7h; the field rolled forward dramatically (top 32, was 42 in the morning), and fern landed at #8 (test 67.63 from iter10, vs val 70.99 — test is ~5% better than val for our model). Relative to the leaders we'd need a large architectural jump (Fourier features, Re-aware norm, or a much larger model trained for longer) to climb.
+
+### 2026-04-27 — iter11 constant-lr-5e6 (continuation from iter10)
+
+- **Hypothesis:** One more chain step at lr=5e-6 to squeeze the last few hundredths.
+- **Result:** Best epoch 9 (EMA) mean=70.84 (-0.15 vs iter10 70.99). SWA = 70.91 (worse than best). Submission `apr27/fern/6caa7e1` (iter10's commit hash, since I'd not yet pushed iter11 — the iter11 train.py committed iter10's code).
+- **Verdict:** kept; convergence asymptote is around 70.7–70.8 for this setup.
+
+### 2026-04-27 — iter10 constant-lr-1e5 (continuation from iter9)
+
+- **Hypothesis:** Same recipe as iter9 with lr halved to 1e-5.
+- **Result:** Best epoch 6 (live) mean=70.99 (-0.30 vs iter9 71.29). SWA = 71.15 (worse). Submission `apr27/fern/2359b08`. *Test score 67.63* — test landed below val (the gap is consistent across chain ckpts, ~5% lower on test than val).
+- **Verdict:** kept; this is the best single-model fern ckpt and is the one currently scored on the leaderboard at 67.63.
+
 ### 2026-04-27 — iter9 constant-lr-2e5 + per-epoch SWA (continuation from iter6)
 
 - **Hypothesis:** With cosine fully consumed by iter6, switching to constant LR (2e-5) and continuing 9 more epochs lets the model keep walking the basin floor. Save per-epoch ckpts and SWA the last 6 to smooth out late-epoch noise.
