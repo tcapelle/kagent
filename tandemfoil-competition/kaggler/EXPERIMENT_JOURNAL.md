@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: EMA + ultra-low LR (kept)
+- **Hypothesis:** Stochastic weight averaging via an EMA of the live weights tends to give a free 0.2-0.5 point improvement; combined with an ultra-low LR (8e-6) on top of iter6, the EMA averages over the late-training oscillations the live model has been wobbling through.
+- **Change:** train.py — added `ema_decay=0.999` cfg, maintained an EMA shadow updated every step, validate (and save) using EMA weights. Set lr=8e-6. Warm-start from `checkpoints/best.pt` (iter6 ckpt).
+- **Result:** Best epoch 8 with **val avg_surf_p=46.55** (vs iter6 46.84 → -0.29). Steady monotonic descent with no oscillation: ep1=46.81, ep2=46.75, ep3=46.74, ep4=46.70, ep5=46.65, ep6=46.61, ep7=46.59, ep8=46.55. Wall time 32.2 min. WandB run 70qaist2.
+- **Verdict:** Kept. EMA is doing exactly what it says on the tin: silky-smooth descent and fractional gain.
+- **Notes:**
+  - **Auto-submit gotcha:** I committed the iter6 journal *after* iter7 training started. When the auto-predict subprocess ran `git rev-parse --short HEAD` at the end, it picked up the journal commit hash (`f00f383`), not the iter7 code commit. Predictions were saved under the wrong commit dir. Worked around by copying the predictions dir to the new ckpt-commit hash (`4e33c37`). Lesson: don't commit anything during a running training; or have predict.py accept an explicit commit override.
+  - The descent is now ~0.05 per epoch on val. Diminishing returns are real; further fine-tuning at this LR will struggle to shave another 0.5 point. To push significantly lower we likely need a structurally different model (bigger, or trained on a different objective entirely).
+
 ### 2026-04-27 — iter6: continue iter5 ckpt at lr=1e-5 (kept)
 - **Hypothesis:** Iter5's curve was still descending. Drop LR another factor of two (to 1e-5) and continue from `checkpoints/best.pt` (iter5 ckpt at 47.13). Same loss as iter5.
 - **Change:** train.py — `lr` 2e-5→1e-5; everything else identical to iter5.
