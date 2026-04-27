@@ -22,6 +22,10 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — ensemble5/6: 3-way with iter8 (single specialist)
+- ensemble5 (`4b82ff0`, iter4+iter6+iter8 0.40/0.40/0.20): TBD pending scorer.
+- iter9 launched in parallel: chain iter8 at lr=5e-6 single_boost=2 8 ep — refine the specialist.
+
 ### 2026-04-27 — iter8: chain warm-start iter7 bs=2 no_sub lr=2e-5 + single_boost=2
 - **Hypothesis:** Chain iter7 (single_boost=2 from-scratch) the same way iter4/iter6 chain their from-scratches. Should drop val to ~50 with iter7's single_in_dist advantage preserved.
 - **Change:** No code change. CLI: `--warm_start /tmp/iter7_best.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --epochs 10 --warmup_epochs 1 --single_boost 2.0`. Run `jd46xlwo`.
