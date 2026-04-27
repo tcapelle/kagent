@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15 chain polish at lr=2e-5, slow EMA, n_vol=50k
+- **Hypothesis:** Continue the chain at very low LR with slow EMA (0.9999, ~10000-step window) and intermediate subsample (50k for balance between speed and coverage). Squeeze out final residual gain.
+- **Change:** No code change; flags `--lr 2e-5 --resume /tmp/iter11_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9999 --p_weight 20.0 --n_vol_subsample 50000`.
+- **Result:** Best epoch 24/30 (timeout at 30 min, 78s/epoch), val/loss=0.852, **avg_surf_p=42.11** — exact tie with frieren's leader number on apr27. Run `gubm0gnz`.
+- **Verdict:** Kept (commit e29cc53). −0.19 vs iter11. iter15-single auto-submitted predictions to HEAD 51938c1 — leaderboard scorer picks this up.
+- **Ensemble check:** iter15 alone (42.11) BEATS iter15+iter11 (42.19) and iter15+iter11+iter10 (42.20). The chain is so tight that adding members drags down the mean. Single best polish wins.
+- **Notes:** Reached the asymptote of this architecture/recipe. Further gains likely require: a) different architecture (256/8/8/96), b) external data, or c) test-time tricks beyond simple ensemble.
+
 ### 2026-04-27 — iter14 fresh-from-scratch diverse training (DISCARDED)
 - **Hypothesis:** Train a fresh model with same architecture but feature_noise=0.1 (high) and no warm-start to get genuinely uncorrelated predictions. Even if its individual val is poor, ensembling with iter11 might cancel uncorrelated errors.
 - **Change:** Same `train.py`; flags `--lr 1e-3 --warmup_epochs 2 --epochs 30 --p_weight 20 --feature_noise 0.1` (no `--resume`). Run `7bpcj870`.
