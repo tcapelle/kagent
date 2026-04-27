@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: vanilla Transolver, no Fourier, p_weight=1, 30 epochs → val/loss=0.67, avg_surf_p=58.09
+- **Hypothesis:** All five prior single models share Fourier features; ensemble diversity is lower than I'd like. Train a fully vanilla Transolver (`fourier_scales=0`) with p_weight=1 (balanced 3-channel L1) to get an architecturally distinct base model.
+- **Change:** Made `FourierFeatures` opt-in (`model.py`: `fourier_scales=0` disables and the model takes raw 24 features). Run with `--fourier_scales 0 --p_weight 1.0 --epochs 30`. Run `gp7ce0vi`.
+- **Result:** epoch 30/30 finished in 24.1 min (10.5GB peak). val/loss=**0.6692** (best across iter1-7 because no p_weight inflation), avg_surf_p=**58.09** (single=0.64, rc=0.91, cruise=0.43, re_rand=0.70). Higher surf_p than iter3 (51.27) because no p_weight focus, but lower overall val/loss → useful for ensembling. Auto-submit predict.py succeeded (GPU cleanup fix from prev iter held).
+- **Verdict:** kept; higher diversity for the ensemble. Final 6-way ensemble (iter1+2+3+5+6+7 weighted 0.1/0.1/0.3/0.1/0.15/0.25) submitted under `886258e`.
+- **Notes:** Surprised that vanilla model converged faster (24 min vs 28 min for iter1) — Fourier features add wallclock overhead. Best-single still iter3 at 51.27. The 6-way ensemble is the strongest submission. Plan iter8 = warm-chain iter7 with bs=2 + full-mesh + p_weight=3 to sharpen its pressure score.
+
 ### 2026-04-27 — iter6: warm-chain iter5 (256/6/8) on full mesh → val/loss=0.78, avg_surf_p=57.51 (-13%)
 - **Hypothesis:** Apply the same bs=2 + train_subsample=0 + lr=2e-5 + p_weight=3 chain that took iter1 from 53→51 to the bigger iter5 model (66.41 surf_p). The bigger model has more capacity and may benefit more from the full-mesh fine-tune. Adds further ensemble diversity to iter1+iter2+iter3+iter5.
 - **Change:** `python train.py --warm_start /mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-rh634jvn/checkpoint.pt --n_hidden 256 --slice_num 128 --n_head 8 --batch_size 2 --train_subsample 0 --lr 2e-5 --p_weight 3.0 --epochs 9 --warmup_epochs 1`. Run `bxq8ylix`.
