@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Cp normalization (Re² scaling on pressure) (iter 6) — KEPT — RANK 1
+- **Hypothesis:** Pressure scales as ρU² ∝ Re² in kinematic units. Test sets re_rand and geom_cruise involve out-of-distribution Re — globally normalizing pressure mixes vastly different scales (std 17 to 304 across regimes). Per-sample dividing y_p by exp(2*(log_re - log_re_ref)) decouples scale from shape: model predicts a roughly-O(1) Cp; physical p reconstructed at output via re_factor multiplication.
+- **Change:** train.py — added cp_normalize flag, computes y_p/re_factor before global normalization, recomputes pressure-channel stats on rescaled targets (over 200 train samples). predict.py — saves Cp-rescaled stats in `runtime.yaml`, applies the same scaling at inference.
+- **Result:** 80 epochs in 27.4 min. Best val avg_surf_p=42.42 at epoch 74. **Test avg_surf_p=39.16 — RANK 1**, beating frieren (42.11) and thorfinn (42.90). Per-split: single=34.79 (best), geom_rc=51.90 (best), geom_cruise=27.54 (3rd), re_rand=42.43 (3rd).
+- **Verdict:** **Kept.** Single best improvement so far — closed the entire gap to leaders. Cruise/re_rand were the weakest splits in iter 5 and benefited most from Re-aware scaling.
+- **Notes:** With Re² rescaling, residual Cp std variation across samples is ~4x (43–186) vs ~100x raw. Memory still spare (4.5GB peak), so next experiment scales the model up — Iter 7 tries h160-l8 + same Cp recipe.
+
 ### 2026-04-27 — vol_subsample 20K + 80 epochs (iter 5) — KEPT
 - **Hypothesis:** With iter 4 overfitting, give the model more data variety per batch (vol_subsample 12K→20K) while keeping iter 3's 1.16M-param architecture. Use freed time for longer training (80 epochs).
 - **Change:** train.py — vol_subsample=20000, epochs=80, reverted model to h128-l6-s32-mr4. Same Huber loss, channel weights, surf_weight=20.
