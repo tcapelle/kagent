@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: ensemble iter3 + iter5 predictions (regression)
+- **Hypothesis:** Averaging two trained checkpoints in physical space should reduce error vs either alone (free ensemble win).
+- **Change:** Added `predict_ensemble.py`. Averaged iter3 (model-2ypzrvpq, val 65.0) and iter5 (model-xqti3sr8, val 65.0… wait, iter5 val 65.0, iter3 val 77.4) predictions, applied no-slip post-hoc.
+- **Result:** Test avg_surf_p = 61.14 (vs iter5 alone 59.94). Per split: single=56.61, geom_rc=73.81, geom_cruise=41.59, re_rand=72.56 (commit 95b634c on PVC).
+- **Verdict:** **discarded** as winning submission — iter5 (b5078b3, 59.94) stays best. The weaker iter3 dragged the average up.
+- **Notes:** Ensemble *did* beat naive mean-of-MAEs (64.76), confirming error decorrelation, but the quality gap between iter3 and iter5 was too big. Need ensemble of similarly-strong models. Plan iter8: rerun iter5-style training with slightly different hyperparams to get a complementary high-quality checkpoint, then re-ensemble.
+
 ### 2026-04-27 — iter6: bigger model 256/L7/slice128 (regression)
 - **Hypothesis:** Boost capacity — n_hidden 192→256, n_layers 6→7, slice_num 96→128, n_pos_freqs 10→14, max_pos_freq 16→24. With lr lowered to 4e-4 for stability. Even at fewer epochs (30 target → ~24 actual) the larger model should generalize better.
 - **Change:** train.py model_config + lr only.
