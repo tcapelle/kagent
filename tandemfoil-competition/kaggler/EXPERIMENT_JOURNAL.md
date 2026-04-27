@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter16: another seed (PYTHONHASHSEED=123) Fourier model + 9-way ensemble val=49.04
+- **Hypothesis:** More seed-diverse Fourier models → larger effective ensemble. Same recipe as iter1 with PYTHONHASHSEED=123. Run `wm65na34`.
+- **Result:** epoch 29 best, val/loss=0.7820, surf_p=**55.57**. Optimizer (now 14 sources) found val avg_surf_p **49.0383** (-0.07 from 49.12 → 49.04). New top weights: iter15=0.21, iter11=0.20, iter9=0.18, iter3=0.18, iter14=0.05, iter16=0.02, iter5/iter1/iter2/iter8 trace.
+- **Verdict:** kept; submitted under `832307e`. Marginal improvement.
+- **Notes:** Single-seed re-runs give diminishing returns (-0.04 each). Need bigger architectural moves to break through.
+
 ### 2026-04-27 — iter15: deeper chain on iter3 (lr=1e-6) → val_surf_p=51.23 + 8-way ensemble val=49.05
 - **Hypothesis:** iter3 holds 38% of optimal ensemble weight. Refining iter3 directly should give the biggest single-model improvement. Chain it at lr=1e-6 for 11 epochs (the deepest yet on the Fourier branch).
 - **Change:** Warm-start iter3 (`model-w2qvsfx1`), `lr=1e-6`, bs=2 full mesh. Run `n3rus7ko`.
