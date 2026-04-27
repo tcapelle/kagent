@@ -85,3 +85,4 @@ Keep entries short. Link W&B run URLs when useful.
 # iter11: heavier slice=128 weight
 # iter12: tight iter4+iter8 SWA
 # iter13: even heavier slice=128 (40%)
+# iter14: 50% slice=128
