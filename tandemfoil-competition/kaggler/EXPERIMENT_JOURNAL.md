@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9 chain again, LR=1e-5 (KEPT) — RANK 1
+- **Hypothesis:** Smooth out remaining residuals with LR=1e-5 cosine.
+- **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 1e-5`.
+- **Result:** Best epoch 11 (last), **val avg_surf_p=47.76**, **test avg_surf_p=41.53**. 27.5 min. Trajectory smooth: 49→49→50→49→48.6→49.6→48.3→48.0→47.9→47.9→47.76.
+- **Verdict:** Kept (commit `4241092`). **Rank 1** on leaderboard, ahead of frieren (42.11) by 0.58.
+- **Notes:** Improvement getting smaller per iter (iter8→9 dropped val by 0.79). Continue chaining at LR=5e-6; if plateau, switch to ensemble of recent ckpts.
+
 ### 2026-04-27 — iter8 chain again, LR=2e-5 (KEPT) — rank 2
 - **Hypothesis:** Lower LR (2e-5 cosine) from iter7 ckpt for smoother continued descent.
 - **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 2e-5`.
