@@ -230,25 +230,27 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter11: chain from iter9 best (qsywg20y, val=44.73), even lower LR.
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-qsywg20y/checkpoint.pt"
+# Iter13: warm-restart cycle from iter11 best (ii1fhq90, val=44.32) with a
+# bigger LR + single_boost=4 to push harder on the weakest split.
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-ii1fhq90/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 3e-6
+    lr: float = 2e-5
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
     surf_weight: float = 10.0
     epochs: int = 14
+    warmup_epochs: int = 0  # no warmup; chain step
     grad_clip: float = 1.0
     l1_weight: float = 1.0
-    l2_weight: float = 0.0  # pure L1 — directly aligned with MAE eval metric
+    l2_weight: float = 1.0  # restore L2 — earlier soup analysis shows L1-only is correlated with iter7 anyway
     p_weight: float = 5.0
     ema_decay: float = 0.99
-    # Sampler boost for the racecar_single domain (our weakest split).
-    single_boost: float = 2.0
+    # Strongly boost the racecar_single domain — biggest test gap is here.
+    single_boost: float = 4.0
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
