@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: chain warm-start iter7 bs=2 no_sub lr=2e-5 + single_boost=2
+- **Hypothesis:** Chain iter7 (single_boost=2 from-scratch) the same way iter4/iter6 chain their from-scratches. Should drop val to ~50 with iter7's single_in_dist advantage preserved.
+- **Change:** No code change. CLI: `--warm_start /tmp/iter7_best.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --epochs 10 --warmup_epochs 1 --single_boost 2.0`. Run `jd46xlwo`.
+- **Result:** 10 epochs, 23 min. Val 63.07→62.22→59.27→59.37→58.49→58.97→57.28→56.85→56.59→**56.36**. Best epoch 10. val/loss=1.51. Per-split val_loss: single=**2.18** (best yet — vs iter4=2.39, iter6=2.46), rc=2.07 (worse than iter4=1.76), cruise=0.43, re_rand=1.37 (worse than iter4=1.27). Predictions at `127ecd5`.
+- **Verdict:** Kept for ensemble — iter8 has the *unique* strength on single_in_dist that iter4/iter6 lack. Trade-off: worse on the other 3 splits, so won't beat ensemble3 alone, but should add genuine ensemble diversity.
+- **Notes:** This was expected — biasing the sampler costs the underweighted domains. iter8 is a "single_in_dist specialist" to mix into ensembles. Now: ensemble {iter4, iter6, iter8} weighted 0.40/0.40/0.20 to lean on the proven pair while pulling iter8's single_in_dist advantage in.
+
 ### 2026-04-27 — iter7: single_boost=2x from-scratch — best from-scratch yet, ALL splits improved
 - **Hypothesis:** Frieren's biggest test gap is single_in_dist (50.25 vs thorfinn 40.28 = 10pt). The default sampler weights all 3 domain groups equally (33% each); biasing raceCar single to 50% might push the model to fit single_in_dist better. Risk: cruise/tandem splits might suffer from less exposure.
 - **Change:** train.py — added `--single_boost` flag that multiplies sample_weights for raceCar single domain (read from meta.json domain_groups). With boost=2.0, raceCar single = 50% weight, tandem/cruise = 25% each. CLI: `--batch_size 8 --train_subsample 40000 --lr 5e-4 --epochs 35 --single_boost 2.0`. Run `7haq6108`.
