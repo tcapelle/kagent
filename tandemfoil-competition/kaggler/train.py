@@ -207,13 +207,14 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 4e-6
+    lr: float = 5e-6
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 15.0
-    surf_p_weight: float = 2.0  # bumped — leaderboard ranks pressure only
+    surf_weight: float = 20.0
+    surf_p_weight: float = 3.0
+    huber_beta: float = 0.3  # smaller beta = more L1 = closer to MAE objective
     ema_decay: float = 0.999
-    rc_single_boost: float = 10.0  # very strong single emphasis
+    rc_single_boost: float = 8.0
     epochs: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -315,7 +316,7 @@ def main():
     best_metrics: dict = {}
     global_step = 0
     train_start = time.time()
-    huber_beta = 1.0  # SmoothL1 transition in normalized space.
+    huber_beta = cfg.huber_beta
 
     # EMA shadow weights — often improve generalization a fraction of a point.
     ema_state: dict[str, torch.Tensor] | None = None
