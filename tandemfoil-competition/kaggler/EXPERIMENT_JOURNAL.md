@@ -110,3 +110,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** Best `avg_surf_p = 47.94` at epoch 8. **3.3% over v12 (49.55→47.94), 87% over baseline.** Per-split p MAE: single_in_dist=51, geom_camber_rc=58, geom_camber_cruise=37, re_rand=46. W&B `alphonse/v13-warm-lr5e5` (`py4jw21y`).
 - **Verdict:** Kept. Gain shrinking — next round bump LR.
 - **Notes:** Gap to leader at 35.20 = ~36%. ~7 more chain iters at this rate. Need bigger lever — try LR-up restart again or arch change.
+
+### 2026-04-27 — v14-warm-lr1e4-restart (DISCARDED)
+- **Hypothesis:** Big LR-up restart to 1e-4 (matches v3) might unlock a bigger jump.
+- **Change:** `--resume model-py4jw21y --lr 1e-4 ...`.
+- **Result:** Best `avg_surf_p = 48.93` at epoch 8 — **WORSE than v13 (47.94)**. Epoch 1 already regressed (47.94→48.97). LR was too aggressive — model destabilized and never recovered in 8 epochs.
+- **Verdict:** Discarded — keep v13 weights.
+- **Notes:** lr=1e-4 used to work in v3 but the model has now warm-started 10 times and is much further along the loss surface — large LR perturbs too much. Stay at lr=5e-5 going forward, only ever bump by ~1.5x at restart.
