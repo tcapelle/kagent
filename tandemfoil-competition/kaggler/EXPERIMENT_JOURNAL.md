@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: chain lr=1e-5 + surf_p_weight=5
+- **Hypothesis:** Continue chain at lower lr (1e-5) for finer steps; pw=5 already gave gains so keep it.
+- **Change:** `--resume ckpt --lr 1e-5 --warmup_frac 0.01 --surf_p_weight 5.0`. No code change.
+- **Result:** Best E13/14, avg_mae_surf_p = **48.49** (from 50.96, -4.8%). Per-split: single_in_dist=48.69, camber_rc=64.46, camber_cruise=32.28, re_rand=48.52. 29.2 min. W&B `kf42dpgs`.
+- **Verdict:** Kept. Plateau emerging — gain shrunk from -8.1% (iter4) to -4.8% (iter5). Per-epoch in iter5 was 0.13 pts (E12→E13).
+- **Notes:** Test (leaderboard) reads ~7-8 pts lower than val (iter2 val=62.71→test=54.64), so iter5 test ~ 40-42 → would be top 3, possibly top 2. camber_rc still dominant at 64.46. **Next:** push surf_p_weight to 8 (currently 5) or try pure L1 loss to see if loss-shape change unlocks gains; if no, try bigger fresh model.
+
 ### 2026-04-27 — iter4: chain lr=2e-5 + surf_p_weight=5
 - **Hypothesis:** geom_camber_rc was worst split last iter. Push pressure harder during fine-tune by increasing surf_p_weight 3→5 (per-channel weight inside surface loss). Same lr=2e-5.
 - **Change:** `python train.py --resume checkpoints/best.pt --lr 2e-5 --warmup_frac 0.01 --surf_p_weight 5.0`. No code change.
