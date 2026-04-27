@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15: warm-restart + bigger boosts (single=6, tandem=4)
+
+- **Hypothesis:** Iter13's recipe (warm-restart lr=2e-5 + boosted sampling) gave the biggest gain in many iters. Doubling down: keep lr=2e-5 warm-restart + bump single_boost to 6 and tandem_boost to 4.
+- **Change:** `train.py`: WARMSTART=wwki4ao9, single_boost=6, tandem_boost=4. Otherwise same.
+- **Result:** 14 epochs in 32 min. 42.26 → epoch 12 = **41.12** (best, -1.14 = 2.7%). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/642bc21/`. Run `er3i0nfe`.
+- **Verdict:** kept — large gain. Iter14 (4c57389) ALSO scored: **36.09 on test → still #2, gap to askeladd narrowed to 4.02**. Per-test breakdown (iter14): single=35.6, geom_rc=52.4, geom_cruise=21.3, re_rand=35.2. Single down -0.5 from iter13, geom_rc -0.15. Modest but consistent.
+- **Notes:** the warm-restart pattern (low LR chain → bump up + larger boosts) is winning. Pattern to apply: every 1-2 chain steps, do another warm-restart cycle with bumped LR + bigger boosts. Aim is to keep escaping plateaus.
+
 ### 2026-04-27 — iter14: chain + tandem_boost=3
 
 - **Hypothesis:** geom_rc is now my biggest test gap (7.5 vs askeladd). Add a `tandem_boost=3.0` so the racecar_tandem domain (which generalizes to geom_rc) gets 3x sampling weight. Continue chain from iter13.
