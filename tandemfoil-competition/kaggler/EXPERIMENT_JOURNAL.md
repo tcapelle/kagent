@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v13: chain v12 lr=1e-4, no noise (24ep) → 3-way per-split val=43.55
+- **Hypothesis:** Refining v12 (val=79, undertrained) with a normal LR chain (no noise) brings it close enough to v7/v10 quality to actually pull the per-split ensemble down. v12 alone helped only on geom_rc with weight 0.09; a stronger v13 should help all four splits.
+- **Change:** `--warm_start v12 --slice_num 32 --lr 1e-4 --epochs 25` (no noise during chain). 36s/epoch, 15 min total.
+- **Result:** v13 alone val=54.87 at epoch 24 (vs v12=79.55 → 31% improvement). Per-split: single=49.95, geom_rc=73.31, cruise=39.76, re_rand=56.46. **3-way per-split (v7+v10+v13)** drops avg to **43.55** from 43.76 — v13 helps all four splits with weights 0.05–0.20: single (0.65,0.30,0.05)=39.58; geom_rc (0.5,0.30,0.20)=59.11; cruise (0.5,0.45,0.05)=29.10; re_rand (0.5,0.35,0.15)=46.40. Adding v12 to the mix (4-way) hurts — v13 strictly dominates v12.
+- **Verdict:** Submitted at 4cd8d7d as new best. -0.32 val improvement vs prior 43.87.
+- **Notes:** slice=32 was the right diversity injection. v13's per-split contribution is biggest on geom_rc (0.20 weight) where it most decorrelates with v7/v10. Run `zzx0o96r`. Ideas: another fresh slice=32 with different seed for further diversity; or chain v13 even gentler (lr=2e-5).
+
 ### 2026-04-27 — v12: fresh slice=32 + Re/AoA noise (40ep) + 3-way per-split (val 43.76)
 - **Hypothesis:** Truly architecturally diverse model (slice=32 vs my v3/v6/v7=64 and v5/v8/v10=128) plus Re-noise=0.2 + AoA-noise=0.1 from scratch should give complementary errors that help the per-split ensemble, especially on geom_rc and re_rand.
 - **Change:** `--slice_num 32 --epochs 40 --re_noise 0.2 --aoa_noise 0.1` (fresh, no warm_start). 36s/epoch, 24 min total.
