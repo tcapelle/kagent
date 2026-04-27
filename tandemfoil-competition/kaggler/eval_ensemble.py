@@ -19,10 +19,17 @@ from model import Transolver
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoints", nargs="+", required=True)
+    ap.add_argument("--weights", nargs="+", type=float, default=None,
+                    help="Optional per-checkpoint weights for the ensemble (will be normalized).")
     ap.add_argument("--config", default=None)
     ap.add_argument("--splits_dir", default="/mnt/new-pvc/datasets/tandemfoil/splits_v2")
     ap.add_argument("--batch_size", type=int, default=2)
     args = ap.parse_args()
+    if args.weights is None:
+        args.weights = [1.0] * len(args.checkpoints)
+    assert len(args.weights) == len(args.checkpoints), "weights/checkpoints length mismatch"
+    w_total = sum(args.weights)
+    args.weights = [w / w_total for w in args.weights]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.config and Path(args.config).exists():
@@ -84,13 +91,14 @@ def main():
         print(f"  {Path(path).parent.name}: mean={mean_p:.4f} per_split={per}")
 
     # Ensemble
-    print("\n=== Ensemble (avg of normalized outputs) ===")
+    print(f"\n=== Ensemble weights={args.weights} ===")
+    weights = torch.tensor(args.weights, device=device).view(-1, 1, 1, 1)
     def gp_ens(xn):
         outs = []
         for m in models:
             with torch.amp.autocast("cuda", dtype=amp_dtype):
                 outs.append(m({"x": xn})["preds"].float())
-        return torch.stack(outs, 0).mean(0)
+        return (torch.stack(outs, 0) * weights).sum(0)
     mean_p, per = eval_pred_set(gp_ens)
     print(f"  ensemble: mean={mean_p:.4f} per_split={per}")
 

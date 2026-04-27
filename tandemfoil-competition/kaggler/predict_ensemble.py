@@ -37,6 +37,7 @@ TEST_SPLITS = [
 @dataclass
 class Config:
     checkpoints: list[str]
+    weights: list[float] | None = None  # optional per-checkpoint weights
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 2
@@ -45,6 +46,15 @@ class Config:
 cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
+
+if cfg.weights is None:
+    weights = [1.0 / len(cfg.checkpoints)] * len(cfg.checkpoints)
+else:
+    assert len(cfg.weights) == len(cfg.checkpoints)
+    s = sum(cfg.weights)
+    weights = [w / s for w in cfg.weights]
+print(f"Weights: {weights}")
+weights_t = torch.tensor(weights, device=device).view(-1, 1, 1, 1)
 
 # Load each model
 models = []
@@ -103,7 +113,7 @@ for split in TEST_SPLITS:
                 with torch.amp.autocast("cuda", dtype=amp_dtype):
                     pn = m({"x": x_norm})["preds"]
                 preds_norm.append(pn.float())
-            avg = torch.stack(preds_norm, dim=0).mean(dim=0)
+            avg = (torch.stack(preds_norm, dim=0) * weights_t).sum(dim=0)
             pred = avg * y_std + y_mean
 
             for j, x in enumerate(xs):
