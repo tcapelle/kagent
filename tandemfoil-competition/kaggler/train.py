@@ -56,6 +56,15 @@ class Config:
 cfg = sp.parse(Config)
 MAX_EPOCHS = 3 if cfg.debug else cfg.epochs
 
+# Resume mode: when continuing from a checkpoint, default to a lower LR and a
+# tiny warmup (the model is already trained — no need to ramp from zero).
+if cfg.resume_from is not None:
+    if cfg.lr == 5e-4:
+        cfg.lr = 1.5e-4
+    if cfg.warmup_steps == 1000:
+        cfg.warmup_steps = 100
+    print(f"Resume mode: lr={cfg.lr}, warmup={cfg.warmup_steps}")
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 
