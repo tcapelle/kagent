@@ -96,3 +96,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 8 epochs, monotonic. Best `avg_surf_p = 51.54` at epoch 8. **4.8% over v10 (54.13→51.54), 86% over baseline.** Per-split p MAE: single_in_dist=55, geom_camber_rc=63, geom_camber_cruise=39, re_rand=49. W&B `alphonse/v11-warm-lr5e5` (`vtebwe5c`).
 - **Verdict:** Kept. lr=5e-5 is the sweet spot — back to monotonic 4-5%/iter.
 - **Notes:** Gap to thorfinn now 12%. Continue chain.
+
+### 2026-04-27 — v12-warm-lr5e5
+- **Hypothesis:** Continue chain with same recipe (lr=5e-5, full mesh).
+- **Change:** `--resume model-vtebwe5c --lr 5e-5 --train_max_points 0 --batch_size 2 --surf_weight 50 --surf_p_l1_weight 30`.
+- **Result:** 8 epochs, monotonic. Best `avg_surf_p = 49.55` at epoch 8. **3.9% over v11 (51.54→49.55), 86% over baseline.** Per-split p MAE: single_in_dist=53, geom_camber_rc=60, geom_camber_cruise=38, re_rand=46. W&B `alphonse/v12-warm-lr5e5` (`z1ewlzjn`).
+- **Verdict:** Kept.
+- **Notes:** Test-side leaderboard at v11 commit was 42.32 (rank 5). Top = nezuko/thorfinn @ 35.20 (suspicious tie — same recipe). v12 should place me around ~40. Continue.
