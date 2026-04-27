@@ -21,6 +21,8 @@ PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 
 GOLD = "4318185"   # warm-start original (rc=61.70, re=51.05)
 ITER2 = "649c01d"  # iter2 chain (single=40.28, cruise=27.95)
+ITER1 = "790ca24"  # iter1 (single=40.73, cruise=28.39)
+ITER3 = "165f5b0"  # iter3 (= iter2 numbers, same predictions)
 
 
 @dataclass
@@ -28,6 +30,8 @@ class Config:
     agent: str | None = None
     single_blend_w: float = 0.0   # 0=ITER2 only, 1=GOLD only, 0.5=avg
     cruise_blend_w: float = 0.0   # same
+    extra_w_single: float = 0.0   # weight on ITER1 for single (subtracts from main pair)
+    extra_w_cruise: float = 0.0   # weight on ITER1 for cruise
 
 
 cfg = sp.parse(Config)
@@ -43,12 +47,20 @@ print(f"Output: {output_dir}")
 print(f"single_blend_w={cfg.single_blend_w}, cruise_blend_w={cfg.cruise_blend_w}")
 
 
-def blend(split: str, w: float):
+def blend(split: str, w_gold: float, w_extra_iter1: float = 0.0):
+    """Blend = w_gold * GOLD + w_extra * ITER1 + (1 - w_gold - w_extra) * ITER2."""
     a = torch.load(PREDICTIONS_DIR / agent_name / GOLD / f"{split}.pt", weights_only=False)
     b = torch.load(PREDICTIONS_DIR / agent_name / ITER2 / f"{split}.pt", weights_only=False)
-    out = [w * ai + (1 - w) * bi for ai, bi in zip(a, b)]
+    if w_extra_iter1 > 0:
+        c = torch.load(PREDICTIONS_DIR / agent_name / ITER1 / f"{split}.pt", weights_only=False)
+        w_iter2 = 1.0 - w_gold - w_extra_iter1
+        out = [w_gold * ai + w_iter2 * bi + w_extra_iter1 * ci
+               for ai, bi, ci in zip(a, b, c)]
+        print(f"  blend {split}: {w_gold:.2f}*{GOLD} + {w_iter2:.2f}*{ITER2} + {w_extra_iter1:.2f}*{ITER1}")
+    else:
+        out = [w_gold * ai + (1 - w_gold) * bi for ai, bi in zip(a, b)]
+        print(f"  blend {split}: {w_gold:.2f}*{GOLD} + {1-w_gold:.2f}*{ITER2}")
     torch.save(out, output_dir / f"{split}.pt")
-    print(f"  blend {split}: {w:.2f}*{GOLD} + {1-w:.2f}*{ITER2}")
 
 
 # rc and re_rand: copy gold (warm-start original)
@@ -59,7 +71,7 @@ for split in ["test_geom_camber_rc", "test_re_rand"]:
     print(f"  copied {GOLD}/{split}.pt")
 
 # single and cruise: blend
-blend("test_single_in_dist", cfg.single_blend_w)
-blend("test_geom_camber_cruise", cfg.cruise_blend_w)
+blend("test_single_in_dist", cfg.single_blend_w, cfg.extra_w_single)
+blend("test_geom_camber_cruise", cfg.cruise_blend_w, cfg.extra_w_cruise)
 
 print(f"\nBlend predictions saved to {output_dir}")
