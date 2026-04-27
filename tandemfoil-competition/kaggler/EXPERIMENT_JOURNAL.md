@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4 pweight10-vweight0.1-sw30 — pressure-focused chain
+
+- **Hypothesis:** *The leaderboard scores ONLY surface pressure MAE, not velocity.* (Confirmed: `avg/mae_surf_p` is the only ranking metric — Ux and Uy don't affect score.) Reweighting the loss to deeply focus on pressure should improve the metric without risking velocity-prediction accuracy that nobody scores.
+- **Change:** Added `p_weight` and `v_weight` to channel-weighted Huber. Iter4 cfg: `p_weight=10, v_weight=0.1, surf_weight=30, lr=1e-4, epochs=9`. Resumed iter3 ckpt.
+- **Result:** 9 epochs / 26.7 min. Best epoch 8 (live) mean=73.90. Per-split: single=67.56 (-8%), geom_rc=96.35 (-2%), geom_cruise=55.08 (-7%), re_rand=76.61 (-4%). Submission `apr27/fern/1668758`.
+- **Verdict:** kept — 4.6% improvement (77.47 → 73.90). All splits improved; `geom_rc` still the bottleneck.
+- **Notes:** Trajectory was fairly flat (77.4 → 73.9 over 9 epochs). Early epochs barely moved — most gain in last 4. The pressure-focus is working but slowly. Iter5: try even more aggressive pressure focus (p_weight=30, v_weight≈0) and lower LR to keep chaining.
+
 ### 2026-04-27 — SWA(iter1+iter2+iter3) and SWA(iter2+iter3) — discarded
 
 - **Hypothesis:** Stochastic weight averaging across the chained checkpoints would land in a wider/flatter minimum than any individual ckpt.
