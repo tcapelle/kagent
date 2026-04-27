@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Ensemble + diversity-seed runs (iter 13–17)
+- **Hypothesis:** A handful of moderately-similar checkpoints (iter 8 + variants) averaged should produce a tighter prediction by cancelling independent errors. Tried: 2-way (iter 8+11), 3-way (iter 8+11+13), weighted (iter 8 ×3 + iter 13 + iter 15).
+- **Diversity members trained:**
+  - iter 13 (surf_w=30): val 39.56 → test 35.77 — different bias, slightly worse alone.
+  - iter 15 (seed=1234, otherwise iter 8 recipe): val 40.43 → test 35.98 — different init/data trajectory, also worse alone.
+  - iter 17 (lr=5e-4, seed=42): in progress.
+- **Result:** iter 8 alone (test 32.07) remains my top scoring submission. Ensemble scores (b5c6c32, f4e504d, e3a4bdc) still pending in scores.json after >1 hour.
+- **Verdict:** Inconclusive on ensembles until scored. Iter 8 alone is the proven champion.
+- **Notes:** Setting torch.manual_seed materially affects iter 8-style training: the canonical iter 8 (no explicit seed) reached val 35.88; an explicit seed=1234 reached only 40.43. Suggests iter 8's optimum was somewhat lucky — explains why bigger-model attempts (iter 7, iter 10) couldn't match it. Future runs should run iter 8 with multiple seeds and pick the best, or properly average them.
+
 ### 2026-04-27 — 2-checkpoint ensemble iter 8 + iter 11 (iter 12) — submitted
 - **Hypothesis:** iter 8 (huber_delta=0.1) and iter 11 (huber_delta=0.05) have the same architecture and Cp recipe but different loss-shape — iter 11's val_single is slightly better (31.19 vs 33.13) while iter 8 is better on geom_rc. Averaging predictions should give a tighter consensus on common errors and partial cancellation of independent ones.
 - **Change:** Added predict_ensemble.py — loads multiple checkpoints with their own runtime.yaml, runs each, averages predictions before saving. No retraining.
