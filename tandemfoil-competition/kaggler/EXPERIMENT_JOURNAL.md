@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v15-v17: arch diversity attempts that didn't help (stuck at 43.47)
+- **Hypothesis:** More architecturally diverse models (n_head=8, mlp_ratio=4) should add ensemble value beyond v7/v10/v14.
+- **Change:**
+  - v15 fresh n_head=8 slice=64 (35ep) — val=61.79, run `5jd3tlcq`
+  - v16 chain v15 lr=1e-4 (20ep) — val=55.27, run `y451ksga`
+  - v17 fresh mlp_ratio=4 slice=64 (28ep) — val=65.22, run `atzsk6jy`
+- **Result:** All three add ZERO weight in 4-way per-split sweeps (v7+v10+v14+vN) — best per-split optima always pick (0.62,0.30,0.08,0) for single, (0.5,0.30,0.20,0) for geom_rc, etc. Ensemble val stays at 43.471.
+- **Verdict:** Discarded all three for ensemble.
+- **Notes:** v15/v16/v17 are all in the slice=64 family → too correlated with v7. The only diversity that helped was v14 (slice=32). The slice_num is the key axis; n_head and mlp_ratio aren't enough. To improve further would need slice=192/256 (slow but distinct from {32,64,128}) or a fundamentally different architecture (GNN, etc.). Time-limited so submitting current best 43.47 ensemble.
+
 ### 2026-04-27 — v14: chain v13 lr=2e-5 (11ep) → 3-way per-split val=43.47
 - **Hypothesis:** Even gentler chain on v13 refines toward a tighter slice=32 minimum, improving the 3-way ensemble.
 - **Change:** `--warm_start v13 --slice_num 32 --lr 2e-5 --epochs 15`. 36s/epoch, 9 min total.
