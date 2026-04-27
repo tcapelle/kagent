@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — drop-path01 (DISCARDED)
+- **Hypothesis:** stochastic depth (DropPath, linearly increasing 0→0.1 across blocks) as an additional regularizer to fight val_geom_camber_rc overfit.
+- **Change:** model.py — `drop_path` param on TransolverBlock, applied per-residual at training; train.py model_config drop_path=0.1.
+- **Result:** 32 epochs in 30.6 min. Best epoch 32: avg_surf_p=108.88 (worse than iter8's 93.62). val_geom_camber_rc=2.47 (worse).
+- **Verdict:** discarded — `git reset --hard HEAD~1`. Stochastic depth + small model is too aggressive; effectively reduces depth and the model can't converge in budget.
+- **Notes:** another attempt to over-regularize a model that's already at the regularization sweet spot (input noise 0.03 + dropout 0.05). Future: try drop_path=0.05 as a smaller dose; or drop_path on bigger model where it has more layers to drop.
+
 ### 2026-04-27 — bs8-lr11e4 (DISCARDED)
 - **Hypothesis:** larger batch (4→8) for smoother gradients with sqrt(2)x LR (8e-4→1.1e-3); plenty of VRAM available.
 - **Change:** `batch_size=8`, `lr=1.1e-3`.
