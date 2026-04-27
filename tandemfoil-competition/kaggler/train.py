@@ -35,6 +35,7 @@ GEOM_AUG_DIMS = [15, 16, 17]  # foil1 camber (M), position (P), thickness (TT)
 
 
 def make_subsample_collate(n_keep: int, camber_noise: float = 0.0):
+    """If n_keep <= 0, no subsampling (full mesh)."""
     def collate(batch):
         new_batch = []
         for x, y, is_surface in batch:
@@ -48,7 +49,7 @@ def make_subsample_collate(n_keep: int, camber_noise: float = 0.0):
                 noise[17] = torch.randn(1).item() * camber_noise * 0.3
                 x = x + noise.unsqueeze(0)
             n = x.shape[0]
-            if n <= n_keep:
+            if n_keep <= 0 or n <= n_keep:
                 new_batch.append((x, y, is_surface))
                 continue
             surf_idx = torch.where(is_surface)[0]
