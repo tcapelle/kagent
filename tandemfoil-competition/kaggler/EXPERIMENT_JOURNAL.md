@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v3: second chain warm-start from v2 (lr=3e-5, 25ep)
+- **Hypothesis:** Even gentler chain (3x lower LR than v2) lets cosine refine the v2 minimum further without disrupting it.
+- **Change:** `--warm_start v2.checkpoint --lr 3e-5 --epochs 25` (no warmup, plain cosine).
+- **Result:** Best val avg_surf_p=46.26 at epoch 23 (vs v2=47.67 → 3% improvement). 19.3 min total. Per-split: single_in_dist=41.33, geom_rc=63.04, geom_cruise=31.33, re_rand=49.32.
+- **Verdict:** Kept — pushes within 0.3 of thorfinn's test 45.94 on val (and beats their val 52.08 by 6 points).
+- **Notes:** Plateau around 46.2 across e16-25. Diminishing returns from more chaining. Only single_in_dist and re_rand really improve; geom_rc still stuck at 63 (vs thorfinn 61.7) — that's the differentiator. Run `l0nw6exf`. Next: try fresh-seed model for ensemble OR architectural change (slice_num=128 fresh).
+
 ### 2026-04-27 — v2: chain warm-start from v1 (lr=1e-4, 30ep)
 - **Hypothesis:** Chain warm-start at lower LR refines v1's solution by exploring nearby minima with slow cosine decay (thorfinn went 56→52 doing this).
 - **Change:** Added `--warm_start` arg pointing to v1 checkpoint; lr=1e-4 (5x v1's final), epochs=30, no warmup, plain cosine decay.
