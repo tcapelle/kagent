@@ -49,6 +49,7 @@ class Config:
     grad_clip: float = 1.0
     bf16: bool = True
     train_subsample: int = 40000  # subsample non-surface nodes per training sample; surfaces always kept
+    single_boost: float = 1.0  # multiply racecar_single sample weights by this — boost the hardest val split
     warm_start: str | None = None  # path to a previous checkpoint.pt to resume from
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -65,6 +66,19 @@ print(f"Device: {device}" + (" [DEBUG]" if cfg.debug else ""))
 
 train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
 stats = {k: v.to(device) for k, v in stats.items()}
+
+# Optionally boost the racecar_single domain — single_in_dist is consistently my worst val split.
+if cfg.single_boost != 1.0 and not cfg.debug:
+    import json as _json
+    with open(Path(cfg.splits_dir) / "meta.json") as _f:
+        _meta = _json.load(_f)
+    _single_idx = set(_meta["domain_groups"]["racecar_single"])
+    boosted = sample_weights.clone()
+    for i in _single_idx:
+        if i < len(boosted):
+            boosted[i] = boosted[i] * cfg.single_boost
+    sample_weights = boosted
+    print(f"single_boost={cfg.single_boost}: weights re-normalised over racecar_single ({len(_single_idx)} samples)")
 
 loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                      persistent_workers=True, prefetch_factor=2)
