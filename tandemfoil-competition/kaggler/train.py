@@ -66,13 +66,13 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 8
-    surf_weight: float = 30.0
-    p_weight: float = 8.0
+    surf_weight: float = 20.0
+    p_weight: float = 4.0
     epochs: int = 50
     train_n_volume: int = 32000
     bf16: bool = True
-    huber_beta: float = 1.0  # smooth L1 transition; the metric is L1 so we
-    # want optimization tied to L1, but smooth near zero for stable gradients
+    huber_beta: float = 0.05  # small beta -> nearly pure L1 (metric is L1 MAE);
+    # quadratic only in tiny region near zero for gradient stability
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
