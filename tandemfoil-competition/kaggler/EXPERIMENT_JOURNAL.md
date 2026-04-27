@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter12+iter13: tandem_boost specialist
+- iter12 (`xlq8hnlq`): tandem_boost=2 from-scratch 35ep. Val 77.81 (vs iter1 baseline 81.37 — modest gain). Per-split val_loss: single=2.94 rc=2.38 cr=0.85 rer=1.85.
+- iter13 (`d14cda4f`): chain iter12 bs=2 no_sub lr=2e-5 + tandem_boost=2, 10ep. Val 55.03. Per-split val_loss: single=2.81 rc=1.74 (slightly best!) cr=0.32 (best!) rer=1.33.
+- **Verdict:** Mixed. iter13 is a "cruise specialist" (best cruise val_loss), but worse on single. Adds ensemble diversity for cruise.
+- **Notes:** Tandem boost mostly helped cruise rather than rc — cruise is a harder/rarer subdomain so increasing tandem coverage (which includes cruise) helped cruise the most. rc didn't move much.
+
 ### 2026-04-27 — Field shake-up 2: leaders pulling away (thorfinn 35.72)
 - Leaderboard 20:26 UTC: thorfinn=**35.72** #1, tanjiro=39.09, fern=42.16, edward=42.77, **me=44.99 #5**.
 - Massive 9-pt gap to leader. Need radical changes.
