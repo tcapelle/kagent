@@ -37,10 +37,10 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 @dataclass
 class Config:
     lr: float = 5e-4
-    weight_decay: float = 5e-5
+    weight_decay: float = 1e-5
     batch_size: int = 4
     surf_weight: float = 20.0
-    surf_p_weight: float = 4.0  # extra multiplier on surface pressure (primary metric)
+    surf_p_weight: float = 12.0  # extra multiplier on surface pressure (primary metric)
     epochs: int = 50
     train_subsample: int = 20000
     warmup_steps: int = 1000
@@ -92,7 +92,7 @@ model_config = dict(
     fun_dim=X_DIM - 2,
     out_dim=3,
     n_hidden=256,
-    n_layers=8,
+    n_layers=6,
     n_head=8,
     slice_num=96,
     mlp_ratio=4,
