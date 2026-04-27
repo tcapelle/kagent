@@ -52,6 +52,7 @@ class Config:
     use_amp: bool = True
     vol_subsample: int = 20000  # max volume nodes per sample at training time
     cp_normalize: bool = True  # divide pressure target by exp(2*(log_re - LOG_RE_REF))
+    velocity_norm: bool = True  # also divide Ux/Uy by exp(log_re - LOG_RE_REF) (linear in Re)
     log_re_ref: float = 14.0  # reference log(Re) ~1.2M for Cp normalization
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -131,30 +132,73 @@ ch_weights = torch.tensor([1.0, 1.0, cfg.p_channel_weight], device=device).view(
 
 
 def _re_factor(x_raw):
-    """Per-sample Re² scale factor: x_raw is [B, N, 24] raw input. Returns [B, 1, 1]."""
-    log_re = x_raw[:, 0, 13]  # log_re is constant per sample, take first node
+    """Per-sample Re² scale factor for pressure: x_raw is [B, N, 24]. Returns [B, 1, 1]."""
+    log_re = x_raw[:, 0, 13]
     return torch.exp(2.0 * (log_re - cfg.log_re_ref)).view(-1, 1, 1)
 
 
-# Recompute pressure-channel stats on Cp-rescaled targets.
-if cfg.cp_normalize:
-    print("Computing Cp-rescaled pressure stats...")
+def _re_factor_v(x_raw):
+    """Per-sample Re scale factor for velocity (linear in Re). Returns [B, 1, 1]."""
+    log_re = x_raw[:, 0, 13]
+    return torch.exp(log_re - cfg.log_re_ref).view(-1, 1, 1)
+
+
+def _scale_y(y, x_raw):
+    """Apply Cp/velocity normalization: y[..., 0:2] /= re_factor_v, y[..., 2] /= re_factor_p."""
+    out = y
+    if cfg.velocity_norm:
+        rfv = _re_factor_v(x_raw)
+        out = torch.cat([out[..., :2] / rfv, out[..., 2:3]], dim=-1)
+    if cfg.cp_normalize:
+        rfp = _re_factor(x_raw)
+        out = torch.cat([out[..., :2], out[..., 2:3] / rfp], dim=-1)
+    return out
+
+
+def _unscale_pred(pred, x_raw):
+    """Reverse normalization on predictions back to physical units."""
+    out = pred
+    if cfg.cp_normalize:
+        rfp = _re_factor(x_raw)
+        out = torch.cat([out[..., :2], out[..., 2:3] * rfp], dim=-1)
+    if cfg.velocity_norm:
+        rfv = _re_factor_v(x_raw)
+        out = torch.cat([out[..., :2] * rfv, out[..., 2:3]], dim=-1)
+    return out
+
+
+# Recompute target stats over rescaled (Cp / velocity-normalized) targets.
+if cfg.cp_normalize or cfg.velocity_norm:
+    print("Computing rescaled-target stats...")
     import random
     random.seed(42)
     n_subset = min(200, len(train_ds))
     subset_idx = random.sample(range(len(train_ds)), n_subset)
-    p_scaled_chunks = []
+    y_scaled_chunks = []
     for i in subset_idx:
         xr, yr, _ = train_ds[i]
         log_re_i = xr[0, 13].item()
-        rf = float(torch.exp(torch.tensor(2.0 * (log_re_i - cfg.log_re_ref))))
-        p_scaled_chunks.append(yr[:, 2] / rf)
-    p_scaled_all = torch.cat(p_scaled_chunks)
-    new_p_mean = p_scaled_all.mean().item()
-    new_p_std = p_scaled_all.std().item()
-    print(f"Cp stats over {n_subset} samples: mean={new_p_mean:.4f}, std={new_p_std:.4f}")
-    stats["y_mean"][2] = new_p_mean
-    stats["y_std"][2] = new_p_std
+        ys = yr.clone()
+        if cfg.velocity_norm:
+            rfv = float(torch.exp(torch.tensor(log_re_i - cfg.log_re_ref)))
+            ys[:, 0] = ys[:, 0] / rfv
+            ys[:, 1] = ys[:, 1] / rfv
+        if cfg.cp_normalize:
+            rfp = float(torch.exp(torch.tensor(2.0 * (log_re_i - cfg.log_re_ref))))
+            ys[:, 2] = ys[:, 2] / rfp
+        y_scaled_chunks.append(ys)
+    y_scaled_all = torch.cat(y_scaled_chunks, dim=0)
+    new_mean = y_scaled_all.mean(dim=0)
+    new_std = y_scaled_all.std(dim=0)
+    print(f"Rescaled stats (Ux,Uy,p): mean={new_mean.tolist()}, std={new_std.tolist()}")
+    if cfg.velocity_norm:
+        stats["y_mean"][0] = new_mean[0].item()
+        stats["y_mean"][1] = new_mean[1].item()
+        stats["y_std"][0] = new_std[0].item()
+        stats["y_std"][1] = new_std[1].item()
+    if cfg.cp_normalize:
+        stats["y_mean"][2] = new_mean[2].item()
+        stats["y_std"][2] = new_std[2].item()
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -185,12 +229,13 @@ model_path = model_dir / "checkpoint.pt"
 with open(model_dir / "config.yaml", "w") as f:
     yaml.dump(model_config, f)
 
-# Save runtime info (Cp normalization params + adjusted stats) for predict.py.
+# Save runtime info (Cp/velocity normalization params + adjusted stats) for predict.py.
 runtime_info = {
     "cp_normalize": cfg.cp_normalize,
+    "velocity_norm": cfg.velocity_norm,
     "log_re_ref": cfg.log_re_ref,
-    "p_mean_cp": stats["y_mean"][2].item(),
-    "p_std_cp": stats["y_std"][2].item(),
+    "y_mean": [stats["y_mean"][i].item() for i in range(3)],
+    "y_std": [stats["y_std"][i].item() for i in range(3)],
 }
 with open(model_dir / "runtime.yaml", "w") as f:
     yaml.dump(runtime_info, f)
@@ -215,9 +260,7 @@ for epoch in range(MAX_EPOCHS):
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
-        re_factor = _re_factor(x) if cfg.cp_normalize else None
-        if cfg.cp_normalize:
-            y = torch.cat([y[..., :2], (y[..., 2:3] / re_factor)], dim=-1)
+        y = _scale_y(y, x)
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
@@ -270,11 +313,10 @@ for epoch in range(MAX_EPOCHS):
                 is_surface = is_surface.to(device, non_blocking=True)
                 mask = mask.to(device, non_blocking=True)
 
-                re_factor = _re_factor(x) if cfg.cp_normalize else None
-                y_phys = y  # keep physical for MAE
-                if cfg.cp_normalize:
-                    y = torch.cat([y[..., :2], (y[..., 2:3] / re_factor)], dim=-1)
-                x = (x - stats["x_mean"]) / stats["x_std"]
+                x_raw = x
+                y_phys = y
+                y = _scale_y(y, x_raw)
+                x = (x_raw - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.use_amp):
@@ -288,8 +330,7 @@ for epoch in range(MAX_EPOCHS):
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
-                if cfg.cp_normalize:
-                    pred_orig = torch.cat([pred_orig[..., :2], pred_orig[..., 2:3] * re_factor], dim=-1)
+                pred_orig = _unscale_pred(pred_orig, x_raw)
                 err = (pred_orig - y_phys).abs()
                 mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))

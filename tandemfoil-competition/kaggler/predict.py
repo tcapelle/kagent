@@ -62,11 +62,12 @@ with open(config_path) as f:
     model_config = yaml.safe_load(f)
 
 runtime_path = ckpt_path.parent / "runtime.yaml"
-runtime_info = {"cp_normalize": False, "log_re_ref": 14.0}
+runtime_info = {"cp_normalize": False, "velocity_norm": False, "log_re_ref": 14.0}
 if runtime_path.exists():
     with open(runtime_path) as f:
         runtime_info = yaml.safe_load(f) or runtime_info
 cp_normalize = bool(runtime_info.get("cp_normalize", False))
+velocity_norm = bool(runtime_info.get("velocity_norm", False))
 log_re_ref = float(runtime_info.get("log_re_ref", 14.0))
 
 model = Transolver(**model_config).to(device)
@@ -82,10 +83,10 @@ x_mean = torch.tensor(stats_data["x_mean"], dtype=torch.float32, device=device)
 x_std = torch.tensor(stats_data["x_std"], dtype=torch.float32, device=device)
 y_mean = torch.tensor(stats_data["y_mean"], dtype=torch.float32, device=device)
 y_std = torch.tensor(stats_data["y_std"], dtype=torch.float32, device=device)
-# If trained with Cp normalization, override pressure-channel stats with rescaled stats.
-if cp_normalize:
-    y_mean[2] = float(runtime_info["p_mean_cp"])
-    y_std[2] = float(runtime_info["p_std_cp"])
+# If trained with rescaled targets, override per-channel stats with the rescaled ones.
+if "y_mean" in runtime_info:
+    y_mean = torch.tensor(runtime_info["y_mean"], dtype=torch.float32, device=device)
+    y_std = torch.tensor(runtime_info["y_std"], dtype=torch.float32, device=device)
 
 # Save predictions keyed by agent + commit hash
 agent_name = cfg.agent or "unknown"
@@ -117,10 +118,13 @@ for split in TEST_SPLITS:
 
             pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
             pred = pred_norm * y_std + y_mean
+            log_re = x_pad[:, 0, 13]
             if cp_normalize:
-                log_re = x_pad[:, 0, 13]  # constant per sample
-                re_factor = torch.exp(2.0 * (log_re - log_re_ref)).view(-1, 1, 1)
-                pred = torch.cat([pred[..., :2], pred[..., 2:3] * re_factor], dim=-1)
+                rfp = torch.exp(2.0 * (log_re - log_re_ref)).view(-1, 1, 1)
+                pred = torch.cat([pred[..., :2], pred[..., 2:3] * rfp], dim=-1)
+            if velocity_norm:
+                rfv = torch.exp(log_re - log_re_ref).view(-1, 1, 1)
+                pred = torch.cat([pred[..., :2] * rfv, pred[..., 2:3]], dim=-1)
 
             for j, x in enumerate(xs):
                 predictions.append(pred[j, :x.shape[0]].cpu())
