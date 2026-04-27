@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8-surf_p5 (FAILED, discarded)
+- **Hypothesis:** in Cp-space, surface-pressure errors are dimensionless O(0.1) — much safer to crank `surf_p_weight=5.0` (vs 2.5) without volume gradient starvation.
+- **Change:** `train.py` — `surf_p_weight: 2.5 → 5.0`. Single knob.
+- **Result:** 13/14 epochs. **avg val surf_p MAE 66.76 → 71.06 (+6.4% WORSE).** Per-split: in_dist +6.6%, rc +1.5%, **cruise +16.3%**, re_rand +6.5%. W&B run id `o5xfi8m9`.
+- **Verdict:** discarded — reset to iter7 (`29489dd`).
+- **Notes:** Counter-intuitive but consistent with iter4-era v12-v15 finding (apr23 journal): heavy surf weight starves the *volume* features the surface needs for context (wake, recirculation). In Cp-space the optimum surf_p_w is even lower (~2.5) because the loss is already balanced. **Lesson: don't increase surf_p_weight past ~2.5 — it inverted on cruise (+16%) which is exactly the regime that should benefit most from focus.**
+
 ### 2026-04-27 — iter7-cp-norm (HUGE WIN, KEPT)
 - **Hypothesis:** kinematic pressure (`y[..,2]`, units m²/s²) scales as q_inf = 0.5·U_inf², and U_inf can be recovered from `x[..,13] = log(Re)` via `U_inf = exp(log_Re) * (nu/L)` (~m/s for unit chord). Training in Cp space `(p / U_inf², U/U_inf, U/U_inf)` makes targets dimensionless and *regime-invariant*: every sample has Cp_std ~ O(0.1-1) regardless of Re, so a unit-MSE loss is automatically balanced — the per-sample variance trick can't compensate the 137× cross-regime span the way Cp normalization does directly.
 - **Change:** `train.py` — added `y_scale_from_x_raw` helper using `NU_OVER_L=1.5e-5`; replaced `(y - y_mean)/y_std` with `y / y_scale` in train + val; replaced `pred * y_std + y_mean` with `pred * y_scale` for MAE. `predict.py` mirrors. Reverted hparams to iter4 baseline (surf_p_w=2.5, var_floor=0.001 since Cp-space variance is naturally O(0.05-0.5)).
