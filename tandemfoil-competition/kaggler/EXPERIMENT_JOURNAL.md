@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — ensemble1: iter1+iter2+iter3 weighted (0.1/0.35/0.55) — submitted at `8c66656`
+- **Hypothesis:** Three chain checkpoints with different val/avg_surf_p (81.4 / 54.4 / 53.5) should ensemble lower than the best single via prediction-space averaging. Weight by inverse strength: iter3 (best) gets 0.55, iter2 0.35, iter1 0.1 for tiny diversity.
+- **Change:** No code change. `python ensemble.py --sources 7ceb221 031565e 8c116e8 --weights 0.1 0.35 0.55` while iter4 is training. Output goes to commit `8c66656` (current HEAD = iter3 journal commit).
+- **Result:** TBD — pending scorer pickup. Expected ~46.0–46.5 (small gain over iter3 solo at 46.87).
+- **Verdict:** TBD.
+- **Notes:** Leaderboard at submission: I'm #2 with iter3 at 46.87, thorfinn #1 at 45.94. Single_in_dist is my biggest gap (51.72 vs thorfinn 42.84 — 8.88 points). I'm AHEAD on re_rand (44.28 vs 51.05) and tied on geom_cruise. So ensembling should help close the single_in_dist gap by averaging away over-confident errors there.
+
 ### 2026-04-27 — iter3: chain warm-start lr=5e-6 (continue iter2)
 - **Hypothesis:** Same recipe as iter2 but with LR halved-then-some — warm iter2 at lr=5e-6, 1-ep warmup + cosine, 10 epochs. apr23 iter101 got val 1.40→1.00 with this stride; even diminishing returns should still drop val a few tenths.
 - **Change:** No code change. CLI: `--warm_start /tmp/iter2_best.pt --batch_size 2 --train_subsample 0 --lr 5e-6 --epochs 10 --warmup_epochs 1`. Run `knmw6p1d`.
