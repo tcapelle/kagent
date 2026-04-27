@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13: cycle-2 deeper pretrain — warm iter10 bs=4 sub60K lr=2e-5 25ep (commit 499826b)
+- **Hypothesis:** Repeat the iter9 trick from iter10's stronger base. Cosine over 25 ep at lr=2e-5 (lower than iter9's 5e-5 since model is more converged).
+- **Change:** `--warm_start /tmp/iter10_best.pt --lr 2e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`. Same arch.
+- **Result:** **val/loss=1.2364** at epoch 19 (26.3 min). Per-split val: 2.00, 1.54, 0.31, 1.09. ~3.5% improvement over iter10 (1.281).
+- **Verdict:** kept. Confirms cycling: bs=2-fine-tune → bs=4-coarse-pretrain → bs=2-fine-tune yields compounding gains.
+- **Notes:** Smaller relative gain than iter9→iter10 cycle (12% → 3.5%) — diminishing returns are setting in. Next: iter14 = bs=2 fine-tune from iter13 → expect val ~1.10.
+
 ### 2026-04-27 — iter11: chain link from iter10 lr=5e-6 (commit 049e6b5 → preds)
 - **Hypothesis:** Continue warm-start chain from iter10 at lr=5e-6 to extract marginal further gains.
 - **Change:** `--warm_start /tmp/iter10_best.pt --lr 5e-6 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
