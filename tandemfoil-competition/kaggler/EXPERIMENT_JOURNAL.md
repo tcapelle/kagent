@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: chain + save_last_k=8 for in-training SWA
+- **Hypothesis:** the trajectory wobbles by ~0.1pt around the best epoch (iter10's best was at e12, then drift). Saving the last K epoch checkpoints and SWA-ing them should shave another 0.1–0.2pt by sitting at the basin centre.
+- **Change:** add `--save_last_k` arg → snaps `snap_e0NN.pt` for the last K epochs; mirrored to PVC alongside the best checkpoint. Same chain hyperparams as iter10.
+- **Result:** 28 epochs in 31 min. Best epoch 25 → val/avg_surf_p=45.21 (single=39.38, geom_rc=62.56, geom_cruise=31.35, re_rand=47.57). Run 375cltpx. Predictions at apr27-5/askeladd/e2fb096.
+- **SWA experiments (all in val/avg_surf_p):**
+  - single best e25: **45.215** (winner)
+  - SWA all 6 snaps (e23–28): 45.271
+  - SWA top-3 by val (e23,25,28): 45.254
+  - SWA best-2 (e25,28): 45.242
+  - prediction-ensemble of 3 snaps: 45.244
+- **Verdict:** kept iter11 single checkpoint — improvement (45.31 → 45.21, -0.10). SWA across nearby epochs did NOT help — the loss basin is sharp enough that the best individual checkpoint dominates a local average.
+- **Notes:** Plateau is real on this architecture. Per-iter gain shrinking to ~0.1pt. Continue chain or accept floor near 45.
+
 ### 2026-04-27 — iter10: chain LR 3e-6 + p_weight 30, plus SWA helper for next iter
 - **Hypothesis:** continue chain ramp; gains shrinking but still net positive.
 - **Change:** args only for iter10. After completion, added `--save_last_k` arg to train.py so iter11 can snapshot the last K epochs in-training and SWA them offline.
