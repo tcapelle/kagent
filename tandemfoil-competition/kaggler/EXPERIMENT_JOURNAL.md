@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: 2nd warm-restart from iter8 (lr=2e-5, pw=10)
+- **Hypothesis:** First warm-restart (iter7) got 2.5% gain. Try a stronger second cycle: 2x the LR (1e-5→2e-5) and bump pw 8→10 to push pressure further. Same shape (bs=2 nosub ep=10).
+- **Change:** Resume iter8; --lr 2e-5 --p_weight 10 --warmup_epochs 0.
+- **Result:** **surf_p 50.30 → 48.66** (~3.3% gain — biggest single jump since iter2). Per-split: single≈55, rc≈70, cruise≈30, re_rand≈51. Still descending at ep10 (was 50.94 ep5, 49.18 ep8, 48.66 ep10). W&B `9qndq1e6`.
+- **Verdict:** Kept (best). Two warm-restart cycles confirms the recipe. Big gains came from epoch 6+ once LR dropped on the cosine.
+- **Notes:** rc split improved from 3.10 → 3.08 — hardest split is still resistant. May need yet another warm-restart cycle. iter10 will polish at lr=3e-6 pw=10, then iter11 try lr=3e-5 pw=10.
+
 ### 2026-04-27 — iter8: chain ft iter7 (lr=2e-6, pw=8)
 - **Hypothesis:** Polish iter7 with low LR — same recipe as iter3 after iter2.
 - **Change:** Resume from iter7; --lr 2e-6 --p_weight 8 (other unchanged).
