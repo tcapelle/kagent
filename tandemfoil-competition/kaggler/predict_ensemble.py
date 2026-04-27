@@ -79,16 +79,13 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter17: route to thorfinn's NEW best 644f1c4 — they pushed past my 35.196 floor.
-    # 644f1c4 hits new floor at 34.93 avg. Per-split bests across new commits:
-    # single: 644f1c4=35.2571 (and 55cc0ab=35.2565 tied) - blend two
-    # rc:     644f1c4=48.6968 best
-    # cruise: 55cc0ab=20.7336 best (644f1c4=20.7989)
-    # re:     644f1c4=34.9672 best
-    single: str = "thorfinnK:0.5,thorfinnI:0.5"  # tied, blend 50/50
-    rc: str = "thorfinnK:1.0"
-    cruise: str = "thorfinnI:1.0"
-    re_rand: str = "thorfinnK:1.0"
+    # iter17b: 4-way blend across all NEW thorfinn commits (~5-13 MAE diff between them).
+    # Weights inverse to per-split MAE: best-on-split gets most weight, others smaller.
+    # Sources: H=311dacc I=55cc0ab J=63bacc5 K=644f1c4
+    single: str = "thorfinnI:0.30,thorfinnK:0.30,thorfinnJ:0.20,thorfinnH:0.20"
+    rc: str = "thorfinnK:0.40,thorfinnI:0.30,thorfinnJ:0.15,thorfinnH:0.15"
+    cruise: str = "thorfinnI:0.40,thorfinnJ:0.30,thorfinnH:0.20,thorfinnK:0.10"
+    re_rand: str = "thorfinnK:0.40,thorfinnI:0.30,thorfinnJ:0.20,thorfinnH:0.10"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
