@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: chain at LR 8e-6 + p_weight 15
+- **Hypothesis:** keep walking the chain; p_weight 12→15, LR 1e-5→8e-6.
+- **Change:** args only.
+- **Result:** 28 epochs in 30.9 min. Best epoch 25 → val/avg_surf_p=46.27 (single=39.29, geom_rc=64.36, geom_cruise=32.06, re_rand=49.36). Run pw71sr2w. Predictions at apr27-5/askeladd/1ac7cb9.
+- **Verdict:** kept — improvement (47.06 → 46.27, -0.79). Diminishing return per iter (-3.5 → -2.0 → -1.3 → -1.0 → -0.8) but consistent.
+- **Notes:** geom_camber_rc=64.36 is now the dominant share of the average (next is re_rand=49.36). Need a way to attack that split specifically — likely oversample racecar-tandem domain or add geometry-augmenting strategy. One more chain (iter7) then change tactic.
+
 ### 2026-04-27 — iter5: chain at LR 1e-5 + p_weight 12, fp32 inference
 - **Hypothesis:** Chain ramp keeps paying off (iter4: -1.31). p_weight 10→12 + LR 1.5e-5→1e-5 should add another small gain. Also default predict.py to fp32 (small free win — bf16 inference loses ~0.1pt on val/avg_surf_p).
 - **Change:** args + `predict.py`/`predict_ensemble.py` default `bf16=False`. New helpers `swa.py` (parameter-space averaging) and `eval_val.py` (val score for any checkpoint or ensemble).
