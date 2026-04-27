@@ -62,3 +62,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 63.39` at epoch 8. **5.5% over v5 (67.04→63.39), 82% over baseline.** Per-split p MAE: single_in_dist=68, geom_camber_rc=78, geom_camber_cruise=46, re_rand=62. W&B `alphonse/v6-warm-fullmesh-l1surfp10` (`wv3ygsye`).
 - **Verdict:** Kept — small win, L1 helps but not a breakthrough. Chain still going.
 - **Notes:** Cruise camber is now <50; geom_camber_rc is the lagging split (78). Maybe try heavier L1 next.
+
+### 2026-04-27 — v7-warm-l1surfp30-lr1e5
+- **Hypothesis:** Heavier L1 surface-p loss (10 → 30) plus lower LR (2e-5 → 1e-5) for further refinement.
+- **Change:** `--resume model-wv3ygsye --lr 1e-5 --train_max_points 0 --batch_size 2 --surf_weight 50 --surf_p_l1_weight 30`.
+- **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 61.60` at epoch 8. **2.8% over v6 (63.39→61.60), 83% over baseline.** Per-split p MAE: single_in_dist=67, geom_camber_rc=76, geom_camber_cruise=43, re_rand=60. W&B `alphonse/v7-warm-l1surfp30-lr1e5` (`bu63jrg0`).
+- **Verdict:** Kept, but gain shrinking fast (29%→8%→5%→5.5%→2.8%). LR may be too low (apr23 v14 lesson).
+- **Notes:** Need a step-change — geom_camber_rc still bottleneck (76). Trying lr restart up + arch change next.
