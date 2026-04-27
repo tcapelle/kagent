@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter2 warm-start fine-tune
+- **Hypothesis:** Iter1 timed out at epoch 28/60 with cosine LR only halfway through — train another 30 epochs warm-started from iter1's ckpt at lower LR (5e-4) so the cosine schedule completes properly within budget.
+- **Change:** `train.py` (commit 7b1be64): added `--resume` flag to load a pre-trained state_dict; default `epochs` 60 → 30. Same architecture (192/6/6/128), same loss, same subsampling. Ran with `--lr 5e-4 --warmup_epochs 1 --resume /tmp/iter1_best.pt --epochs 30`.
+- **Result:** Best epoch 28/30, val/loss=1.2629, avg_surf_p=**56.30** (val splits: in_dist=1.85, geom_rc=1.60, geom_cruise=0.40, re_rand=1.20). 66s/epoch, 30GB peak. Run `azn9w9u0`.
+- **Verdict:** Kept (commit 36453d3). 30% improvement over iter1 (79.11 → 56.30). Now ahead of thorfinn's apr27 (42.90 was the best, mine 56) — still ~30% behind. Loss still decreasing slowly at epoch 28.
+- **Notes:** The warm-start pattern works well. Next: another fine-tune chain at even lower LR (1e-4 or 2e-4), or add EMA weights, or push to larger model (256/8/8/96 frieren-style) once we plateau.
+
 ### 2026-04-27 — iter1 thorfinn-recipe Transolver 192/6/6/128
 - **Hypothesis:** Adopting thorfinn's apr27-bis recipe (192/6/6/128 Transolver, 40k volume node subsampling, L1 loss with p_weight=3 on surface pressure, bf16 AMP, warmup+cosine, grad_clip=1.0, batch_size=8) should beat my apr27-bis score of 79.95 and approach thorfinn's 45.94.
 - **Change:** Full rewrite of `train.py` (commit c3dc789):
