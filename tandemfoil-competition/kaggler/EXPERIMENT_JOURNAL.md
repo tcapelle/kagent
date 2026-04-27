@@ -27,3 +27,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 15 epochs in 30 min (2.1 min/epoch). Best `avg_surf_p = 128.34` at epoch 15 (still improving monotonically — train surf MSE 0.85→0.15). Per-split surface-p MAE: single_in_dist=141, geom_camber_rc=137, geom_camber_cruise=109, re_rand=126. W&B `alphonse/v1-h256-L8-surfw30` (`ylv1suio`). Submitted at commit `f5ebc28`.
 - **Verdict:** Kept — first real submission, beats the 3325cb3 baseline (~360) by 64%, lands ~rank 4 (just below fern at 131.69). Still improving — warm-start should add a lot more.
 - **Notes:** All tracks improved monotonically each epoch. Volume MSE also fell (1.47→0.27) so the channel-weighted loss is balanced enough. Time per epoch is ~2 min — full mesh would be ~5 min, so subsample is the right move for the first round; switch to full mesh once warm-start gains slow.
+
+### 2026-04-27 — v2-warm-lr2e4
+- **Hypothesis:** v1 was still improving monotonically at epoch 15; warm-start with lower LR (5e-4 → 2e-4) should compound gains as in apr23 history.
+- **Change:** `--resume models/model-ylv1suio/checkpoint.pt --lr 2e-4`. Otherwise identical recipe.
+- **Result:** 15 more epochs in 30 min, all monotonic. Best `avg_surf_p = 109.03` at epoch 15. **15% over v1 (128.34→109.03), 70% over baseline.** W&B `alphonse/v2-warm-lr2e4` (`et5oaizr`). Submitted at commit `e6d8044`.
+- **Verdict:** Kept — clean win, warm-start chain is working. Still improving at epoch 15.
+- **Notes:** Train surf MSE 0.23→0.10 — keeps falling. Per-split p MAE: single_in_dist=119, geom_camber_rc=120, geom_camber_cruise=89, re_rand=108. The cruise camber split is now best — extreme p values aren't dominating like I'd feared.
