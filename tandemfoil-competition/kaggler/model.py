@@ -122,15 +122,25 @@ class TransolverBlock(nn.Module):
 
 
 class FourierEmbedding(nn.Module):
-    """Random Fourier features for high-frequency positional encoding.
+    """Multi-scale random Fourier features for spatial encoding.
 
     Aero-Nef / Tancik et al.: lifts MLP underfitting near pressure stagnation peaks.
+    A single sigma trades broad context for fine peak fitting; mixing multiple
+    sigmas (band-mixed RFF) gets both. Backwards-compatible with single-sigma
+    use via `sigmas=None`.
     """
 
-    def __init__(self, in_dim: int = 2, n_freqs: int = 32, sigma: float = 8.0):
+    def __init__(self, in_dim: int = 2, n_freqs: int = 32, sigma: float = 8.0,
+                 sigmas: list[float] | None = None):
         super().__init__()
-        # Frozen random projection. Same across all positions; learnable scale not needed.
-        self.register_buffer("B", torch.randn(in_dim, n_freqs) * sigma)
+        if sigmas is None:
+            sigmas = [sigma]
+        per_band = max(1, n_freqs // len(sigmas))
+        bands = []
+        for s in sigmas:
+            bands.append(torch.randn(in_dim, per_band) * s)
+        B = torch.cat(bands, dim=-1)  # [in_dim, per_band * len(sigmas)]
+        self.register_buffer("B", B)
 
     def forward(self, x):
         proj = x @ self.B
@@ -142,6 +152,7 @@ class Transolver(nn.Module):
                  n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
                  slice_num=32, ref=8, unified_pos=False,
                  use_fourier: bool = False, n_fourier: int = 32, fourier_sigma: float = 8.0,
+                 fourier_sigmas: list[float] | None = None,
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None):
         super().__init__()
@@ -151,9 +162,13 @@ class Transolver(nn.Module):
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
 
-        ff_extra = 2 * n_fourier if use_fourier else 0
+        ff_extra = 0
         if use_fourier:
-            self.fourier = FourierEmbedding(in_dim=space_dim, n_freqs=n_fourier, sigma=fourier_sigma)
+            self.fourier = FourierEmbedding(
+                in_dim=space_dim, n_freqs=n_fourier, sigma=fourier_sigma,
+                sigmas=fourier_sigmas,
+            )
+            ff_extra = 2 * self.fourier.B.shape[1]
 
         if self.unified_pos:
             self.preprocess = MLP(fun_dim + ref**3 + ff_extra, n_hidden * 2, n_hidden,

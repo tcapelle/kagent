@@ -70,8 +70,9 @@ class Config:
     grad_clip: float = 1.0
     balanced: bool = True  # per-sample variance-normalized loss
     use_fourier: bool = True
-    n_fourier: int = 64
-    fourier_sigma: float = 12.0
+    n_fourier: int = 96
+    fourier_sigma: float = 8.0  # ignored if fourier_sigmas is set
+    fourier_sigmas: tuple[float, ...] = (4.0, 8.0, 16.0)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -117,6 +118,7 @@ model_config = dict(
     use_fourier=cfg.use_fourier,
     n_fourier=cfg.n_fourier,
     fourier_sigma=cfg.fourier_sigma,
+    fourier_sigmas=list(cfg.fourier_sigmas) if cfg.fourier_sigmas else None,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
