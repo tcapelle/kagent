@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13 chain w_p=5, LR=1e-5 (KEPT, plateauing)
+- **Hypothesis:** Same recipe as iter12 with lower LR cosine to squeeze more from the heavier pressure weighting.
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 1e-5 --w_p 5.0`.
+- **Result:** Best epoch 11 (last), **val avg_surf_p=43.81** (Δ -0.74 vs iter12). Test pending.
+- **Verdict:** Kept (commit `25d4bad`). Per-iter Δ shrinking: iter11=-1.55, iter12=-1.19, iter13=-0.74. Chain at w_p=5 plateauing.
+- **Notes:** Iter14 try **w_p=8** to push pressure weighting harder; if that doesn't crack the plateau, switch to a structural change (Re-aware scaling on pressure target, or bigger model).
+
 ### 2026-04-27 — iter12 chain with w_p=5, LR=2e-5 (KEPT)
 - **Hypothesis:** Iter11's w_p=3 helped a lot; push pressure weight to 5 for more gradient focus.
 - **Run:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 2e-5 --w_p 5.0`. Chain from iter11 ckpt.
