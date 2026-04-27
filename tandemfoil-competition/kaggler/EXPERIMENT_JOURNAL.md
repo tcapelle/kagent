@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: continue MSE chain warm-start iter5 lr=2e-5 — plateau confirmed
+- **Hypothesis:** Continue iter5 (val 1.3286) at lr=2e-5 bs=2 nosub for 10 ep cosine. Hoping for ~0.05 val drop to 1.28 → maybe surf_p 46.
+- **Change:** No code change. `train.py --warm_start models/model-zlq7b4pu/checkpoint.pt --loss_type mse --lr 2e-5 --epochs 10 --warmup_epochs 0`. Commit `e9533c3`.
+- **Result:** 10 ep in 25.1 min. Best epoch 6, val/loss=**1.3239** (vs iter5's 1.3286, delta 0.005). Per-split val barely moved. Test pending.
+- **Verdict:** discarded as standalone improvement; lr=2e-5 chain again plateaued (matches iter3 pattern). Keep checkpoint for ensembles.
+- **Notes:** This is two confirmations now that lr=2e-5 chain on bs=2 nosub gives <0.01 val improvement after one iteration — the basin is already locally optimal. To break this we need either (a) HIGHER LR warm restart to escape, or (b) different architecture / random init for genuine error decorrelation.
+
 ### 2026-04-27 — iter5+: MSE-loss diversity + ensemble sweep (PB 47.07)
 - **Hypothesis:** iter5 = warm-start iter1 with **MSE loss** (instead of L1) at bs=2 nosub lr=5e-5, 10 ep. Different loss landscape → different errors → ensembles well with iter2 (L1).
 - **Change:** No code change. `train.py --warm_start models/model-wrz7s30a/checkpoint.pt --loss_type mse --batch_size 2 --train_subsample 0 --lr 5e-5 --epochs 10`. iter5 commit `8deac10`. Predict.py failed via auto-submit (parent train.py held GPU); ran manually after kill.
