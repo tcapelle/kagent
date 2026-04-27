@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: chain lr=2e-5 + surf_p_weight=5
+- **Hypothesis:** geom_camber_rc was worst split last iter. Push pressure harder during fine-tune by increasing surf_p_weight 3→5 (per-channel weight inside surface loss). Same lr=2e-5.
+- **Change:** `python train.py --resume checkpoints/best.pt --lr 2e-5 --warmup_frac 0.01 --surf_p_weight 5.0`. No code change.
+- **Result:** Best E13/14, avg_mae_surf_p = **50.96** (from 55.46, -8.1%). Per-split: single_in_dist=51.70, camber_rc=67.06, camber_cruise=34.20, re_rand=50.88. 29.2 min. W&B `3tcyaw8k`.
+- **Verdict:** Kept. Steady gain across all splits including the stubborn camber_rc (71.74→67.06).
+- **Notes:** Trajectory now 90.47→62.71→55.46→50.96. Each step ≈10–25%. **Next:** chain at lr=1e-5 with same pw=5; if plateau, consider y-flip augmentation (AoA + camber sign flips needed) or bigger model trained from scratch.
+
 ### 2026-04-27 — iter3: chain-resume lr=2e-5
 - **Hypothesis:** iter2 still trending down at E13. Another chain step at lr=2e-5 (2.5× lower) should keep improving with smaller updates near optimum.
 - **Change:** `python train.py --resume checkpoints/best.pt --lr 2e-5 --warmup_frac 0.01`. No code change.
