@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: bigger batch + dropout (regression)
+- **Hypothesis:** With 10GB VRAM headroom from iter3 subsampling, increase batch_size to 8 and add dropout=0.05 for stronger regularization. Higher lr=8e-4 should pair with batch growth; surf_weight=30, epochs=35.
+- **Change:** train.py — batch=4→8, lr=5e-4→8e-4, surf_weight=25→30, vol_subsample=25k→30k, epochs=25→35, dropout=0.05.
+- **Result:** Trained 33 epochs in 30 min (timed out). Best epoch 28, val/loss=5.21. Val mae_surf_p avg=90.3. Worse than iter3 (3.86 / 77.4). W&B run r7jgqasd.
+- **Verdict:** **discarded** — iter3 hyperparams retained. Dropout + higher lr + bigger batch slowed convergence enough that the extra epochs didn't recover. Resetting code to iter3.
+- **Notes:** Auto-submitted to /mnt/new-pvc/predictions/apr27-4/tanjiro/7f8926f anyway, but leaderboard takes best commit so iter3 (90a7a6b @ 69.57) stays.
+
 ### 2026-04-27 — iter3: subsample volume nodes for 5× speedup
 - **Hypothesis:** train_surf was still falling at 30-min timeout in iter2. Volume nodes (~99% of mesh) dominate compute but contribute little to surface pressure. Randomly drop volume nodes during training (keep all surface) so each epoch is 5× faster — converting compute time into more epochs.
 - **Change:** train.py — added `_VolumeSubsample` dataset wrapper that keeps all surface nodes and samples up to 25k volume nodes per training sample. Validation runs on full mesh. surf_weight 20→25, epochs 15→25.
