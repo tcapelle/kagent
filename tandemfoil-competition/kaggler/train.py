@@ -4,6 +4,7 @@ Run:
   python train.py --agent <name> --wandb_name "<name>/<desc>"
 """
 
+import copy
 import math
 import os
 import shutil
@@ -23,6 +24,22 @@ from model import Transolver
 from viz import visualize
 
 
+class EMA:
+    """Exponential moving average of model weights for smoother evaluation."""
+    def __init__(self, model, decay=0.999):
+        self.shadow = copy.deepcopy(model).eval()
+        for p in self.shadow.parameters():
+            p.requires_grad = False
+        self.decay = decay
+
+    @torch.no_grad()
+    def update(self, model):
+        for s, p in zip(self.shadow.parameters(), model.parameters()):
+            s.data.mul_(self.decay).add_(p.data, alpha=1.0 - self.decay)
+        for sb, b in zip(self.shadow.buffers(), model.buffers()):
+            sb.data.copy_(b.data)
+
+
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
 
 
@@ -36,7 +53,8 @@ class Config:
     epochs: int = 80
     warmup_epochs: int = 3
     grad_clip: float = 1.0
-    train_max_nodes: int = 40000   # per-sample subsample target during training
+    train_max_nodes: int = 30000   # per-sample subsample target during training
+    ema_decay: float = 0.999       # EMA decay for evaluation; set 0.0 to disable
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -113,6 +131,8 @@ model_config = dict(
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 print(f"Model params: {n_params/1e6:.2f}M")
+
+ema = EMA(model, decay=cfg.ema_decay) if cfg.ema_decay > 0 else None
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay,
                                betas=(0.9, 0.95))
@@ -207,6 +227,8 @@ for epoch in range(MAX_EPOCHS):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
+        if ema is not None:
+            ema.update(model)
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -219,7 +241,8 @@ for epoch in range(MAX_EPOCHS):
     epoch_surf /= n_batches
 
     # --- Validate ---
-    model.eval()
+    eval_model = ema.shadow if ema is not None else model
+    eval_model.eval()
     val_loss_sum = 0.0
     split_metrics: dict[str, dict] = {}
 
@@ -239,7 +262,7 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x, "mask": mask})["preds"]
+                pred = eval_model({"x": x, "mask": mask})["preds"]
                 sq_err = (pred - y_norm) ** 2
 
                 vol_mask = mask & ~is_surface
@@ -298,7 +321,9 @@ for epoch in range(MAX_EPOCHS):
         best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "avg_surf_p": mean_surf_p}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
-        torch.save(model.state_dict(), model_path)
+        # Save EMA weights (used for evaluation) so predict.py loads the same model.
+        save_state = eval_model.state_dict()
+        torch.save(save_state, model_path)
         shutil.copy(model_path, LOCAL_BEST)
         PVC_BEST_DIR.mkdir(parents=True, exist_ok=True)
         shutil.copy(model_path, PVC_BEST_DIR / "checkpoint.pt")
@@ -344,6 +369,8 @@ if best_metrics and not cfg.debug:
     import gc
     import subprocess
     del model, optimizer, train_loader, val_loaders
+    if ema is not None:
+        del ema
     gc.collect()
     torch.cuda.empty_cache()
     print("\nGenerating test predictions...")
