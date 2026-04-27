@@ -230,13 +230,13 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter6: chain from iter5 best (4ydobzth, val=47.17).
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-4ydobzth/checkpoint.pt"
+# Iter7: chain from iter6 best (6ulvj74p, val=46.14).
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-6ulvj74p/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 8e-6
+    lr: float = 5e-6
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
