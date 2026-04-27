@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15: resume iter13 (NEW BEST 42.43)
+
+- **Hypothesis:** the resume chain keeps yielding ~1–2% per cycle. iter13
+  (val_bs1=43.77) was still improving at the last epoch — another 30 min
+  should drop further.
+- **Change:** No code change. Run with `--resume_from .../model-r9p6myvd/`.
+- **Result:** 25 epochs, best val_bs4 = **67.35** at epoch 23 (vs iter13's
+  66.54 — bs4 metric got *worse* at this best-saved-by-bs4 epoch). Real
+  bs=1 val: **42.43** (vs iter13's 43.77, **-3.1%**). Run `i4xb7o2y`.
+  Predictions auto-submitted to commit `da4f9f4` (overwriting iter14
+  ensemble there — but iter15 alone beats the iter14 ensemble's 43.50, so
+  this is a strict improvement). Splits: single=37.98, geom_rc=60.17,
+  geom_cruise=28.32, re_rand=43.25.
+- **Verdict:** kept — best single model so far. Even ensembling iter15 with
+  iter13 only gives a tied or slightly worse result (iter15*2+iter13=42.46),
+  so iter15 alone is the right submission.
+- **Notes:** Disconnect between bs4 (best-saved metric) and bs1 (real
+  metric) keeps growing — iter13's bs4=66.54 vs iter15's 67.35, but iter15
+  is much better at bs1. Future iters: switch model selection to bs1 val
+  if I have time, otherwise just resume more.
+
 ### 2026-04-27 — iter14: ensemble iter13*2 + iter11
 
 - **Hypothesis:** iter13 (val_bs1=43.77) is the new best single model. Pairing
