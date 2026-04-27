@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: rc_single boost 5x, lr=3e-6, ema=0.9995 (kept)
+- **Hypothesis:** Iter10 confirmed the boost lever is monotone; one more notch (5x) plus ultra-slow EMA finishing should still push.
+- **Change:** train.py — `rc_single_boost` 4→5, lr 5e-6→3e-6, ema_decay 0.999→0.9995.
+- **Result:** Best epoch 8 with **val avg_surf_p=45.37** (vs iter10 45.56 → -0.19). Smooth descent (45.55, 45.54, 45.51, 45.48, 45.44, 45.41, 45.39, 45.37). val_single_in_dist 2.6779→2.6513 — biggest single-split delta of any iteration so far. Wall time 25.7 min. WandB run cdrsns9k.
+- **Verdict:** Kept. Curve still sloping.
+- **Notes:**
+  - Per-iter improvement is now ~0.2 val. Worth one more boost notch (iter12) before pivoting; beyond that the sampler is essentially showing only single-foil samples and we'd start regressing on tandem.
+
 ### 2026-04-27 — iter10: stronger rc_single boost (4x), lr=5e-6 (kept)
 - **Hypothesis:** Iter9's 2.5x boost moved single_in_dist (45.40→44.14 test). Going to 4x should claw back more of the gap to nezuko (32.29).
 - **Change:** train.py — `rc_single_boost` 2.5→4, lr 6e-6→5e-6. Also lowered predict.py default `batch_size` 4→1 to stop the auto-predict from OOMing on cruise meshes.
