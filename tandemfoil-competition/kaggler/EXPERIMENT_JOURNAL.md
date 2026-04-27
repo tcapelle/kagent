@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10/11: cross-basin ensemble + iter9 deep finetune
+- **Hypothesis (iter10):** averaging predictions from {iter4 (chain1 mid), iter6 (chain1 final), iter9 (chain2 finetune)} should beat any single model since iter9 is from a DIFFERENT random init than iter4/6 — errors should partially cancel.
+- **Change (iter10):** updated `ensemble.py` to point at `[37a85cf, f088509, ffcecba]`, ran it, predictions saved at `d10ff73`.
+- **Result (iter10):** **avg_surf_p = 32.59 → #1 on the leaderboard!** Beat alphonse (33.03), ourselves at iter4 (33.94). Single splits: single=35.17, rc=45.52, cruise=19.18, re=30.48 — uniformly better than any single model.
+- **Verdict (iter10):** kept — the cross-basin diversity matters.
+- **Iter11:** chained another deep finetune from iter9 (lr=5e-6, p_w=5, surf_w=15, 13 epochs). Best epoch 12: val/avg_mae_surf_p=41.40. **Auto-submit overwrote d10ff73 predictions** — restored immediately by re-running `ensemble.py`. iter11 ckpt mirrored at `model-c2hn3pc3`.
+- **Notes:** the "auto-submit-clobbers-prior-commit" issue is recurring: I should always commit before launching training so HEAD advances. Future iters: bake an `--out_subdir` arg into predict.py so different runs save to disjoint paths.
+
 ### 2026-04-27 — iter8: fresh base for ensemble diversity (random init)
 - **Hypothesis:** finetune chain has plateaued (iter4→6 deltas <1.5 in val). A second base trained from scratch with a different random init should reach a different basin and (after its own finetune) produce decorrelated errors usable in a final ensemble.
 - **Change:** rerun iter3's exact recipe (`python train.py --agent frieren --wandb_name "frieren/iter8-base-diverse"`) — no code changes. PyTorch seed defaults to per-process random, so init is naturally different.
