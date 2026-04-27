@@ -90,12 +90,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter37: try iter15-warm at 2% weight on rc (smallest quality gap to thorfinn floor).
-    # If errors decorrelate, blend MAE drops; if not, my floor commit 3f750ef is preserved.
+    # iter38: iter37 proved iter15-warm@2% on rc helped (48.5703→48.5674). Try @3% rc + 1% on c/re.
     single: str = "thorfinnL:0.30,thorfinnM:0.30,thorfinnK:0.20,thorfinnI:0.20"
-    rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
-    cruise: str = "thorfinnR:1.0"
-    re_rand: str = "thorfinnU:1.0"
+    rc: str = "thorfinnR:0.485,thorfinnT:0.485,local_iter15_warm:0.03"
+    cruise: str = "thorfinnR:0.99,local_iter15_warm:0.01"
+    re_rand: str = "thorfinnU:0.99,local_iter15_warm:0.01"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
