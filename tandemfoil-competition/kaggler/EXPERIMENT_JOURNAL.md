@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10-attn2-chain (iter 10)
+- **Hypothesis:** Iter 9 chain returns are flattening (-0.50 vs iter 8's -1.20). To break the plateau, add 2 gated zero-init slice-attention layers (with masking) at positions 2 and 5 of the 6 ResMLP blocks. Zero-init γ keeps warm-start an exact identity. Slice attention provides cheap global spatial context that mean-pool FiLM can't.
+- **Change:** New `GatedSliceAttn` (LN + masked SliceAttention + per-channel learnable gate γ initialised to 0). New `n_attn_layers` config. Slice attention's softmax is masked against padding nodes (Edward's masking fix). Warm-started from iter 9 ckpt with `strict=False` (30 missing keys = new attn weights, all zero-gated at start).
+- **Result:** Best epoch 20, mean val surf_p MAE = **43.61** (single_in_dist=36.75, geom_rc=66.03, geom_cruise=20.73, re_rand=50.92). 23 epochs in 28.4 min, 81s/val + 67s no-val (vs iter 9's 51+41s — attention adds ~30% per-step). 22.5GB peak. 13.50M params. Run: `frieren/iter10-attn2-chain` (`xl6pb63z`). Commit `087c101`.
+- **Verdict:** Kept — marginal (-0.20) but real. geom_rc -0.55, re_rand -0.39 (the OOD splits the attention was meant to help). Trade-off: attention slowed steps, so fewer epochs; the gain per epoch is ~similar to chains so net: small.
+- **Notes:**
+  - Trajectory still descending at timeout: 43.71 → 43.61 → 43.69 in last 3 vals. With more time the attention may help more.
+  - Idea for iter 11: chain iter 10 again at lower LR; the attention has barely started training (γ moves slowly from 0).
+  - Diminishing returns from the chain alone — each iteration shaves 0.2-0.5. Need a step-change to reach thorfinn 39.95.
+
 ### 2026-04-27 — iter8-chain-lr1.5e-4 (iter 8)
 - **Hypothesis:** Iter 7 was still descending at timeout. Halve LR (1.5e-4 vs 3e-4), keep cosine_epochs=80 so LR doesn't bottom, surf_weight=20. Same architecture (h=384 b=6 + GlobalFiLM).
 - **Change:** Just CLI flags — `--warm_start iter7_best_backup.pt --lr 1.5e-4 --surf_weight 20 --cosine_epochs 80 --train_subsample 60000`. No code changes.
