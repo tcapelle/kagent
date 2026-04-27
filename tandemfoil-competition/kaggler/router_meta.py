@@ -32,9 +32,14 @@ PRED = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 # Sources we'll mix (agent, commit) referenced by short tag.
 SRC = {
     "edward":   ("edward",   "c773fa7"),  # single 36.25, cruise 23.73, rc 56.68, re 54.43
+    "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08, rc 57.33
     "tanjiro":  ("tanjiro",  "9f6f523"),  # rc 54.98, re 40.43, single 44.86, cruise 26.14
     "fern":     ("fern",     "0f7f9e0"),  # cruise 24.85, rc 59.08, single 48.29, re 44.04
-    "frieren":  ("frieren",  "8a3998f"),  # re 42.64, rc 61.18, cruise 27.22, single 49.35
+    "fern2":    ("fern",     "cc186e5"),  # cruise 25.14, rc 59.79
+    "frieren":  ("frieren",  "32f0a18"),  # re 42.48 (best frieren)
+    "frieren2": ("frieren",  "0596f0e"),  # re 42.53
+    "frieren3": ("frieren",  "a89882c"),  # re 42.67
+    "frieren4": ("frieren",  "8a3998f"),  # re 42.64 (leaderboard commit)
     "thorfinn": ("thorfinn", "a4bbc13"),  # current blend (best ours): single 39.13, rc 59.18, cruise 26.14, re 50.33
 }
 
