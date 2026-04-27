@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: continue chain (warmstart from iter2 best, lower LR)
+
+- **Hypothesis:** Continuing the warm-start chain — load iter2 best (`model-bwa7nnol`, val_avg_surf_p=65.01) and fine-tune at lr=1e-5 → 1e-7 cosine — should drive val_avg_surf_p further down with smaller, stable updates.
+- **Change:** `train.py` config: `WARMSTART_PATH=model-bwa7nnol/checkpoint.pt`, lr=1e-5, min_lr=1e-7, ema_decay=0.995.
+- **Result:** 6 epochs in 32 min. Warmstart 65.01 → epoch 6 = **63.27** (best). Per-split val_surf_p: single=46.25, geom_rc=66.43, geom_cruise=21.66, re_rand=39.92 (approximate from MAE summaries). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/c205ad0/`. Run `47owfwtt`.
+- **Verdict:** kept — small but consistent improvement (-1.74, -2.7%). Diminishing returns; need a different strategy next.
+- **Notes:** improvements per epoch: -0.51, -0.36, -0.11, -0.48, -0.18, -0.10. Strong signs of plateau. With LR already ≤1e-5 and EMA tracking tight, further chains will yield ≤1 point per iter. Time to try (a) warm-restart with higher LR cycle, (b) TTA (h-flip), (c) ensemble, or (d) per-domain loss weighting.
+
 ### 2026-04-27 — iter2: warmstart + bf16 AMP + L1+L2 + EMA fine-tune
 
 - **Hypothesis:** Fine-tuning the prior best checkpoint (`model-9f4m2qmm`, hid=256/L=8/S=96, the apparent 42.11 leaderboard ckpt) with a low LR cosine schedule, bf16 AMP, combined L1+L2 loss, and EMA should drive val_avg_surf_p below the warmstart baseline.
