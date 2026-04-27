@@ -210,13 +210,14 @@ class Config:
     lr: float = 5e-4
     weight_decay: float = 1e-4
     batch_size: int = 4
-    surf_weight: float = 10.0
-    epochs: int = 50
+    surf_weight: float = 25.0
+    epochs: int = 80
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+    grad_clip: float = 1.0
 
 
 cfg = sp.parse(Config)
@@ -248,9 +249,9 @@ model_config = dict(
     space_dim=2,
     fun_dim=X_DIM - 2,
     out_dim=3,
-    n_hidden=128,
-    n_layers=5,
-    n_head=4,
+    n_hidden=192,
+    n_layers=6,
+    n_head=6,
     slice_num=64,
     mlp_ratio=2,
     output_fields=["Ux", "Uy", "p"],
@@ -314,17 +315,20 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            pred = model({"x": x})["preds"]
+            err = F.smooth_l1_loss(pred, y_norm, reduction="none", beta=0.1)
 
-        vol_mask = mask & ~is_surface
-        surf_mask = mask & is_surface
-        vol_loss = (sq_err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
-        surf_loss = (sq_err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-        loss = vol_loss + cfg.surf_weight * surf_loss
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (err * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
+            surf_loss = (err * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
         loss.backward()
+        if cfg.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -357,13 +361,15 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
-                sq_err = (pred - y_norm) ** 2
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    pred = model({"x": x})["preds"]
+                pred = pred.float()
+                sl1 = F.smooth_l1_loss(pred, y_norm, reduction="none", beta=0.1)
 
                 vol_mask = mask & ~is_surface
                 surf_mask = mask & is_surface
-                val_vol += (sq_err * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
-                val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
+                val_vol += (sl1 * vol_mask.unsqueeze(-1)).sum().item() / vol_mask.sum().clamp(min=1).item()
+                val_surf += (sl1 * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
@@ -393,12 +399,14 @@ for epoch in range(MAX_EPOCHS):
         val_loss_sum += split_loss
 
     mean_val_loss = val_loss_sum / len(val_loaders)
+    avg_mae_surf_p = sum(sm[f"{name}/mae_surf_p"] for name, sm in split_metrics.items()) / len(split_metrics)
     dt = time.time() - t0
 
     metrics = {
         "train/vol_loss": epoch_vol,
         "train/surf_loss": epoch_surf,
         "val/loss": mean_val_loss,
+        "val/avg_mae_surf_p": avg_mae_surf_p,
         "lr": scheduler.get_last_lr()[0],
         "epoch_time_s": dt,
         "global_step": global_step,
@@ -408,9 +416,10 @@ for epoch in range(MAX_EPOCHS):
     wandb.log(metrics)
 
     tag = ""
-    if mean_val_loss < best_val:
-        best_val = mean_val_loss
-        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss}
+    if avg_mae_surf_p < best_val:
+        best_val = avg_mae_surf_p
+        best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss,
+                        "avg_mae_surf_p": avg_mae_surf_p}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
         torch.save(model.state_dict(), model_path)
@@ -431,7 +440,8 @@ total_time = (time.time() - train_start) / 60.0
 print(f"\nDone ({total_time:.1f} min)")
 
 if best_metrics:
-    print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}")
+    print(f"Best: epoch {best_metrics['epoch']}, val/loss={best_metrics['val_loss']:.4f}, "
+          f"avg_mae_surf_p={best_metrics['avg_mae_surf_p']:.4f}")
     wandb.summary.update({"best_" + k: v for k, v in best_metrics.items()})
 
     model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))

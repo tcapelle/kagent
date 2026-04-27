@@ -53,19 +53,16 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-# ---------------------------------------------------------------------------
-# Load your model here. Example:
-#
-#   from train import MyModel
-#   model = MyModel(...).to(device)
-#   model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
-#
-# Or if you saved the full model:
-#
-#   model = torch.load(cfg.checkpoint, map_location=device)
-# ---------------------------------------------------------------------------
-raise NotImplementedError("Load your model above and remove this line")
+import yaml
+from train import Transolver
 
+ckpt_path = Path(cfg.checkpoint)
+config_path = ckpt_path.parent / "config.yaml"
+with open(config_path) as f:
+    model_config = yaml.safe_load(f)
+
+model = Transolver(**model_config).to(device)
+model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
