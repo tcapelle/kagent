@@ -28,3 +28,4 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** val avg_surf_p best 54.81 at epoch 26 (per-split: single_in_dist=48.54, geom_rc=76.05, geom_cruise=37.39, re_rand=57.27). Warm-start val baseline (computed via `eval_ensemble.py`): 70.52. So ~22% relative drop on val. Run id `model-jbbynlph`. 29.4 min, 15.2 GB peak.
 - **Verdict:** kept — clear val improvement and predictions auto-submitted to commit `c329256` (will be visible on leaderboard once scorer picks them up).
 - **Notes:** Initial concern when epoch 1 hit 65.7 was misplaced — that's still better than warm-start's val of 70.5 (the leaderboard value 45.94 is on TEST, not val). Implication: my ratio of val→test for this checkpoint should put test in the 35–40 range, ahead of the prior 45.94.
+
