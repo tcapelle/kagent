@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15 ALONE = 42.62 surf_p (rank 2, was 4) 🥈
+- **Result:** iter15 standalone test predictions (commit `5bbeb02`) scored **42.62** — beating thorfinn (42.90) and within 0.51 of frieren (42.11).
+- Per-split iter15: single=46.29, rc=58.09, cruise=25.51, re_rand=40.56 (vs frieren single=46.83, rc=56.45, cruise=25.27, re_rand=39.88).
+- **All ensemble blends with iter2 / iter5 / iter7 STRICTLY HURT** — they pull predictions toward weaker models. Best blend was iter15 0.95 + iter2 0.05 = 42.73 (worse than alone). Pure iter15 dominates.
+- **Verdict:** Pivot strategy. Stop ensembling iter15 with iter2/5/7 — chain forward instead. Plan iter16 = continue iter15 chain at lr=5e-5 to push val/loss further from 1.24.
+- **Notes:** Earlier ensembles helped (iter2+iter5 → 47.07 from 47.32) because iter5 was *similarly strong* to iter2. iter15 is a clear step-function above all earlier models, so adding anything dilutes.
+
 ### 2026-04-27 — iter15: warm-restart iter5 with HIGHER lr=1e-4 — plateau broken 🚀
 - **Hypothesis:** iter3 and iter7 both confirmed lr=2e-5 chain plateaus on bs=2 nosub. The model is stuck in a local minimum. Try a "warm restart": warm-start iter5 (val 1.3286) but bump LR back up to 1e-4 (2x iter5's peak), bs=2 nosub L1 12 ep with cosine. Higher LR jolts out of basin; cosine settles in a hopefully-better one.
 - **Change:** No code change. `train.py --warm_start models/model-zlq7b4pu/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 1e-4 --epochs 12 --warmup_epochs 1 --loss_type l1`. Commit `bfaab8d` (predictions landed at `5dfd2e3` because the prior ensemble commits had moved HEAD).
