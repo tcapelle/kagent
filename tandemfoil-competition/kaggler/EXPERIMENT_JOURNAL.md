@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: chain sw=50 lr=2e-7 (plateau confirm)
+- **Hypothesis:** Push surface_weight further (20→50) so surface pressure dominates ~80% of loss; lr=2e-7 for tiny steps near optimum.
+- **Change:** `--lr 2e-7 --warmup_frac 0.0 --surf_p_weight 10.0 --surf_weight 50.0 --loss_beta 0.0`.
+- **Result:** Best E3, avg_p = **44.69** (vs 44.71). Per-split: single=44.53, rc=60.10, cruise=29.02, re_rand=45.15. W&B `p0ao6449`.
+- **Verdict:** Kept (-0.05%). Plateau is total — model class has hit its capacity at this size.
+- **Notes:** Eval of {iter9 + iter10} ensemble = 44.69 (same as iter10 alone) — they are essentially identical. **Conclusion of chain branch:** to break through, would need a different lineage (fresh init bigger model + chain) or architectural change. Within current arch and 30-min budget, marginal gains exhausted.
+
 ### 2026-04-27 — iter9: chain sw=20 lr=5e-7
 - **Hypothesis:** With val plateau at 44.90, push surface loss harder vs volume by raising `surf_weight` 10→20 while staying on chain.
 - **Change:** `--lr 5e-7 --warmup_frac 0.0 --surf_p_weight 10.0 --surf_weight 20.0 --loss_beta 0.0`. No code change.
