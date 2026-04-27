@@ -56,6 +56,7 @@ class Config:
 
     warm_start: str | None = None  # path to checkpoint to warm-start from
     skip_warmup: bool = False  # skip warmup when warm-starting
+    save_last_k: int = 0  # save checkpoint after each of the last K epochs for SWA
     # Comma-separated multipliers for [racecar_single, racecar_tandem, cruise].
     # Default "1,1,1" = uniform domain sampling (same as data.py default).
     domain_weights: str = "1,1,1"
@@ -317,6 +318,11 @@ for epoch in range(MAX_EPOCHS):
         torch.save(model.state_dict(), model_path)
         tag = " *"
 
+    # Snapshot the last K epochs for offline SWA.
+    if cfg.save_last_k > 0 and (MAX_EPOCHS - (epoch + 1)) < cfg.save_last_k:
+        snap_path = model_dir / f"snap_e{epoch+1:03d}.pt"
+        torch.save(model.state_dict(), snap_path)
+
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     split_summary = "  ".join(
         f"{name.replace('val_','')}={split_metrics[name][f'{name}/mae_surf_p']:.2f}"
@@ -358,6 +364,9 @@ if best_metrics and not cfg.debug:
     import shutil
     shutil.copy2(model_path, pvc_dir / "checkpoint.pt")
     shutil.copy2(model_dir / "config.yaml", pvc_dir / "config.yaml")
+    # Mirror per-epoch snapshots (for offline SWA) too.
+    for snap in sorted(model_dir.glob("snap_e*.pt")):
+        shutil.copy2(snap, pvc_dir / snap.name)
     print(f"Mirrored checkpoint to {pvc_dir}")
 
 # --- Auto-submit predictions ---
