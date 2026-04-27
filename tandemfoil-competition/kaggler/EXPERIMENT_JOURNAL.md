@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v5: chain warm-start from v4 slice128 (lr=1e-4, 25ep)
+- **Hypothesis:** Refining v4's undertrained slice=128 model brings it closer to v3's quality, while preserving the architectural diversity needed for the v3+v5 ensemble.
+- **Change:** `--warm_start v4 --slice_num 128 --lr 1e-4 --epochs 25` (no warmup, plain cosine).
+- **Result:** Best val avg_surf_p=52.00 at epoch 22 (vs v4=71.95 → 28% improvement). 27.8 min total. Per-split: single_in_dist=49.62, geom_rc=70.21, geom_cruise=34.27, re_rand=53.89.
+- **Verdict:** Kept as ensemble component — diverse from v3 (slice=64) and now competitive on its own.
+- **Notes:** Plateaued around 52-55 from epoch 12-25, slow tail. Run `rf1ojxjz`. Final: ensemble v3 + v5 predictions to push below v3's 46.26.
+
 ### 2026-04-27 — v4: fresh slice_num=128 for ensemble diversity (40ep target)
 - **Hypothesis:** A fresh model with double the slice tokens (different inductive bias) gives ensemble diversity vs v3's slice=64 chain — even if individually worse, complementary errors should help when averaged.
 - **Change:** `--slice_num 128 --epochs 40` (no warm_start). 67s/epoch (vs 46s for slice=64) due to 2x slice tokens.
