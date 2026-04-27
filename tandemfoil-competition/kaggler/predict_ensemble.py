@@ -90,10 +90,10 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter35: empirical bests-per-split. rc 50/50 R+T (proven 48.5703 vs solo 48.5713). cruise R alone.
-    # re U alone (50/50 U+R hurts). single 4-way (proven 35.2140).
+    # iter36: 3-way rc R+T+Q (slight quality penalty from Q, but adds decorrelation).
+    # Single 4-way, cruise R, re U as proven.
     single: str = "thorfinnL:0.30,thorfinnM:0.30,thorfinnK:0.20,thorfinnI:0.20"
-    rc: str = "thorfinnR:0.5,thorfinnT:0.5"
+    rc: str = "thorfinnR:0.40,thorfinnT:0.40,thorfinnQ:0.20"
     cruise: str = "thorfinnR:1.0"
     re_rand: str = "thorfinnU:1.0"
 
