@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: warm-start iter8 @ wd=1e-3 (heavy regularization)
+
+- **Hypothesis:** geom_camber_rc bottleneck is M=6–8 OOD. Heavier weight decay (3e-4 → 1e-3) might force the model to be smoother in the camber feature dimension.
+- **Change:** `--weight_decay 1e-3` else same as iter8.
+- **Result:** Best E8=84.19. Worse than iter8's 83.49.
+- **Verdict:** discarded; restored iter8's best.pt (from git history at 06e2ef3) before next iter.
+- **Notes:** 1e-3 wd was too aggressive — model lost some of iter8's capacity. The OOD bottleneck is structural, not regularization-fixable.
+
+### 2026-04-27 — iter10: snapshot ensembling (save snaps every 3 epochs)
+
+- **Hypothesis:** Late-epoch checkpoints have similar val score (~84) but bounce around a basin in slightly different ways. Averaging predictions from several late snapshots should reduce variance and may beat any single best epoch — classic snapshot ensembling / SWA-by-prediction.
+- **Change:** train.py: `--snap_every N` saves `state_dict` to `checkpoints/snaps/snap_eXX.pt` every N epochs after warmup. Wrote `predict_ensemble.py` that loads every snapshot, runs full inference, and averages predictions per test sample. Run iter10 with `--snap_every 3` then ran predict_ensemble on snaps from epochs {12, 15, 18} (skipping early noisy ones).
+- **Result:** iter10 best single E15=83.88. Snap-ensemble of late snaps saved to predictions at commit 42da75b (awaiting test scoring). Then chained another `ensemble.py` of {snap-iter10, iter8, iter6, iter5, iter4} into commit 22effb4 (mega ensemble of 6 sources, awaiting scoring).
+- **Verdict:** snapshot save infrastructure kept; both new prediction outputs submitted alongside existing ones.
+- **Notes:** Snap_e03/06/09 (early epochs) had worse val (87–90); excluded from ensemble. The mega ensemble combines a 3-snap intra-iter10 ensemble with 4 prior single-best predictions; still all from the same "warm-start lineage" (correlated), so improvement is bounded.
+
 ### 2026-04-27 — iter8: add FiLM-on-Re (AdaLN) conditioning + Fourier + warm-start
 
 - **Hypothesis:** re_rand split is one of my worst on the leaderboard (test 119.91 vs leaders ~37–44). The model only sees `log(Re)` as one of 24 input features; explicit AdaLN-style FiLM conditioning lets each block's LayerNorm be modulated by Re globally. Zero-init the FiLM linear weights so warm-start preserves iter6 behavior; SGD then learns to use the Re signal.
