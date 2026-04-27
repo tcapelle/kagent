@@ -230,9 +230,8 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter4: warmstart from the *actual* 42.11 leader ckpt — model-s8nqhr0q
-# (hid=192 L=6 S=64). Earlier iters chained the wrong (bigger) checkpoint.
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-s8nqhr0q/checkpoint.pt"
+# Iter5: chain from iter4 best (d215g7ng, val=48.50).
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-d215g7ng/checkpoint.pt"
 
 
 @dataclass
@@ -242,10 +241,12 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 2
     surf_weight: float = 10.0
-    epochs: int = 8
+    epochs: int = 12
     grad_clip: float = 1.0
     l1_weight: float = 1.0
     l2_weight: float = 1.0
+    # Channel weights for pressure-focused loss (eval metric is surf_p MAE).
+    p_weight: float = 3.0
     ema_decay: float = 0.99
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
@@ -352,19 +353,21 @@ def main():
     train_start = time.time()
     amp_dtype = torch.bfloat16
 
+    chan_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=device)
+
     def compute_loss(pred, y_norm, vol_mask, surf_mask):
         err = pred - y_norm
-        sq = err * err
-        abs_e = err.abs()
+        sq = err * err * chan_w
+        abs_e = err.abs() * chan_w
 
         vol_w = vol_mask.unsqueeze(-1).float()
-        vol_n = vol_w.sum().clamp(min=1)
+        vol_n = vol_w.sum().clamp(min=1) * chan_w.mean()
         vol_l2 = (sq * vol_w).sum() / vol_n
         vol_l1 = (abs_e * vol_w).sum() / vol_n
         vol_loss = cfg.l2_weight * vol_l2 + cfg.l1_weight * vol_l1
 
         sf_w = surf_mask.unsqueeze(-1).float()
-        sf_n = sf_w.sum().clamp(min=1)
+        sf_n = sf_w.sum().clamp(min=1) * chan_w.mean()
         surf_l2 = (sq * sf_w).sum() / sf_n
         surf_l1 = (abs_e * sf_w).sum() / sf_n
         surf_loss = cfg.l2_weight * surf_l2 + cfg.l1_weight * surf_l1
