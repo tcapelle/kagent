@@ -43,9 +43,9 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 4
     grad_accum: int = 1
-    surf_weight: float = 20.0
+    surf_weight: float = 30.0
     p_channel_weight: float = 2.0  # channel weight for pressure (metric)
-    huber_delta: float = 0.05
+    huber_delta: float = 0.1
     grad_clip: float = 1.0
     warmup_epochs: int = 1
     epochs: int = 80
