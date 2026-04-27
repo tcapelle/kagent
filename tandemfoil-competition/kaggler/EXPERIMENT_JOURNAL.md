@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter19: fresh MSE-loss 192x6 for ensemble diversity (commit fb713c0)
+- **Hypothesis:** All my trained models so far use L1; their predictions correlate. A fresh MSE-trained model should produce decorrelated errors (MSE penalizes large errors quadratically, L1 linearly → different fit on outliers).
+- **Change:** `--loss_type mse --epochs 25 --batch_size 4 --train_subsample 60000 --lr 5e-4 --warmup_epochs 3`. Fresh init, no warm-start. Same 192x6 arch.
+- **Result:** val/loss=**1.9301** (MSE units, not directly comparable to L1) at epoch 24. Per-split val: 2.26, 2.73, 0.94, 1.78 — comparable to my L1 iter1 stage.
+- **Verdict:** kept as warm-start base for iter20 (MSE bs=2 step → MSE mature model).
+- **Notes:** Per-split has different shape than L1 chain (rc=2.73 vs L1 iter16's 1.46) — confirms different optimization landscape. Next: iter20 = warm iter19 bs=2 no-sub MSE 10ep, then ensemble iter16 (L1) + iter20 (MSE) for diversity.
+
 ### 2026-04-27 — iter18: cycle-4 pretrain — saturated (commit 3b06a3d)
 - **Hypothesis:** Continue cycling pattern: warm iter16 bs=4 sub60K lr=1e-5 25ep.
 - **Change:** `--warm_start /tmp/iter16_best.pt --lr 1e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
