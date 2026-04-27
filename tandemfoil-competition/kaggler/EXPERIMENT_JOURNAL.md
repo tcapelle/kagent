@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14: polish iter13 (lr=3e-6, pw=12, sw=15)
+- **Hypothesis:** Standard polish at low LR.
+- **Change:** Resume iter13; --lr 3e-6 (other unchanged).
+- **Result:** **surf_p 45.53 → 45.18** (~0.8%, best ep9). W&B `k69eageq`.
+- **Verdict:** Kept (best). Diminishing-returns polish.
+- **Notes:** Continuing the cycle. iter15 5th warm-restart with pw=15 (stronger) lr=2.5e-5.
+
 ### 2026-04-27 — iter13: 4th warm-restart (lr=2e-5, pw=12, sw=15)
 - **Hypothesis:** Push surface weight further (sw=12→15) and warm-restart to escape iter12 plateau.
 - **Change:** Resume iter12; --lr 2e-5 --p_weight 12 --surf_weight 15.
