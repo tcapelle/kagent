@@ -53,6 +53,11 @@ class Config:
     rc: str = "tanjiro:1"
     cruise: str = "edward:1"
     re_rand: str = "tanjiro:1"
+    # Per-split modes: "mean" or "median"
+    single_mode: str = "mean"
+    rc_mode: str = "mean"
+    cruise_mode: str = "mean"
+    re_rand_mode: str = "mean"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
@@ -67,20 +72,33 @@ def parse_mix(spec: str) -> list[tuple[str, float]]:
     return [(n, w / s) for n, w in out]
 
 
-def blend_split(split_file: str, mix: list[tuple[str, float]]):
-    tensors = None
-    label = []
+def blend_split(split_file: str, mix: list[tuple[str, float]], mode: str = "mean"):
+    """mode: 'mean' (weighted), 'median' (per-node median ignoring weights)."""
+    sources = []
     for src_name, w in mix:
         agent, commit = SRC[src_name]
-        path = PRED / agent / commit / f"{split_file}.pt"
-        preds = torch.load(path, weights_only=False)
-        if tensors is None:
-            tensors = [w * p for p in preds]
-        else:
-            tensors = [t + w * p for t, p in zip(tensors, preds)]
-        label.append(f"{w:.2f}*{src_name}")
-    print(f"  {split_file}: " + " + ".join(label))
-    return tensors
+        preds = torch.load(PRED / agent / commit / f"{split_file}.pt", weights_only=False)
+        sources.append((src_name, w, preds))
+
+    if mode == "median":
+        out = []
+        for i in range(len(sources[0][2])):
+            stack = torch.stack([src[2][i] for src in sources], dim=0)  # [K, N, 3]
+            out.append(stack.median(dim=0).values)
+        print(f"  {split_file}: median of " + ", ".join(s[0] for s in sources))
+        return out
+    else:
+        tensors = None
+        label = []
+        for _, w, preds in sources:
+            if tensors is None:
+                tensors = [w * p for p in preds]
+            else:
+                tensors = [t + w * p for t, p in zip(tensors, preds)]
+        for src_name, w, _ in sources:
+            label.append(f"{w:.2f}*{src_name}")
+        print(f"  {split_file}: " + " + ".join(label))
+        return tensors
 
 
 cfg = sp.parse(Config)
@@ -94,14 +112,14 @@ output_dir.mkdir(parents=True, exist_ok=True)
 print(f"Output: {output_dir}")
 
 mixes = {
-    "test_single_in_dist":     parse_mix(cfg.single),
-    "test_geom_camber_rc":     parse_mix(cfg.rc),
-    "test_geom_camber_cruise": parse_mix(cfg.cruise),
-    "test_re_rand":            parse_mix(cfg.re_rand),
+    "test_single_in_dist":     (parse_mix(cfg.single),  cfg.single_mode),
+    "test_geom_camber_rc":     (parse_mix(cfg.rc),      cfg.rc_mode),
+    "test_geom_camber_cruise": (parse_mix(cfg.cruise),  cfg.cruise_mode),
+    "test_re_rand":            (parse_mix(cfg.re_rand), cfg.re_rand_mode),
 }
 
-for split, mix in mixes.items():
-    out = blend_split(split, mix)
+for split, (mix, mode) in mixes.items():
+    out = blend_split(split, mix, mode=mode)
     torch.save(out, output_dir / f"{split}.pt")
 
 print(f"\nMeta-router predictions saved to {output_dir}")
