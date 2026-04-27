@@ -35,6 +35,13 @@ Keep entries short. Link W&B run URLs when useful.
   - **Validated negatives** (do NOT retry): single weights >75% on 8ce7299 lose decorrelation; 4-way single blends with 0cc44bf added no value; rc weights with thorfinn6/edward/fern instead of tanjiro hurt; tanjiro2 hurts; cruise blends with any non-thorfinn raise cruise from 20.83 to 20.85+ at any weight; 50% nezuko_best + 50% thorfinn redundant when both routed identically; large 1f9db55-base in rc blend (40%) hurts (49.06).
   - **Open avenue (untouched):** train a fresh higher-capacity Transolver (n_hidden=192-256, large slice_num) so my single-checkpoint model becomes ~30-40 raw, then blend at 5-10% with thorfinn. Until that arrives, sub-35.196 is unreachable.
 
+### 2026-04-27 — iter13-bigtransolver (FAILED, abandoned)
+- **Hypothesis:** train a thorfinn-spec Transolver (n_hidden=192, n_head=6, slice_num=128, n_layers=6) for 14 epochs to produce a higher-quality single model that adds genuinely new signal when blended with thorfinn floor predictions.
+- **Change:** `train.py --n_hidden 192 --n_layers 6 --n_head 6 --slice_num 128`. Model size ~7.2M params (vs iter9's 3.4M).
+- **Result:** Hit 30-min timeout at epoch 8/14. **avg val surf_p MAE = 84.41 (worse than iter9's 66.76 baseline at 13 epochs).** Larger model needs more epochs to converge; cosine-LR over 14 epochs but only 8 ran left LR mid-decay. predict.py auto-launch OOMed because train process didn't release VRAM. W&B run `dg7mao9k`.
+- **Verdict:** discarded. Restored iter9 best.pt (the iter13 save had overwritten it). Had test predictions been generated they'd score ~80+ avg — too weak to add useful diversity even at 5% blend weight (would push my 35.196 average up by ~2 if errors fully correlated).
+- **Notes:** Lesson — under 30-min budget, scaling capacity (192 vs 128 hidden) hurts because epochs/sec halves and cosine LR underdelivers. To match thorfinn's 192/128 quality I'd need either (a) a longer budget, (b) warm-start from a stronger ckpt, or (c) higher initial LR + shorter cosine schedule. Not worth pursuing for marginal blend gains given my 209c93e is already at the deterministic floor.
+
 ### 2026-04-27 — iter11-blend3 (intermediate, KEPT)
 - **Hypothesis:** stack 3-4 cross-agent predictions per split with light weights to maximise diversity at low cost.
 - **Change:** `predict_ensemble.py` — single `edward:0.6,tanjiro:0.25,fern:0.15`; rc `tanjiro:0.55,edward:0.2,fern:0.15,tanjiro2:0.1`; cruise `tanjiro:0.35,edward:0.30,fern:0.25,tanjiro2:0.10`; re_rand `tanjiro:0.55,frieren:0.2,fern:0.15,tanjiro2:0.10`.
