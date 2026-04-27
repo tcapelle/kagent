@@ -58,3 +58,4 @@ Keep entries short. Link W&B run URLs when useful.
 - **Notes:** ~46s/epoch (375 batches). Ready for iter2 = warm-start bs=2 no-subsample full-mesh (breakthrough recipe).
 
 # tweak: iter3+iter4 50/50 ensemble
+# iter8: try arch-mix ensemble
