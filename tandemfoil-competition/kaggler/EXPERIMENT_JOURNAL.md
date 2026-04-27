@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: more Fourier (16 scales, max_freq=32) → val/loss=0.81, avg_surf_p=58.06
+- **Hypothesis:** Original iter1 used 8 Fourier scales with max_freq=16. Try doubling both (16 scales, max_freq=32) for finer-grained spatial frequencies — possibly captures small-scale turbulence near surfaces.
+- **Change:** From-scratch run identical to iter1 except `--fourier_scales 16 --fourier_max_freq 32.0`. Run `djx8kgjc`.
+- **Result:** epoch 30/30, 24.2 min, 10.6GB. val/loss=**0.8084**, avg_surf_p=**58.06**. Worse than iter1's 53.46 with 8 scales — more Fourier features hurt or just used capacity inefficiently.
+- **Verdict:** kept for ensemble diversity. 9-way ensemble (weights 0.05/0.07/0.20/0.04/0.07/0.10/0.18/0.20/0.09) submitted under `b61ffd1`.
+- **Notes:** Higher freqs may have over-fit positional encoding without enough data. Best single still iter3 (51.27). Diminishing returns on this branch.
+
 ### 2026-04-27 — iter9: deeper vanilla chain (lr=5e-6) → val/loss=0.74, avg_surf_p=53.81 (-2%)
 - **Hypothesis:** iter8 (vanilla + bs=2 chain at lr=2e-5) reached 54.71. Continue chain at lr=5e-6 for one more 11-epoch round to squeeze more out of the vanilla branch and add another ensemble checkpoint.
 - **Change:** Same as iter8 but warm-starting from iter8 (`model-5cqn03sv`) and `lr=5e-6`. Run `g6g19fjy`.
