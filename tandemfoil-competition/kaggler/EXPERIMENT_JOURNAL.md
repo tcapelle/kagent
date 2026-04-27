@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — scale-224x8h8 (DISCARDED)
+- **Hypothesis:** with stronger regularization from iter8 (input noise + slice128), bigger model (n_hidden 192→224, n_head 6→8) might use the budget better.
+- **Change:** model_config n_hidden=224, n_head=8.
+- **Result:** 25 epochs in 30.9 min (74s/epoch — bigger model). Best epoch 25: avg_surf_p=98.62 (worse than iter8's 93.62).
+- **Verdict:** discarded — `git reset --hard HEAD~1`. Same lesson as iter4: extra width consumes the epoch budget without enough convergence; was still descending at the cap.
+- **Notes:** epochs needed > available. Keeping iter8 architecture; next push will scale regularization not capacity.
+
 ### 2026-04-27 — input-noise-slice128
 - **Hypothesis:** iter6/7 plateau driven by overfitting on val_geom_camber_rc (unseen-camber generalization). Add Gaussian input noise (σ=0.03 on normalized features) for cheap regularization, and bump slice_num 96→128 for more attention capacity.
 - **Change:** train.py — `input_noise=0.03` config, applied per-step on real (non-padded) nodes; model_config slice_num=128.
