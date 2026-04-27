@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: chain warm-start from iter10
+- **Hypothesis:** Warm-start cycles work — repeat the recipe with iter10 as starting point and even lower lr=1e-4 to keep refining.
+- **Change:** train.py — lr 1.5e-4→1e-4. Initial checkpoint = iter10 (model-hqd0w255). Same epochs=30 cosine schedule.
+- **Result:** Trained 30 epochs in 23.9 min. Best epoch 19 (val/loss=1.89), then later epochs hovered around 2.0. Val mae_surf_p: single=49.1, geom_rc=68.2, geom_cruise=35.7, re_rand=54.4 (avg=51.8, vs iter10 54.7). W&B run qfi1mn6t. Predictions at commit 597d79e.
+- **Verdict:** kept. Best val yet by a wide margin.
+- **Notes:** Warm-start chains (iter5 → iter10 → iter11) consistently push val/loss down 15-25% per cycle. Each cycle uses a fresh cosine schedule starting at lower lr. Plan iter12: chain again from iter11 with lr=7e-5.
+
 ### 2026-04-27 — iter10: warm-start from iter5, low-LR fine-tune
 - **Hypothesis:** Iter5's training loss was still falling at the 30-min cutoff. Loading its weights and continuing for another 30 min with cosine schedule restarted at lr=1.5e-4 should let optimization push past iter5's plateau.
 - **Change:** train.py — added `--init_ckpt` to load weights at start, lr=5e-4→1.5e-4, epochs=38→30. Reverted iter8's slice/mlp tweaks back to iter5 model_config (must match the checkpoint).
