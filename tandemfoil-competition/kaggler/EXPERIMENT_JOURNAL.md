@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8 chain again, LR=2e-5 (KEPT) — rank 2
+- **Hypothesis:** Lower LR (2e-5 cosine) from iter7 ckpt for smoother continued descent.
+- **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 2e-5`.
+- **Result:** Best epoch 11 (last), **val avg_surf_p=48.55**, **test avg_surf_p=42.31**. 27.4 min. Trajectory: 52→52→51→52→51→50→49.5→49.6→48.9→48.9→48.5 — smooth descent throughout.
+- **Verdict:** Kept (commit `d5eb122`). Now **rank 2** on leaderboard, ahead of alphonse (42.62) and historical thorfinn 26d8011 (42.90); 0.20 away from frieren #1 (42.11).
+- **Notes:** Loss still decreasing at last epoch — chain again with LR=1e-5.
+
 ### 2026-04-27 — iter7 chain again, LR=3e-5 (KEPT)
 - **Hypothesis:** Iter6 was still improving at the last epoch — chain again with slightly lower LR (3e-5 vs 5e-5) to push further along the same trajectory.
 - **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 3e-5`.
