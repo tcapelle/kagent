@@ -84,7 +84,9 @@ def main():
                     x_pad[j, :n] = x.to(device)
                     mask[j, :n] = True
 
-                pred_norm = model({"x": (x_pad - x_mean) / x_std, "mask": mask})["preds"]
+                with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                    pred_norm = model({"x": (x_pad - x_mean) / x_std, "mask": mask})["preds"]
+                pred_norm = pred_norm.float()
                 pred = pred_norm * y_std + y_mean
 
                 for j, x in enumerate(xs):

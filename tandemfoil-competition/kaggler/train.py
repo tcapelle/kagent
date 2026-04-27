@@ -352,7 +352,9 @@ def main():
             x_n = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-            pred = model({"x": x_n, "mask": mask})["preds"]
+            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                pred = model({"x": x_n, "mask": mask})["preds"]
+            pred = pred.float()
             err = smooth_l1(pred, y_norm, beta=1.0)  # [B, N, 3]
 
             vol_mask = (mask & ~is_surface).unsqueeze(-1).float()
@@ -401,7 +403,9 @@ def main():
                     x_n = (x - stats["x_mean"]) / stats["x_std"]
                     y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                    pred = eval_model({"x": x_n, "mask": mask})["preds"]
+                    with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                        pred = eval_model({"x": x_n, "mask": mask})["preds"]
+                    pred = pred.float()
                     sq_err = (pred - y_norm) ** 2
 
                     vol_mask = (mask & ~is_surface).unsqueeze(-1).float()
