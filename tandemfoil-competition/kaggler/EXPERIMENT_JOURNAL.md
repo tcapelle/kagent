@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: extended iter3 to 38 epochs (full 30-min budget)
+- **Hypothesis:** Iter3 only used 19.9 of 30 min (25 epochs). Stretching the cosine schedule to 38 epochs and letting it train the full 30 min should give substantial improvement at the same batch/lr.
+- **Change:** train.py — epochs 25→38. Everything else identical to iter3.
+- **Result:** Trained all 38 epochs, hit 30 min timeout. Best epoch 34, val/loss=2.90 (vs iter3 3.86, -25%). Val mae_surf_p: single=63.4, geom_rc=84.7, geom_cruise=45.7, re_rand=66.4 (avg=65.0). **Test leaderboard: 59.94 avg surf_p (rank 5/7, was 6/7).** W&B run xqti3sr8.
+- **Verdict:** kept (clear win — same setup, just longer training).
+- **Notes:** Train losses still falling at epoch 34 (vol≈0.07, surf≈0.024). Fine-tuning from this checkpoint with lower lr, or training even longer, should still help.
+
 ### 2026-04-27 — iter4: bigger batch + dropout (regression)
 - **Hypothesis:** With 10GB VRAM headroom from iter3 subsampling, increase batch_size to 8 and add dropout=0.05 for stronger regularization. Higher lr=8e-4 should pair with batch growth; surf_weight=30, epochs=35.
 - **Change:** train.py — batch=4→8, lr=5e-4→8e-4, surf_weight=25→30, vol_subsample=25k→30k, epochs=25→35, dropout=0.05.
