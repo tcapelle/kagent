@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — SWA(iter1+iter2+iter3) and SWA(iter2+iter3) — discarded
+
+- **Hypothesis:** Stochastic weight averaging across the chained checkpoints would land in a wider/flatter minimum than any individual ckpt.
+- **Change:** New `swa.py` averages the model state-dicts and re-evaluates against val splits (no extra training).
+- **Result:** SWA(iter1+2+3) = 92.85 (worse than iter1 alone 113? no — it's between but bad), SWA(iter2+iter3) = 79.60 — both worse than iter3 (77.47). Iter1 is too far in weight space; iter2+3 averaging just regresses toward iter2.
+- **Verdict:** discarded — SWA doesn't help when the chain is monotonically improving (averaging pulls back toward worse ckpt).
+- **Notes:** SWA needs ckpts sampled around the same minimum (e.g., last few epochs of one run). Could try checkpoint averaging *within* a single run by saving every epoch.
+
+### 2026-04-27 — iter3 warmstart-cosine9-lr1e4
+
+- **Hypothesis:** Continue chain from iter2 at a lower peak LR (1e-4) for 9 more epochs of fine refinement, with the cosine schedule fully completing.
+- **Change:** `--resume checkpoints/best.pt --lr 1e-4 --epochs 9 --warmup_steps 30`. Same model + bs + subsample as iter2.
+- **Result:** 9 epochs in 26.6 min. Best epoch 8 (live): mean_mae_surf_p=77.47. Per-split surf_p: single=73.48, geom_rc=98.11, geom_cruise=58.93, re_rand=79.37. Submission `apr27/fern/4051524`.
+- **Verdict:** kept — 6% improvement over iter2 (82.48 → 77.47).
+- **Notes:** Marginal returns vs. iter2's 27% gain — chain is plateauing. `geom_camber_rc` (unseen front foil camber, raceCar) remains the worst split (98). Surface weight (10) might be too low when surface error dominates the metric.
+
 ### 2026-04-27 — iter2 warmstart-cosine9-lr3e4
 
 - **Hypothesis:** Resume from iter1 ckpt with a fully-completed cosine schedule sized to actual training time (epochs=9 ≈ 27 min) and a lower peak LR (3e-4) to fine-tune without destabilising. Iter1's cosine never decayed (sized for 50 epochs but only ran 11), so we never benefited from lr annealing.
