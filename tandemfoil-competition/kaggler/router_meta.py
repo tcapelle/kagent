@@ -51,6 +51,10 @@ SRC = {
     "nezuko7":  ("nezuko",   "3305937"),  # 35.24 (single 35.63, rc 49.07, cr 20.92, re 35.34)
     "nezuko8":  ("nezuko",   "c01fda9"),  # TIES! 35.21 (single 35.60, rc 49.04, cr 20.88, re 35.33)
     "nezuko9":  ("nezuko",   "75d1bc6"),  # AHEAD! 35.20 (single 35.59, rc 49.04, cr 20.83, re 35.33)
+    "nezuko10": ("nezuko",   "78c375e"),  # 35.197 (best nezuko)
+    "nezuko11": ("nezuko",   "58aee76"),  # 35.197
+    "nezuko12": ("nezuko",   "629ec60"),  # 35.20
+    "snap_1f9": ("thorfinn", "1f9db55"),  # MY 35.198 frozen blend
     "askeladd2": ("askeladd", "b977533"),  # NEW askeladd 48.83
     "frieren":  ("frieren",  "32f0a18"),  # re 42.48 (best frieren)
     "frieren2": ("frieren",  "0596f0e"),  # re 42.53
