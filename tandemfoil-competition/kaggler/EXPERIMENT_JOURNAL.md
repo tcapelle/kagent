@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: chain at LR 1.5e-5 + p_weight 10
+- **Hypothesis:** chain ramp continues to pay off (3→5: -3.5, 5→8: -2). Push p_weight 8→10 with another small LR drop (2e-5 → 1.5e-5) to keep walking down.
+- **Change:** args only. `--warm_start /mnt/new-pvc/kagent/apr27-5/askeladd/checkpoints/model-eck7oggk/checkpoint.pt --skip_warmup --lr 1.5e-5 --epochs 30 --p_weight 10.0`. Also added `predict_ensemble.py` and `eval_val.py` for upcoming ensemble work.
+- **Result:** 28 epochs in 30.9 min. Best epoch 22 → val/avg_surf_p=48.06 (single=41.32, geom_rc=66.77, geom_cruise=33.08, re_rand=51.08). Run eo3xc5x1. Predictions at apr27-5/askeladd/f424fe5.
+- **Verdict:** kept — improvement (49.37 → 48.06, -1.31). Diminishing returns visible (last 5 epochs all within 0.3 of best).
+- **Notes:** Ensemble of all 4 chained checkpoints next; if val drops, submit. Otherwise iter5 = single chain at LR 1e-5 + p_weight 12 or augmentation.
+
 ### 2026-04-27 — iter3: chain again, raise p_weight 5→8, LR 3e-5→2e-5
 - **Hypothesis:** iter2 trajectory was still descending at timeout, and p_weight 3→5 was a clear net win. Pushing p_weight further (5→8) and dropping LR a notch should keep moving down without destabilising.
 - **Change:** args only. `--warm_start /mnt/new-pvc/kagent/apr27-5/askeladd/checkpoints/model-tska1pw8/checkpoint.pt --skip_warmup --lr 2e-5 --epochs 30 --p_weight 8.0`.
