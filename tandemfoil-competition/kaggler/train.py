@@ -68,8 +68,9 @@ class Config:
     batch_size: int = 8
     surf_weight: float = 20.0
     p_weight: float = 4.0
-    epochs: int = 40
+    epochs: int = 50
     train_n_volume: int = 32000
+    bf16: bool = True
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -110,9 +111,9 @@ model_config = dict(
     fun_dim=X_DIM - 2,
     out_dim=3,
     n_hidden=192,
-    n_layers=5,
+    n_layers=7,
     n_head=8,
-    slice_num=64,
+    slice_num=96,
     mlp_ratio=4,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
@@ -126,6 +127,7 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOC
 # Per-channel weights (Ux, Uy, p) — emphasize pressure since the leaderboard
 # ranks by surface-pressure MAE.
 ch_weights = torch.tensor([1.0, 1.0, cfg.p_weight], device=device).view(1, 1, 3)
+amp_dtype = torch.bfloat16 if cfg.bf16 else torch.float32
 
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
@@ -179,19 +181,19 @@ for epoch in range(MAX_EPOCHS):
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-        pred = model({"x": x})["preds"]
-        sq_err = (pred - y_norm) ** 2  # [B,N,3]
-        sq_err_w = sq_err * ch_weights  # weight pressure channel
-
-        vol_mask = mask & ~is_surface
-        surf_mask = mask & is_surface
-        # mean over (nodes, channels) — sum/(count*3) since ch_weights normalized
-        vol_loss = (sq_err_w * vol_mask.unsqueeze(-1)).sum() / (vol_mask.sum().clamp(min=1) * 3)
-        surf_loss = (sq_err_w * surf_mask.unsqueeze(-1)).sum() / (surf_mask.sum().clamp(min=1) * 3)
-        loss = vol_loss + cfg.surf_weight * surf_loss
+        with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.bf16):
+            pred = model({"x": x})["preds"]
+            sq_err = (pred.float() - y_norm) ** 2  # [B,N,3]
+            sq_err_w = sq_err * ch_weights  # weight pressure channel
+            vol_mask = mask & ~is_surface
+            surf_mask = mask & is_surface
+            vol_loss = (sq_err_w * vol_mask.unsqueeze(-1)).sum() / (vol_mask.sum().clamp(min=1) * 3)
+            surf_loss = (sq_err_w * surf_mask.unsqueeze(-1)).sum() / (surf_mask.sum().clamp(min=1) * 3)
+            loss = vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
@@ -224,7 +226,9 @@ for epoch in range(MAX_EPOCHS):
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
-                pred = model({"x": x})["preds"]
+                with torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=cfg.bf16):
+                    pred = model({"x": x})["preds"]
+                pred = pred.float()
                 sq_err = (pred - y_norm) ** 2
                 sq_err_w = sq_err * ch_weights
 
