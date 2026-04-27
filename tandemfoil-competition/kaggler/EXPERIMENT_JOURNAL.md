@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter14: cycle-2 bs=2 fine-tune NEW BEST (commit d3350b0)
+- **Hypothesis:** Apply bs=2/no-subsample to cycle-2 base iter13 (val 1.236).
+- **Change:** `--warm_start /tmp/iter13_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** **val/loss=1.1963** at epoch 10 (25.1 min). Per-split val: single=1.96, rc=1.49, cruise=0.29, re_rand=1.05. ~3% improvement over iter13.
+- **Verdict:** **NEW BEST.** Cycling pattern continues to deliver. All splits dropped ~3-6%.
+- **Notes:** Cosine still descending at ep10 — extra epochs would help. Next: iter15 = warm iter14 bs=4 sub60K lr=1e-5 25ep (cycle 3 deeper pretrain).
+
 ### 2026-04-27 — iter13: cycle-2 deeper pretrain — warm iter10 bs=4 sub60K lr=2e-5 25ep (commit 499826b)
 - **Hypothesis:** Repeat the iter9 trick from iter10's stronger base. Cosine over 25 ep at lr=2e-5 (lower than iter9's 5e-5 since model is more converged).
 - **Change:** `--warm_start /tmp/iter10_best.pt --lr 2e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`. Same arch.
