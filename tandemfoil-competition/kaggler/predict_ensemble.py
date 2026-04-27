@@ -43,6 +43,12 @@ SRC = {
     "thorfinn9": ("thorfinn", "9379993"),  # rc 49.04154 (LOWEST), re 35.32366
     "thorfinnA": ("thorfinn", "0ce97d2"),  # single 35.58553, rc 49.04155, re 35.32366
     "thorfinnB": ("thorfinn", "0e56f78"),  # single 35.58551 (matches my floor)
+    # Floor-cluster reps — distinct prediction groups all at 35.5855 single / 49.0415 rc.
+    "thorfinnC": ("thorfinn", "89dd381"),  # single G0 (=0e56f78,889c2a0), rc G0 distinct, re G0 distinct
+    "thorfinnD": ("thorfinn", "86a8146"),  # single G1 distinct, rc G1 (=0e56f78,afabff7), re G1
+    "thorfinnE": ("thorfinn", "afabff7"),  # single G2 distinct, rc G1 same as 0e56f78
+    "thorfinnF": ("thorfinn", "847a2f4"),  # single G3 distinct, rc G3 distinct (49.0415), re G3
+    "thorfinnG": ("thorfinn", "889c2a0"),  # single G0 (=0e56f78), rc G2 distinct (=9379993), re G2 distinct
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # External models — best per split (non-thorfinn)
@@ -66,12 +72,15 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # 3-way blend of all thorfinn floor commits (9379993 + 0ce97d2 + 889c2a0)
-    single: str = "thorfinnB:0.4,thorfinnA:0.3,thorfinn9:0.3"
-    rc: str = "thorfinn9:0.4,thorfinnA:0.3,thorfinnB:0.3"
-    cruise: str = "thorfinn:1.0"
-    re_rand: str = "thorfinn9:0.4,thorfinnA:0.3,thorfinnB:0.3"
+    # iter14: wide ensemble of all distinct floor cluster reps to average noise.
+    # single: 6 distinct prediction groups at 35.5855
+    single: str = "thorfinnB:0.18,thorfinnD:0.18,thorfinnE:0.16,thorfinnF:0.16,thorfinnA:0.18,thorfinn9:0.14"
+    # rc: 5 distinct groups, weighted toward 49.0415 floor commits
+    rc: str = "thorfinnC:0.25,thorfinnG:0.25,thorfinnF:0.25,thorfinnB:0.15,thorfinnA:0.10"
+    # cruise: 3 distinct groups all at 20.8320
+    cruise: str = "thorfinnB:0.40,thorfinnA:0.30,thorfinn9:0.30"
+    # re_rand: 5 distinct groups all at 35.3237
+    re_rand: str = "thorfinnC:0.20,thorfinnB:0.20,thorfinnG:0.20,thorfinnF:0.20,thorfinnA:0.20"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
