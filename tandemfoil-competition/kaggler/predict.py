@@ -53,19 +53,22 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-# ---------------------------------------------------------------------------
-# Load your model here. Example:
-#
-#   from train import MyModel
-#   model = MyModel(...).to(device)
-#   model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
-#
-# Or if you saved the full model:
-#
-#   model = torch.load(cfg.checkpoint, map_location=device)
-# ---------------------------------------------------------------------------
-raise NotImplementedError("Load your model above and remove this line")
+import yaml
+from train import Transolver
 
+ckpt_path = Path(cfg.checkpoint)
+config_path = ckpt_path.parent / "config.yaml"
+if config_path.exists():
+    with open(config_path) as f:
+        model_config = yaml.safe_load(f)
+    state_dict = torch.load(ckpt_path, map_location=device, weights_only=True)
+else:
+    blob = torch.load(ckpt_path, map_location=device, weights_only=False)
+    model_config = blob["model_config"]
+    state_dict = blob["state_dict"]
+
+model = Transolver(**model_config).to(device)
+model.load_state_dict(state_dict)
 model.eval()
 print(f"Loaded model from {cfg.checkpoint}")
 
@@ -105,8 +108,9 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
-            pred = pred_norm * y_std + y_mean
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            pred = pred_norm.float() * y_std + y_mean
 
             for j, x in enumerate(xs):
                 predictions.append(pred[j, :x.shape[0]].cpu())
