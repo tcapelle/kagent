@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10: bs=2 no-subsample on iter9 base 🚀🚀 NEW BEST (commit 3924526)
+- **Hypothesis:** Apply frieren's bs=2/no-subsample breakthrough recipe to the deeper pretrained iter9 (val 1.334) instead of iter1 (val 1.997). Should reach val ~1.0-1.1.
+- **Change:** `--warm_start /tmp/iter9_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. Same 192x6 arch.
+- **Result:** **val/loss=1.2807** at epoch 10 (25.1 min, 29.1GB). Per-split val: single=2.06, rc=1.59, cruise=0.33, re_rand=1.15. **15% improvement over iter3** (was 1.516); all splits dropped meaningfully (single -15%, rc -17%, cruise -23%, re_rand -12%).
+- **Verdict:** **NEW BEST.** Confirms hypothesis: deeper pretraining → bs=2 step gives much bigger gains than pretrain-jump-to-bs2.
+- **Notes:** Cosine LR was still descending at ep10; another 5-10 ep would help. Next: iter11 = chain at lr=5e-6 to extract more, then ensemble iter9+iter10 for final submission.
+
 ### 2026-04-27 — iter9: deeper coarse pretraining — warm iter3 bs=4 sub60K lr=5e-5 25ep 🚀 (commit a0370c7)
 - **Hypothesis:** I jumped to bs=2/no-subsample too early. Frieren chained 4 bs=8/sub=40K links BEFORE the bs=2 breakthrough, reaching val 1.44 first. Continuing iter3's chain at the *coarse* setting (bs=4 sub=60K) at warm-up+cosine over 25 ep should push val below 1.4 by giving more gradient passes through varied subsamples.
 - **Change:** `--warm_start /tmp/iter3_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`. Same arch.
