@@ -51,6 +51,8 @@ class Config:
     epochs: int = 80
     use_amp: bool = True
     vol_subsample: int = 20000  # max volume nodes per sample at training time
+    cp_normalize: bool = True  # divide pressure target by exp(2*(log_re - LOG_RE_REF))
+    log_re_ref: float = 14.0  # reference log(Re) ~1.2M for Cp normalization
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -127,6 +129,33 @@ def lr_lambda(epoch):
 scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 ch_weights = torch.tensor([1.0, 1.0, cfg.p_channel_weight], device=device).view(1, 1, 3)
 
+
+def _re_factor(x_raw):
+    """Per-sample Re² scale factor: x_raw is [B, N, 24] raw input. Returns [B, 1, 1]."""
+    log_re = x_raw[:, 0, 13]  # log_re is constant per sample, take first node
+    return torch.exp(2.0 * (log_re - cfg.log_re_ref)).view(-1, 1, 1)
+
+
+# Recompute pressure-channel stats on Cp-rescaled targets.
+if cfg.cp_normalize:
+    print("Computing Cp-rescaled pressure stats...")
+    import random
+    random.seed(42)
+    n_subset = min(200, len(train_ds))
+    subset_idx = random.sample(range(len(train_ds)), n_subset)
+    p_scaled_chunks = []
+    for i in subset_idx:
+        xr, yr, _ = train_ds[i]
+        log_re_i = xr[0, 13].item()
+        rf = float(torch.exp(torch.tensor(2.0 * (log_re_i - cfg.log_re_ref))))
+        p_scaled_chunks.append(yr[:, 2] / rf)
+    p_scaled_all = torch.cat(p_scaled_chunks)
+    new_p_mean = p_scaled_all.mean().item()
+    new_p_std = p_scaled_all.std().item()
+    print(f"Cp stats over {n_subset} samples: mean={new_p_mean:.4f}, std={new_p_std:.4f}")
+    stats["y_mean"][2] = new_p_mean
+    stats["y_std"][2] = new_p_std
+
 run = wandb.init(
     entity=os.environ.get("WANDB_ENTITY", "wandb-applied-ai-team"),
     project=os.environ.get("WANDB_PROJECT", "kagent-v2"),
@@ -156,6 +185,16 @@ model_path = model_dir / "checkpoint.pt"
 with open(model_dir / "config.yaml", "w") as f:
     yaml.dump(model_config, f)
 
+# Save runtime info (Cp normalization params + adjusted stats) for predict.py.
+runtime_info = {
+    "cp_normalize": cfg.cp_normalize,
+    "log_re_ref": cfg.log_re_ref,
+    "p_mean_cp": stats["y_mean"][2].item(),
+    "p_std_cp": stats["y_std"][2].item(),
+}
+with open(model_dir / "runtime.yaml", "w") as f:
+    yaml.dump(runtime_info, f)
+
 best_val = float("inf")
 best_metrics: dict = {}
 global_step = 0
@@ -176,6 +215,9 @@ for epoch in range(MAX_EPOCHS):
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
+        re_factor = _re_factor(x) if cfg.cp_normalize else None
+        if cfg.cp_normalize:
+            y = torch.cat([y[..., :2], (y[..., 2:3] / re_factor)], dim=-1)
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
@@ -228,6 +270,10 @@ for epoch in range(MAX_EPOCHS):
                 is_surface = is_surface.to(device, non_blocking=True)
                 mask = mask.to(device, non_blocking=True)
 
+                re_factor = _re_factor(x) if cfg.cp_normalize else None
+                y_phys = y  # keep physical for MAE
+                if cfg.cp_normalize:
+                    y = torch.cat([y[..., :2], (y[..., 2:3] / re_factor)], dim=-1)
                 x = (x - stats["x_mean"]) / stats["x_std"]
                 y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
@@ -242,7 +288,9 @@ for epoch in range(MAX_EPOCHS):
                 n_vb += 1
 
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
-                err = (pred_orig - y).abs()
+                if cfg.cp_normalize:
+                    pred_orig = torch.cat([pred_orig[..., :2], pred_orig[..., 2:3] * re_factor], dim=-1)
+                err = (pred_orig - y_phys).abs()
                 mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 n_surf += surf_mask.sum().item()
