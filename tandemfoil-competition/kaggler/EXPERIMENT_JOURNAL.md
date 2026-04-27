@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: warm-start iter5 @ lr=3e-5, p_weight=4
+
+- **Hypothesis:** Drop LR another 3× and bump p_weight 3→4 for one more fine-tune pass on the new (Fourier-featured) architecture.
+- **Change:** `--warm_start checkpoints/best.pt --fourier_dim 32 --fourier_sigma 5.0 --lr 3e-5 --p_weight 4 --weight_decay 2e-4 --epochs 30 --warmup_epochs 0`. 21 epochs ran.
+- **Result:** Best val avg_mae_surf_p=**83.56 at E1** — i.e. *one epoch of fine-tuning was best*; everything after was worse (87–90). Splits at E1: single=55, geom_rc=136, cruise=56, re_rand=88.
+- **Verdict:** kept — new best.
+- **Notes:** "Best at E1" tells me the iter5 checkpoint was already very near-optimal under this loss; a single small SGD step nudged it into a slightly better basin and then noise dominated. Suggests next iter should use lr ~1e-5 (or run brief multi-restart fine-tunes) and that ensembles across the last few iters should help most.
+
+### 2026-04-27 — submitted ensemble at commit 94495c7 (iter6+iter5+iter4)
+
+- **Hypothesis:** The last three best checkpoints have similar val scores but different architectures (iter4 has no Fourier features; iters 5–6 do) and different loss-target (different p_weight) — averaging predictions should reduce variance on the hardest split.
+- **Change:** Wrote `ensemble.py` that averages saved per-commit prediction tensors element-wise. Uniform weights, 3 commits.
+- **Result:** Submitted; awaiting test scoring. (Val numbers don't help since these are test-only predictions.)
+- **Verdict:** submitted, separate slot from any single iteration.
+- **Notes:** Lost my first ensemble at bdc0312 because iter6's auto-submit overwrote that commit's predictions. Need to commit ensemble.py *after* a training run if I want a clean separate slot.
+
 ### 2026-04-27 — iter5: add Fourier features (32 freqs, σ=5) + warm-start
 
 - **Hypothesis:** Iters 2–4 plateaued around 86. The preprocess MLP only sees raw spatial coords (x, z) — adding random Fourier features should help the network represent high-frequency turbulent pressure features. Architecture grows by 64 input dims; pad the preprocess weight with zeros so warm-start preserves iter4 behavior, then let SGD learn to use the new features.
