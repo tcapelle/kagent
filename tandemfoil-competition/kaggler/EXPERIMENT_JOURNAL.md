@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: random subsampling (16k pts) + L1 loss + bf16
+- **Hypothesis:** apr27 frieren reached 42.11 by **subsampling 16k of ~100k mesh points per training step** (recipe surfaced in thorfinn's notes), giving ~6× more epochs in the 30-min budget. With the same 192×6 transolver and L1 (= eval-metric-aligned) loss this should crush the iter1 score.
+- **Change:** `train.py` — added `train_subsample` (random subset per sample, surface points always kept), `loss_type` (l1/mse/smooth_l1), `p_weight` (per-channel pressure boost), `warm_start` (path) options. Switched default loss to L1, surf_weight=10, no p_weight, subsample=16384, base lr=5e-4 + cosine over 80 epochs.
+- **Result:** **72 epochs** in 30 min (vs 11 before — 6.5× speedup; epoch ≈ 25 s, VRAM 5.4 GB). Best epoch 54: val/loss=2.78, **avg_mae_surf_p=84.20** (vs iter1 110.4, iter2 132.3). Run id `f41df47d`, code commit `e75607f`.
+- **Verdict:** kept — clear winner. New best.pt.
+- **Notes:** Plateaued after epoch 54; cosine LR was still moderate. Next: chain a fine-tune at full resolution (subsample=0), batch_size=2, very low lr (e.g. 5e-5), with a higher pressure channel weight to refine surface pressure specifically. apr27 frieren chained 3 such finetunes to reach 42.11.
+
+### 2026-04-27 — iter2: revert to MSE + warmup, no subsample (DISCARDED)
+- **Hypothesis:** Smooth-L1 with β=0.1 (iter1) had near-constant gradient → slow convergence. MSE + lr=1e-3 with linear warmup should converge faster in 11 epochs.
+- **Change:** train.py — switched to MSE, surf_weight=15, lr=1e-3, 2-epoch linear warmup before cosine.
+- **Result:** 11 epochs (still 168 s/epoch, no speed change), best epoch 11: val/loss=4.48, avg_mae_surf_p=132.3 (worse than iter1's 110). Run id `m...`, code commit `f443e04`.
+- **Verdict:** discarded (`git reset --hard 71199bc`) — went backwards on the eval metric. Real bottleneck wasn't loss shape but **epochs/budget**: only 11 epochs is too few for this model regardless of loss.
+
 ### 2026-04-27 — iter1: smooth-L1 + bf16 AMP + surf_weight=25
 - **Hypothesis:** competition metric is `avg/mae_surf_p` (L1). Switching MSE→Smooth L1 (β=0.1) and raising `surf_weight` from 10→25 should align training with the metric. bf16 autocast lets us fit more epochs in 30 min.
 - **Change:** `train.py` — Smooth L1 loss, surf_weight=25, bf16 autocast for fwd+loss, grad clip=1.0, n_hidden=192/n_layers=6/n_head=6 (matches apr27 frieren best). `model.py` extracted for clean `predict.py` import (refactor).
