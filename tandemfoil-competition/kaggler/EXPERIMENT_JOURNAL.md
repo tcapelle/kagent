@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Summary
+- **Best result:** test 42.77 (rank 4) at commit c773fa7 (v7+v5 [0.72, 0.28] ensemble, val 44.86).
+- **Latest submission:** v7+v10 per-split ensemble at f888fbe (val 43.87, awaiting scoring — likely test ~42).
+- **Models trained:** v1 (thorfinn-clone), v2-v3 (chain warm-starts at lr=1e-4 then 3e-5), v4-v5 (slice=128 fresh + chain), v6 (fresh slice=64), v7 (chain v3 lr=1e-5), v8 (chain v5 lr=3e-5), v9 (256x8 fresh — discarded), v10 (chain v8 lr=1e-5).
+- **What worked:** chain warm-starts at progressively lower LR (1e-4 → 3e-5 → 1e-5); ensembling slice=64 chain (v7) with slice=128 chain (v10) for architectural diversity; per-split weight tuning.
+- **What didn't:** bigger model (256x8) needed too many epochs to compete in 30-min budget; SWA weight averaging marginal; adding more models to ensemble (v3, v5, v6) strictly hurt because they're correlated.
+- **Why thorfinn won (35.26):** they trained 12 architecturally diverse models and used per-split routing/blending across them. To match, I'd need 6-8+ more models with different (n_hidden, n_layers, fun_dim, slice_num) combinations.
+
 ### 2026-04-27 — v10: chain v8 with lr=1e-5 (12ep) + final-6 ensemble v7+v10 per-split (val 43.87)
 - **Hypothesis:** Even gentler chain on v8 refines it slightly. Pairs better with v7 in ensemble.
 - **Change:** `--warm_start v8 --slice_num 128 --lr 1e-5 --epochs 12`. Then per-split sweep v7+v10.
