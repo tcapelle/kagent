@@ -1,9 +1,6 @@
 """Generate predictions on the hidden test splits.
 
-Adapt this to your model. The key contract:
-  - Load your model from a checkpoint
-  - Run inference on each test split (4 splits, 200 samples each)
-  - Save per-split predictions to PVC
+Loads the model architecture from the config.yaml saved next to checkpoint.pt.
 
 Output layout:
   /mnt/new-pvc/predictions/<tag>/<agent>/<commit>/
@@ -24,9 +21,11 @@ from pathlib import Path
 
 import simple_parsing as sp
 import torch
+import yaml
 from tqdm import tqdm
 
 from data import X_DIM
+from train import Transolver
 
 RESEARCH_TAG = os.environ.get("RESEARCH_TAG", "default")
 PREDICTIONS_DIR = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
@@ -43,33 +42,28 @@ TEST_SPLITS = [
 @dataclass
 class Config:
     """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    checkpoint: str
     splits_dir: str = str(SPLITS_DIR)
-    agent: str | None = None  # kaggler name for output path
-    batch_size: int = 4
+    agent: str | None = None
+    batch_size: int = 2
+    bf16: bool = True
 
 
 cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-# ---------------------------------------------------------------------------
-# Load your model here. Example:
-#
-#   from train import MyModel
-#   model = MyModel(...).to(device)
-#   model.load_state_dict(torch.load(cfg.checkpoint, map_location=device, weights_only=True))
-#
-# Or if you saved the full model:
-#
-#   model = torch.load(cfg.checkpoint, map_location=device)
-# ---------------------------------------------------------------------------
-raise NotImplementedError("Load your model above and remove this line")
+ckpt_path = Path(cfg.checkpoint)
+config_path = ckpt_path.parent / "config.yaml"
+with open(config_path) as f:
+    model_config = yaml.safe_load(f)
 
+model = Transolver(**model_config).to(device)
+state = torch.load(ckpt_path, map_location=device, weights_only=True)
+model.load_state_dict(state)
 model.eval()
-print(f"Loaded model from {cfg.checkpoint}")
+print(f"Loaded model from {ckpt_path}")
 
-# Load stats
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
 x_mean = torch.tensor(stats_data["x_mean"], dtype=torch.float32, device=device)
@@ -77,7 +71,6 @@ x_std = torch.tensor(stats_data["x_std"], dtype=torch.float32, device=device)
 y_mean = torch.tensor(stats_data["y_mean"], dtype=torch.float32, device=device)
 y_std = torch.tensor(stats_data["y_std"], dtype=torch.float32, device=device)
 
-# Save predictions keyed by agent + commit hash
 agent_name = cfg.agent or "unknown"
 commit = subprocess.run(
     ["git", "rev-parse", "--short", "HEAD"],
@@ -86,7 +79,8 @@ commit = subprocess.run(
 output_dir = PREDICTIONS_DIR / agent_name / commit
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Run inference on each test split
+autocast_ctx = torch.amp.autocast("cuda", dtype=torch.bfloat16) if cfg.bf16 else torch.amp.autocast("cuda", enabled=False)
+
 for split in TEST_SPLITS:
     test_dir = splits_dir / split
     test_files = sorted(test_dir.glob("*.pt"))
@@ -105,7 +99,9 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            with autocast_ctx:
+                pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+            pred_norm = pred_norm.float()
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
