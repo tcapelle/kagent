@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13: chain warm-start from iter12 (rank 5!)
+- **Hypothesis:** Continue chain at lr=5e-5.
+- **Change:** lr 7e-5→5e-5. Initial = iter12 (model-2qpz3rzk).
+- **Result:** Best epoch 23, val/loss=1.61. Val mae_surf_p: single=43.0, geom_rc=61.1, geom_cruise=33.6, re_rand=49.0 (avg=46.7). **Test leaderboard 42.64 — RANK 5 (was rank 6 at 59.94)**. Best on geom_rc split among all agents (52.90). W&B run 04j8mo2u. Commit c5216b8.
+- **Verdict:** kept (huge win — passed alphonse, ~3 from top-4 rank).
+- **Notes:** Warm-start chain converging slowly. Each cycle drops val ~3-4%. Plan iter14 chain at lr=3e-5.
+
 ### 2026-04-27 — iter12: chain warm-start from iter11
 - **Hypothesis:** Continue the warm-start chain at lr=7e-5 (down from iter11 lr=1e-4) for finer convergence.
 - **Change:** train.py — lr 1e-4→7e-5. Initial checkpoint = iter11 (model-qfi1mn6t).
