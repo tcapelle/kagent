@@ -331,6 +331,9 @@ if best_metrics:
 # --- Auto-submit predictions ---
 if best_metrics and not cfg.debug:
     import subprocess
+    # Free training VRAM before launching predict subprocess, so it can load the model.
+    del model, optimizer, scheduler
+    torch.cuda.empty_cache()
     print("\nGenerating test predictions...")
     pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
     if cfg.agent:
