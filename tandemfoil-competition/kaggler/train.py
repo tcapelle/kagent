@@ -213,7 +213,7 @@ class Config:
     surf_weight: float = 15.0
     surf_p_weight: float = 1.5  # gentle pressure-channel emphasis
     ema_decay: float = 0.9995
-    rc_single_boost: float = 5.0  # up-weight raceCar-single in the sampler
+    rc_single_boost: float = 7.0  # up-weight raceCar-single in the sampler
     epochs: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
