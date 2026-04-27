@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15: warm-restart iter5 with HIGHER lr=1e-4 — plateau broken 🚀
+- **Hypothesis:** iter3 and iter7 both confirmed lr=2e-5 chain plateaus on bs=2 nosub. The model is stuck in a local minimum. Try a "warm restart": warm-start iter5 (val 1.3286) but bump LR back up to 1e-4 (2x iter5's peak), bs=2 nosub L1 12 ep with cosine. Higher LR jolts out of basin; cosine settles in a hopefully-better one.
+- **Change:** No code change. `train.py --warm_start models/model-zlq7b4pu/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 1e-4 --epochs 12 --warmup_epochs 1 --loss_type l1`. Commit `bfaab8d` (predictions landed at `5dfd2e3` because the prior ensemble commits had moved HEAD).
+- **Result:** 12 ep in 30.1 min. Best epoch 12, **val/loss=1.2361** (vs iter5's 1.3286, delta -0.10). Per-split val: single=1.99, rc=1.53, cruise=0.30, re_rand=1.13 — all four splits substantially improved over iter5/iter2. Test surf_p pending — but per-val improvement is the largest single-step gain since iter2 itself.
+- **Verdict:** kept. Confirms the warm-restart strategy. Trajectory: ep1 was already best (1.32), ep2-4 worsened (LR too high mid-cosine), then ep5-12 settled into a deeper basin via cosine decay.
+- **Notes:** This is the right pattern — chain → warm restart → chain. Planning iter16 = continue iter15 chain at lr=5e-5 to capture cosine tail. iter17+ might do another warm-restart.
+
+### 2026-04-27 — iter14: fresh-from-scratch bs=2 nosub L1 12ep — too undertrained
+- **Hypothesis:** Cold-start a 192x6 with bs=2 nosub (no warmup with subsample first). Different random init → ensemble diversity.
+- **Result:** val/loss=2.5155 at ep12, surf_p **74.60**. Way under-trained — bs=2 nosub from scratch needs much more time than 12 ep at lr=5e-4.
+- **Verdict:** discarded as standalone, weight 0 in ensembles. **Lesson:** fresh-from-scratch with bs=2 nosub is wasteful — better to warm-start from a converged model.
+
 ### 2026-04-27 — iter7: continue MSE chain warm-start iter5 lr=2e-5 — plateau confirmed
 - **Hypothesis:** Continue iter5 (val 1.3286) at lr=2e-5 bs=2 nosub for 10 ep cosine. Hoping for ~0.05 val drop to 1.28 → maybe surf_p 46.
 - **Change:** No code change. `train.py --warm_start models/model-zlq7b4pu/checkpoint.pt --loss_type mse --lr 2e-5 --epochs 10 --warmup_epochs 0`. Commit `e9533c3`.
