@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13 ensemble sizing sweep + 2-member submission
+- **Hypothesis:** Test how ensemble size affects val avg_surf_p; pick the best subset of chain checkpoints. More members ≠ always better since chain checkpoints are highly correlated.
+- **Change:** Wrote `eval_ensemble.py` for fast local val sweeps. Then submitted predictions from the best subset.
+- **Result (val avg_surf_p):**
+  - iter11 alone: 42.295
+  - iter10+iter11 (2): **42.268**
+  - iter9+iter10+iter11 (3): 42.346
+  - iter8+iter9+iter10+iter11 (4): 42.472
+  - iter6+...+iter11 (6): 43.064
+- **Verdict:** Submitted 2-member (iter10+iter11) ensemble at HEAD `e8c3d64` (best val: 42.268, only 0.027 below single iter11). Larger ensembles HURT — older chain checkpoints are too similar but worse, dragging the mean down.
+- **Notes:** Diminishing returns from chain ensembling. To get real ensemble gain, need uncorrelated members from a different optimization trajectory. iter14 plan: fresh-from-scratch training with same 192/6/6/128 architecture but different seed → genuinely different predictions to average with iter11.
+
 ### 2026-04-27 — iter12 4-checkpoint predict-time ensemble
 - **Hypothesis:** Single-model chain plateaued at 42.30. Average predictions (in normalized space) over 4 chain checkpoints (iter8 p_weight=20, iter9 +noise, iter10 60k, iter11 80k) — these have slightly different optima and an ensemble should reduce variance enough to break below frieren's 42.11.
 - **Change:** `predict.py` (commit 59a7ccf): `--checkpoint` now accepts comma-separated paths; multi-model load + mean predictions per batch. Ran with `--checkpoint /tmp/ens/iter{8,9,10,11}/checkpoint.pt`.
