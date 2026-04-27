@@ -1,3 +1,5 @@
+fourier_dim: 32
+fourier_sigma: 5.0
 fun_dim: 22
 mlp_ratio: 2
 n_head: 8
