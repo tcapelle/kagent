@@ -41,3 +41,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** Best `avg_surf_p = 76.97` at epoch 8 (still monotonic). Per-split p MAE: single_in_dist=85, geom_camber_rc=90, geom_camber_cruise=59, re_rand=74. **29% over v2 (109.03→76.97), 79% over baseline.** W&B `alphonse/v3-warm-fullmesh-lr1e4` (`77rzoyyn`).
 - **Verdict:** Kept — biggest single-step improvement so far. Confirms the apr23 finding: subsample causes a real train/eval distribution gap for slice attention.
 - **Notes:** Beats nezuko (79.95) on the leaderboard — should now rank ~2. Train auto-submit OOMed because the train process held GPU memory while invoking predict.py; ran predict.py separately after kill. TODO: explicitly free GPU before subprocess invocation in train.py.
+
+### 2026-04-27 — v4-warm-fullmesh-lr5e5
+- **Hypothesis:** v3 was monotonic until timeout; standard warm-start with lower lr (1e-4 → 5e-5) for gentler refinement.
+- **Change:** `--resume models/model-77rzoyyn/checkpoint.pt --lr 5e-5 --train_max_points 0 --batch_size 2`. Plus a small `train.py` fix to free GPU memory before invoking predict subprocess (v3 had OOMed).
+- **Result:** 7 epochs in 30 min, all monotonic. Best `avg_surf_p = 70.55` at epoch 7. **8.3% over v3 (76.97→70.55), 80% over baseline.** Per-split p MAE: single_in_dist=78, geom_camber_rc=84, geom_camber_cruise=51, re_rand=68. W&B `alphonse/v4-warm-fullmesh-lr5e5` (`6ntu28pb`).
+- **Verdict:** Kept — chain still working but gains diminishing. Auto-submit fix worked.
+- **Notes:** Now ~rank 2 (between nezuko 79.95 and thorfinn 45.94). Gap to thorfinn is ~35%, which is too big to close with warm-start alone. Need a structural change (bigger model, surf_weight bump, or arch experiment). Continue chain one more iter while parallel-thinking new directions.
