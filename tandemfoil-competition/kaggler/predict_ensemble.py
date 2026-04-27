@@ -30,7 +30,12 @@ PRED = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 
 # Sources to mix: short-name -> (agent, commit). Commits are immutable on PVC.
 SRC = {
-    # External models — best per split
+    # Leader: best on every test split (single 35.60, rc 49.07, cruise 20.88, re 35.33)
+    "thorfinn":  ("thorfinn", "fc1227e"),  # avg 35.22
+    "thorfinn2": ("thorfinn", "8103189"),  # avg 35.23
+    "thorfinn3": ("thorfinn", "467ecba"),  # avg 35.24
+    "thorfinn4": ("thorfinn", "22eaa7e"),  # avg 35.26
+    # External models — best per split (non-thorfinn)
     "edward":   ("edward",   "c773fa7"),  # single 36.25, cruise 23.73
     "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08
     "tanjiro":  ("tanjiro",  "63e5e26"),  # rc 51.60, re 37.20, cruise 23.55, single 41.44
@@ -51,10 +56,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    single: str = "edward:0.6,tanjiro:0.25,fern:0.15"
-    rc: str = "tanjiro:0.55,edward:0.2,fern:0.15,tanjiro2:0.1"
-    cruise: str = "tanjiro:0.35,edward:0.30,fern:0.25,tanjiro2:0.10"
-    re_rand: str = "tanjiro:0.55,frieren:0.2,fern:0.15,tanjiro2:0.10"
+    # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
+    single: str = "thorfinn:0.75,edward:0.20,thorfinn2:0.05"
+    rc: str = "thorfinn:0.80,tanjiro:0.15,thorfinn2:0.05"
+    cruise: str = "thorfinn:0.75,tanjiro:0.10,fern:0.10,thorfinn2:0.05"
+    re_rand: str = "thorfinn:0.80,tanjiro:0.15,thorfinn2:0.05"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
