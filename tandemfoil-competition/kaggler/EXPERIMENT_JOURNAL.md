@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter10 increase n_vol_subsample to 60k, lr=5e-5
+- **Hypothesis:** More spatial coverage per training batch (40k → 60k volume nodes) should help the model see finer flow features — feature_noise was a wash, this is a more direct knob. Drop noise back to 0, very low LR (5e-5), slower EMA (0.9995).
+- **Change:** No code change (`n_vol_subsample` was already a flag); flags `--lr 5e-5 --resume /tmp/iter9_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9995 --p_weight 20.0 --feature_noise 0.0 --n_vol_subsample 60000`.
+- **Result:** Best epoch 21/30 (timeout — 89s/epoch is slower with 60k vs 66s with 40k), val/loss=0.8503, avg_surf_p=**42.34** (val splits: in_dist=0.88, geom_rc=1.31, geom_cruise=0.26, re_rand=0.96). Peak VRAM 44GB. Run `5xju6s4l`.
+- **Verdict:** Kept (commit 981401c). −0.69 vs iter9; **0.23 behind frieren leader (42.11)**. Larger subsample matters more than feature noise.
+- **Notes:** geom_cruise dropped (0.27 → 0.26) — finer spatial context particularly helped the dense cruise meshes. Push subsample further (80k) for iter11.
+
 ### 2026-04-27 — iter9 add feature_noise=0.05 on AoA+NACA dims
 - **Hypothesis:** Geom_rc plateau (1.32 across iter6-8) is generalization-bound, not optimization-bound. Augment by adding per-sample Gaussian noise (std 0.05 in normalized space) to AoA + NACA dims (channels 14-21) to make the model robust to small geometry perturbations and improve OOD camber.
 - **Change:** `train.py` (commit 376de75): added `feature_noise` config; injected noise post-normalization, broadcasting per-sample across all N nodes. Ran with `--lr 1e-4 --resume /tmp/iter8_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 20.0 --feature_noise 0.05`.
