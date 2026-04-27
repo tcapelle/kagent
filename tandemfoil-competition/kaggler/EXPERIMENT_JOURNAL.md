@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7: BREAKTHROUGH — smoothl1 + p_weight=2 lr=5e-5 warm iter5
+- **Hypothesis:** Chain plateaued because L1 + p_weight=3 was stuck. Switching to smoothl1 (L2 for small errors, L1 for large) + lower pressure weight + a re-warm at lr=5e-5 should escape the local minimum.
+- **Change:** `python train.py --warm_start /tmp/iter5_best.pt --lr 5e-5 --epochs 12 --loss_type smoothl1 --p_weight 2.0`. Placeholder commit `8b46be4`. Predictions saved at `apr27-5/tanjiro/4b0fef2/` (HEAD was journal commit when predict ran — tracking by directory not by git semantics).
+- **Result:** Best epoch 12, val/loss=**1.3958** (down from iter5's 1.6878 — **17% improvement**). Per-split val: single=2.26, rc=1.56, cruise=0.41, re_rand=1.34. Train e12 vol=0.09 surf=0.05 (smoothl1 units). Run `8dek8zry`.
+- **Verdict:** kept as new best. Massive single-step gain — smoothl1 + lower p_weight = real escape from L1 plateau. All splits improved substantially.
+- **Notes:** Per-split val improvements: single 2.69→2.26 (-16%), rc 2.02→1.56 (-23%), cruise 0.57→0.41 (-28%), re_rand 1.51→1.34 (-11%). The cruise split improvement is huge. Next: iter8 = warm iter7 lr=1e-5 12ep with same smoothl1+p_weight=2 to chain further.
+
 ### 2026-04-27 — iter6: 3-way prediction ensemble of iter3+iter4+iter5
 - **Hypothesis:** Even within a warm-start chain, averaging the three best checkpoints' predictions should reduce variance and add 0.5-1 point on the leaderboard.
 - **Change:** New `ensemble.py` averages per-sample test predictions across commits with configurable weights. Ran with `--sources 60c4364 ebd8537 055e735 --weights 0.2 0.3 0.5` (more weight on better/later iters). Commit `2cdbe5f`.
