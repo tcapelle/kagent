@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: deeper coarse pretraining — warm iter3 bs=4 sub60K lr=5e-5 25ep 🚀 (commit a0370c7)
+- **Hypothesis:** I jumped to bs=2/no-subsample too early. Frieren chained 4 bs=8/sub=40K links BEFORE the bs=2 breakthrough, reaching val 1.44 first. Continuing iter3's chain at the *coarse* setting (bs=4 sub=60K) at warm-up+cosine over 25 ep should push val below 1.4 by giving more gradient passes through varied subsamples.
+- **Change:** `--warm_start /tmp/iter3_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`. Same arch.
+- **Result:** **val/loss=1.3339** at epoch 25 (26.3 min, 15.3GB). Per-split val: single=2.12, rc=1.64, cruise=0.36, re_rand=1.20. **12% improvement over iter3** — biggest single iter gain since iter1→iter2.
+- **Verdict:** kept. Best single-model checkpoint so far.
+- **Notes:** Going BACK to coarse training mode (after bs=2 step) actually helped — likely because the volume nodes are seen in fresh random subsets, providing implicit regularization. Cosine LR over 25 ep gave smooth descent. Now iter10 = bs=2 fine-tune from iter9 — predict val ~1.05-1.15 → score below 45.
+
 ### 2026-04-27 — iter8: chain link 3 — warm iter3 lr=2e-6 (commit f5695bd)
 - **Hypothesis:** Following frieren's iter111 recipe: continue chain at lr=2e-6 for marginal val gain + ensemble averaging.
 - **Change:** `--warm_start /tmp/iter3_best.pt --lr 2e-6 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. Same 192x6.
