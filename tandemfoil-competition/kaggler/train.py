@@ -52,8 +52,8 @@ class Config:
     grad_clip: float = 1.0
     balanced: bool = True  # per-sample variance-normalized loss
     use_fourier: bool = True
-    n_fourier: int = 32
-    fourier_sigma: float = 8.0
+    n_fourier: int = 64
+    fourier_sigma: float = 12.0
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
