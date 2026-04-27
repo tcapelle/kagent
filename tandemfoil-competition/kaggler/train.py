@@ -52,6 +52,9 @@ class Config:
     agent: str | None = None
     debug: bool = False
     warm_start: str | None = None
+    re_noise: float = 0.0  # Gaussian noise (normalized space) on log(Re) feature, per-sample, train only
+    naca_noise: float = 0.0  # Gaussian noise on NACA M for both foils, per-sample, train only
+    aoa_noise: float = 0.0  # Gaussian noise on AoA1/AoA2, per-sample, train only
 
 
 cfg = sp.parse(Config)
@@ -180,6 +183,22 @@ for epoch in range(MAX_EPOCHS):
 
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
+
+        # Physics-aware augmentation (per-sample, train only) — applied in normalized space.
+        if cfg.re_noise > 0 or cfg.naca_noise > 0 or cfg.aoa_noise > 0:
+            B = x.shape[0]
+            x = x.clone()
+            if cfg.re_noise > 0:
+                x[..., 13] += torch.randn(B, 1, device=x.device) * cfg.re_noise
+            if cfg.aoa_noise > 0:
+                x[..., 14] += torch.randn(B, 1, device=x.device) * cfg.aoa_noise
+                # Only perturb AoA2 if it's nonzero (i.e. tandem sample)
+                aoa2_active = (x[..., 18:19].abs() > 1e-3).float()
+                x[..., 18:19] += torch.randn(B, 1, 1, device=x.device) * cfg.aoa_noise * aoa2_active
+            if cfg.naca_noise > 0:
+                x[..., 15] += torch.randn(B, 1, device=x.device) * cfg.naca_noise
+                naca2_active = (x[..., 19:20].abs() > 1e-3).float()
+                x[..., 19:20] += torch.randn(B, 1, 1, device=x.device) * cfg.naca_noise * naca2_active
 
         with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=cfg.bf16):
             pred = model({"x": x})["preds"]
