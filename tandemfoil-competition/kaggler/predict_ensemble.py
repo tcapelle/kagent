@@ -1,4 +1,4 @@
-"""Generate ensemble test predictions averaging multiple checkpoints.
+"""Ensemble test predictions: average outputs from multiple trained checkpoints.
 
 Loads each checkpoint with its own runtime.yaml (so Cp / velocity normalization
 specific to that run is honored), runs inference, and averages the per-sample
