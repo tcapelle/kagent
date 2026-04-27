@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8 weighted ensemble [iter6:0.6, iter5:0.3, iter7:0.1] — submitted
+
+- **Hypothesis:** A weighted average of normalized predictions from the chain (iter5/iter6) plus the divergent iter7 might recover a small gain by canceling per-model errors.
+- **Change:** Added `--weights` to `predict_ensemble.py` and `eval_ensemble.py`; submitted ensemble with weights tuned on val (sweep around iter6/iter5 mix).
+- **Result:** Val: ensemble [0.6,0.3,0.1] = 71.73 (vs iter6 alone 71.94, ~0.3% gain). Sweep showed iter7 contributes near-zero — most of the gain is from iter5+iter6 weighted average. Submission `apr27/fern/f11eda9`.
+- **Verdict:** kept as submission, but the gain is too small to celebrate. Chain models too correlated for ensemble to break out.
+- **Notes:** Equal averaging always *hurts* (drags down by the worst member). Only weighted toward the strongest member yielded marginal gain. Per-split: ensemble nudged `geom_camber_rc` 95.46 → 94.80 — the only meaningful per-split improvement.
+
+### 2026-04-27 — iter7 divergent-from-iter1 — for ensemble diversity
+
+- **Hypothesis:** The chain has converged into one basin; resuming from iter1 ckpt (113.26) with iter5's pressure-focused recipe should land on a *different* trajectory by epoch 9, providing genuine diversity for ensembling.
+- **Change:** `--resume <iter1 ckpt> --lr 3e-4 --surf_weight 50 --p_weight 30.0 --v_weight 0.05 --epochs 9 --save_per_epoch --swa_last_n 4`. Also added `constant_lr`, `save_per_epoch`, `swa_last_n` flags to `train.py`.
+- **Result:** 9 epochs / 26.7 min. Best epoch 9 (live) mean=83.00 (still improving — would need more epochs). Per-epoch SWA over last 4 = 83.57 (worse). Submission `apr27/fern/54ca672`.
+- **Verdict:** kept as ensemble member; alone it's much weaker than iter6 (83 vs 72). Did add a tiny ~0.2 point lift to a weighted ensemble.
+- **Notes:** From-scratch retraining can't catch up to a chain in just 9 epochs. To make iter7 a stronger ensemble partner I'd need 30+ epochs of training, but `MAX_TIMEOUT_MIN=30` blocks that in one shot. The post-training SWA over last 4 didn't help here because the trajectory was still descending — averaging recent ckpts with worse ckpts pulls mean back up.
+
 ### 2026-04-27 — iter6 pweight50-sw80-lr2e5 — chain plateaued
 
 - **Hypothesis:** Push pressure focus to extreme (`p_weight=50, v_weight=0, surf_weight=80`) at lr=2e-5 to squeeze the last few % out of the chain.
