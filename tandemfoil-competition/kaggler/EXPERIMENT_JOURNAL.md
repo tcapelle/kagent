@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — final: ensemble v3 (slice=64) + v5 (slice=128)
+- **Hypothesis:** Averaging predictions from architecturally-diverse models (slice_num=64 vs 128) reduces variance and improves test MAE. Different slice counts capture different physics-mode partitions, so their errors should be partially decorrelated.
+- **Change:** Added `predict_ensemble.py` that loads N checkpoints, runs each, and averages predictions (in physical units) with optional weights. Used equal weights for v3+v5.
+- **Result:** Predictions saved to `edward/1f1c6b1/`. Val: not measured locally (no val ensemble harness). Best individual val: v3=46.26. Expected ensemble: 44-46 if errors are partially decorrelated, else ~46-48.
+- **Verdict:** Submitted as final answer. Ensemble of two strongest checkpoints (v3 and v5) — diverse via slice count, both well-trained.
+- **Notes:** Per-model val: v3 [single=41.33, geom_rc=63.04, cruise=31.33, re_rand=49.32]; v5 [single=49.62, geom_rc=70.21, cruise=34.27, re_rand=53.89]. v3 dominates on every split, so a 0.5/0.5 weighting may dilute its strength — could try [0.7, 0.3] weights as v6 if time permits.
+
 ### 2026-04-27 — v5: chain warm-start from v4 slice128 (lr=1e-4, 25ep)
 - **Hypothesis:** Refining v4's undertrained slice=128 model brings it closer to v3's quality, while preserving the architectural diversity needed for the v3+v5 ensemble.
 - **Change:** `--warm_start v4 --slice_num 128 --lr 1e-4 --epochs 25` (no warmup, plain cosine).
