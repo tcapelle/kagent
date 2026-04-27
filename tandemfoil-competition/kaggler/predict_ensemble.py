@@ -83,15 +83,15 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter22: combine empirical bests-per-split from iter20 / iter20b lessons.
-    # single: 4-way (4cd5a65 proven 35.2142) wins
-    # rc:     4-way (proven 48.6792) wins
-    # cruise: 50/50 N+O (proven 20.6158) wins (4-way diluted by L/M)
-    # re:     4-way (proven 34.9100) wins
-    single: str = "thorfinnL:0.25,thorfinnM:0.25,thorfinnI:0.25,thorfinnK:0.25"
-    rc: str = "thorfinnL:0.25,thorfinnM:0.25,thorfinnK:0.25,thorfinnI:0.25"
-    cruise: str = "thorfinnN:0.5,thorfinnO:0.5"
-    re_rand: str = "thorfinnM:0.30,thorfinnN:0.25,thorfinnO:0.25,thorfinnL:0.20"
+    # iter23: 3-way top-3 per split (next decorrelation step from 50/50 in 2db8758=34.8527).
+    # single top-3: L (35.2169), M (35.2228), I (35.2565) — close
+    # rc top-3:     L (48.6820), M (48.6873), K (48.6968) — close
+    # cruise top-3: N (20.6232), O (20.6251), M (20.6861) — slight gap to M
+    # re top-3:     M (34.9163), N (34.9212), O (34.9485) — slight gap to O
+    single: str = "thorfinnL:0.4,thorfinnM:0.4,thorfinnI:0.2"
+    rc: str = "thorfinnL:0.4,thorfinnM:0.4,thorfinnK:0.2"
+    cruise: str = "thorfinnN:0.45,thorfinnO:0.45,thorfinnM:0.10"
+    re_rand: str = "thorfinnM:0.45,thorfinnN:0.45,thorfinnO:0.10"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
