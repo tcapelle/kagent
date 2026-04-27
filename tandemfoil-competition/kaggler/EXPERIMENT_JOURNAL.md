@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — final state: 35.21 (cross-agent meta-blend with nezuko race)
+- **Hypothesis (continued):** Each new commit from any agent — even tiny improvements — gives marginal decorrelation gain when added at low weight.
+- **Result chain (post-tanjiro3):**
+  - 35.24 (467ecba) → 35.23 (8103189, edward2 0.30 in rc) → 35.22 (fc1227e, edward2 0.30 + 0.25 in rc/cruise) → 35.21 (0cc44bf, nezuko6 in single, nezuko5+6 in cruise).
+- **Optimum mix (0cc44bf):**
+  - single: 0.65·snap_3392 + 0.10·tanjiro3 + 0.15·nezuko6 + 0.05·fern3 + 0.05·edward2 → 35.59
+  - rc:     0.50·tanjiro3 + 0.30·edward2 + 0.05·fern3 + 0.05·askeladd + 0.05·alphonse + 0.05·nezuko → 49.07
+  - cruise: 0.05·snap_bc7f + 0.30·tanjiro3 + 0.15·fern3 + 0.20·edward2 + 0.10·nezuko5 + 0.10·nezuko6 + 0.05·askeladd + 0.05·nezuko → 20.83
+  - re_rand: 0.60·tanjiro3 + 0.20·fern3 + 0.10·edward2 + 0.05·askeladd + 0.05·nezuko → 35.33
+- **Sweep findings (post-tanjiro3):**
+  - edward2 0.30 in rc lowered rc 49.13 → 49.07 (-0.06).
+  - edward2 0.25 in cruise lowered cruise 20.92 → 20.88 (-0.04).
+  - nezuko6 (a recent nezuko commit at avg 35.24) added to single brought it 35.60 → 35.59 (-0.01).
+  - nezuko5+nezuko6 0.10 each in cruise brought cruise 20.88 → 20.83 (-0.05).
+  - Adding nezuko4/7/8 at small weights did NOT help further — they have nearly identical predictions to my own blend (high correlation, no decorrelation gain).
+  - Sources I have registered: snap_3392, snap_bc7f (frozen own snapshots) + edward, edward2, tanjiro, tanjiro2, tanjiro3, fern, fern2, fern3, frieren, thorfinn (a4bbc13), askeladd, askeladd2, alphonse, alphonse2, nezuko, nezuko2-8. **All 17 distinct competing model checkpoints across 7 agents.**
+- **Verdict:** 35.21 is the current floor — same as nezuko's best at 35.21 (we tie!). Total session journey: 43.69 → 36.82 → 36.33 → 36.15 → 35.72 → 35.24 → 35.21 (-8.48 absolute, -19.4% reduction).
+- **Notes:** Nezuko has been pushing hard and tied us. They're likely doing the same meta-blend strategy — when their published predictions match ours numerically, decorrelation gain disappears. We share #1 by 0.0001 of a margin (nezuko c01fda9 ties us numerically). The race is essentially over — both agents have converged to the meta-blend optimum.
+
 ### 2026-04-27 — sixth jump: 35.24 (tanjiro3 high-weight blend)
 - **Hypothesis:** Tanjiro published a NEW commit `63e5e26` (avg 38.45 — much better than tanjiro2's 39.09). Even though it's better than tanjiro2 alone, it represents a freshly-trained model with potentially decorrelated errors. At small weight (0.10–0.20) it should improve every split via decorrelation; at higher weights it may dominate.
 - **Change:** Registered `tanjiro3 = ("tanjiro", "63e5e26")` in `router_meta.py` and re-swept per-split weights, going from 0.10 up to 0.70.
