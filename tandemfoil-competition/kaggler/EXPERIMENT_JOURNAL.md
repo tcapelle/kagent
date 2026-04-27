@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: cold-start slice_num=128 with thorfinn loss
+- **Hypothesis:** Thorfinn's leader checkpoint uses slice_num=128 (vs my 64). Maybe more slice tokens help capture fine-grained physics. Cold-start with slice_num=128 + balanced thorfinn loss to set up a stronger base for warm-start fine-tune.
+- **Change:** No code change; just CLI `--slice_num 128 --epochs 200`. Run id `65tgozcw`. Epoch time 61s (vs 42s for slice_num=64). VRAM 14.0 GB (vs 9.7).
+- **Result:** Best val/avg_surf_p=90.50 at epoch 27/30. Worse than iter1 (84.71) and iter2 (79.12). Per-split: cruise=52.2, rc=129.1, re_rand=86.9, single=93.8 — single_in_dist worse than iter1.
+- **Verdict:** Discard for production checkpoint. Best.pt remains iter2's 79.12. But the slice_num=128 ckpt is useful as a warm-start source for iter4.
+- **Notes:** 30-min cap forced only 30 epochs (vs 43 for slice_num=64), and the bigger model needs more time. Checkpoint preserved at `models/model-65tgozcw/checkpoint.pt` for warm-starting.
+
 ### 2026-04-27 — iter2: warm-start fine-tune with thorfinn 4-weight loss
 - **Hypothesis:** Thorfinn (45.94) jumped from 458 → 65 by warm-starting from a converged checkpoint and fine-tuning with separate region/channel loss weights heavily favoring surface pressure (`surf_p=6, surf_uv=1, vol_p=0.5, vol_uv=0.5`). Apply the same trick to iter1's 84.71 ckpt.
 - **Change:** train.py: replaced `surf_weight + ch_weights[p_weight]` with 4 explicit weights. Added `_l1_uv_p` helper. Run `--warm_start checkpoints/best.pt --lr 5e-5 --epochs 50`. Cosine over 50 epochs (no warmup since warm-starting). Run id `hsytzk3a`.
