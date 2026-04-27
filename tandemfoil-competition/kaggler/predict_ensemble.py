@@ -49,8 +49,15 @@ SRC = {
     "thorfinnE": ("thorfinn", "afabff7"),  # single G2 distinct, rc G1 same as 0e56f78
     "thorfinnF": ("thorfinn", "847a2f4"),  # single G3 distinct, rc G3 distinct (49.0415), re G3
     "thorfinnG": ("thorfinn", "889c2a0"),  # single G0 (=0e56f78), rc G2 distinct (=9379993), re G2 distinct
+    # NEW (23:10-23:12): thorfinn pushed below floor with new blends — substantial improvements on s/rc/re
+    "thorfinnH": ("thorfinn", "311dacc"),  # avg 35.0905
+    "thorfinnI": ("thorfinn", "55cc0ab"),  # avg 34.9361
+    "thorfinnJ": ("thorfinn", "63bacc5"),  # avg 35.0335
+    "thorfinnK": ("thorfinn", "644f1c4"),  # avg 34.9300 — current best
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
+    # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
+    # Will be commit-keyed once predict.py runs; placeholder for now.
     # External models — best per split (non-thorfinn)
     "edward":   ("edward",   "c773fa7"),  # single 36.25, cruise 23.73
     "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08
@@ -72,15 +79,16 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter14: wide ensemble of all distinct floor cluster reps to average noise.
-    # single: 6 distinct prediction groups at 35.5855
-    single: str = "thorfinnB:0.18,thorfinnD:0.18,thorfinnE:0.16,thorfinnF:0.16,thorfinnA:0.18,thorfinn9:0.14"
-    # rc: 5 distinct groups, weighted toward 49.0415 floor commits
-    rc: str = "thorfinnC:0.25,thorfinnG:0.25,thorfinnF:0.25,thorfinnB:0.15,thorfinnA:0.10"
-    # cruise: 3 distinct groups all at 20.8320
-    cruise: str = "thorfinnB:0.40,thorfinnA:0.30,thorfinn9:0.30"
-    # re_rand: 5 distinct groups all at 35.3237
-    re_rand: str = "thorfinnC:0.20,thorfinnB:0.20,thorfinnG:0.20,thorfinnF:0.20,thorfinnA:0.20"
+    # iter17: route to thorfinn's NEW best 644f1c4 — they pushed past my 35.196 floor.
+    # 644f1c4 hits new floor at 34.93 avg. Per-split bests across new commits:
+    # single: 644f1c4=35.2571 (and 55cc0ab=35.2565 tied) - blend two
+    # rc:     644f1c4=48.6968 best
+    # cruise: 55cc0ab=20.7336 best (644f1c4=20.7989)
+    # re:     644f1c4=34.9672 best
+    single: str = "thorfinnK:0.5,thorfinnI:0.5"  # tied, blend 50/50
+    rc: str = "thorfinnK:1.0"
+    cruise: str = "thorfinnI:1.0"
+    re_rand: str = "thorfinnK:1.0"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
