@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter9: deeper vanilla chain (lr=5e-6) → val/loss=0.74, avg_surf_p=53.81 (-2%)
+- **Hypothesis:** iter8 (vanilla + bs=2 chain at lr=2e-5) reached 54.71. Continue chain at lr=5e-6 for one more 11-epoch round to squeeze more out of the vanilla branch and add another ensemble checkpoint.
+- **Change:** Same as iter8 but warm-starting from iter8 (`model-5cqn03sv`) and `lr=5e-6`. Run `g6g19fjy`.
+- **Result:** epoch 10/11 best, val/loss=**0.7405**, avg_surf_p=**53.81** (single=0.74, rc=0.99, cruise=0.45, re_rand=0.78). 28.7 min, 29.1GB. Auto-submit succeeded.
+- **Verdict:** kept; mild gain (-2%). 8-way ensemble (weights 0.05/0.08/0.22/0.05/0.08/0.10/0.20/0.22 across iter1+2+3+5+6+7+8+9) submitted under `68be8bf`.
+- **Notes:** Best individual model is still iter3 (Fourier+chain, 51.27). Next radical move could be a different architecture entirely (e.g., a small GNN-style local model) or larger Fourier scales (16 or 32 freqs) for finer turbulence detail.
+
 ### 2026-04-27 — iter8: warm-chain iter7 (vanilla, no Fourier) bs=2 + full mesh + p_weight=3 → val/loss=0.75, avg_surf_p=54.71
 - **Hypothesis:** iter7 (vanilla, no Fourier, p_weight=1) had val/loss=0.6692 but high surf_p=58.09 because pressure wasn't weighted. Re-warm with the proven recipe to push pressure down. Adds another diverse base for the ensemble (vanilla architecture, p_weight=3 fine-tune).
 - **Change:** `python train.py --warm_start /mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-gp7ce0vi/checkpoint.pt --fourier_scales 0 --batch_size 2 --train_subsample 0 --lr 2e-5 --p_weight 3.0 --epochs 11 --warmup_epochs 1`. Run `5cqn03sv`.
