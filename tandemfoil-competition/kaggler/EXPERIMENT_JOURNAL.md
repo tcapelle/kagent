@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 4 — second warm-start, lr=5e-5, surf_w=20
+- **Hypothesis:** Iter 3 plateaued around `avg_surf_p≈100` with `val/loss` bouncing between 3.20 and 4.85; cosine LR from 2e-4 still seems to overshoot. Drop initial LR to 5e-5 and bump `surf_weight` from 15→20 to push the surface objective harder.
+- **Change:** invocation only — `--resume model-aglmomxf/checkpoint.pt --lr 5e-5 --surf_weight 20`. No code changes. Wandb run `2v94v7an`.
+- **Result:** Best epoch 9 of 11 finished. `val/loss=3.094`, avg surf_p MAE = **86.4** (vs iter 3 `99.7`), surf_Ux = 1.27. Train 32.6 min, 58 GB peak.
+- **Verdict:** Kept — modest but real improvement, and the val curve was much steadier (3.4–4.0 range) than iter 3's, confirming LR was the overshoot culprit.
+- **Notes:** Test scoring confirms the val→test correspondence is now sane (iter 3: val 99.7 → test 89.23, vs iter 1's broken val 119.7 → test 350.91). Whatever was specifically wrong with iter 1's predictions is gone — likely the L1 surface loss let one or two extreme high-Re/high-AoA samples ride free with very wild predictions, which iter 3's MSE penalized away.
+
 ### 2026-04-27 — Iter 3 — warm-start with MSE+pressure-weight
 - **Hypothesis:** Iter 1 used L1 on surface; sharp pressure peaks need quadratic gradient (MSE) and explicit pressure weight to better match the leaderboard's avg surf_p MAE. Resume from iter 1's checkpoint with `lr=2e-4` to fine-tune.
 - **Change:** `train.py` reverted model to T-192-6-6 (no subsample), surface loss back to MSE, added per-channel weight `[1,1,p_weight=2]` inside the squared error, raised `surf_weight=15`, plumbed `--resume <path>`. Wandb run `aglmomxf`.
