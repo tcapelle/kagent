@@ -53,26 +53,26 @@ def y_scale_from_x_raw(x_raw: torch.Tensor) -> torch.Tensor:
 
 @dataclass
 class Config:
-    lr: float = 5e-4
+    lr: float = 7e-4
     weight_decay: float = 3e-5
     batch_size: int = 4
     surf_weight: float = 1.5  # legacy; only used if balanced=False
     surf_p_weight: float = 2.5  # weight on per-sample-balanced surface pressure loss
     surf_uv_weight: float = 0.5  # weight on per-sample-balanced surface velocity loss
-    var_floor: float = 0.001  # tighter floor since Cp-space variance is O(0.05-0.5), not O(0.0006-0.12)
-    use_cp_norm: bool = True  # train targets in Cp / U_inf-normalized space
-    epochs: int = 14
+    var_floor: float = 0.001
+    use_cp_norm: bool = True
+    epochs: int = 8
     n_hidden: int = 128
-    n_layers: int = 6
+    n_layers: int = 7
     n_head: int = 4
-    slice_num: int = 96
+    slice_num: int = 128
     mlp_ratio: int = 2
     grad_clip: float = 1.0
-    balanced: bool = True  # per-sample variance-normalized loss
+    balanced: bool = True
     use_fourier: bool = True
-    n_fourier: int = 96
-    fourier_sigma: float = 8.0  # ignored if fourier_sigmas is set
-    fourier_sigmas: tuple[float, ...] = (4.0, 8.0, 16.0)
+    n_fourier: int = 192
+    fourier_sigma: float = 8.0
+    fourier_sigmas: tuple[float, ...] = (2.0, 4.0, 8.0, 16.0, 32.0)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -371,6 +371,10 @@ if best_metrics:
                 f"val_predictions/{split_name}": [wandb.Image(str(p)) for p in images],
                 "global_step": global_step,
             })
+
+    # Release VRAM before launching predict.py subprocess (iter13 OOMed because of this).
+    del model
+    torch.cuda.empty_cache()
 
 # --- Auto-submit predictions ---
 if best_metrics and not cfg.debug:
