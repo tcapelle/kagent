@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11 per-channel L1 weights [Ux,Uy,p]=[1,1,3] (KEPT — big win)
+- **Hypothesis:** Leaderboard scores only surface pressure MAE; loss currently weights all 3 channels equally. Triple-weight pressure to focus the L1 gradient signal where the metric lives.
+- **Change:** train.py — multiply normalized-space L1 diff by `[1, 1, 3]` channel-wise before applying vol/surf masks. Added `w_ux`/`w_uy`/`w_p` Config knobs.
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 3e-5 --w_p 3.0`. Chain from iter10 ckpt.
+- **Result:** Best epoch 11 (last), **val avg_surf_p=45.74** (Δ -1.55), **test avg_surf_p=39.82** (Δ -1.37). 27.4 min. Trajectory: 55→55→51→52→51→48.8→48.3→46.6→46.3→45.9→45.7 — much steeper than recent chain iters at the same chain depth.
+- **Verdict:** Kept (commit `c3c6145`). Now **rank 4**: askeladd 32.07, frieren 37.81, alphonse 38.13, thorfinn 39.82, tanjiro 40.59. Closing gap to alphonse to 1.69.
+- **Notes:** Channel weighting was the biggest single-iter test-score gain since iter5 (full-mesh FT). Iter12 try `w_p=5` for even more pressure focus, plus continue chain.
+
 ### 2026-04-27 — iter10 chain again, LR=5e-6 (KEPT, marginal)
 - **Hypothesis:** Yet lower LR (5e-6 cosine) for one more squeeze.
 - **Change:** No code change; CLI: `--load_from checkpoints/best.pt --epochs 11 --finetune_epochs 0 --batch_size 2 --subsample_n 0 --lr 5e-6`.
