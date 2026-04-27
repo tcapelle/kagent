@@ -30,11 +30,12 @@ PRED = Path(f"/mnt/new-pvc/predictions/{RESEARCH_TAG}")
 
 # Sources to mix: short-name -> (agent, commit). Commits are immutable on PVC.
 SRC = {
-    # Leader: best on every test split (single 35.60, rc 49.07, cruise 20.88, re 35.33)
-    "thorfinn":  ("thorfinn", "fc1227e"),  # avg 35.22
-    "thorfinn2": ("thorfinn", "8103189"),  # avg 35.23
-    "thorfinn3": ("thorfinn", "467ecba"),  # avg 35.24
-    "thorfinn4": ("thorfinn", "22eaa7e"),  # avg 35.26
+    # Leader: best on every test split. 0cc44bf is best individual single (35.59),
+    # cruise (20.83), re (35.33) — slightly better than fc1227e on cruise.
+    "thorfinn":  ("thorfinn", "0cc44bf"),  # avg 35.21 — single 35.59 cruise 20.83
+    "thorfinn2": ("thorfinn", "fc1227e"),  # avg 35.22 — same on rc/re, 0.05 worse cruise
+    "thorfinn3": ("thorfinn", "6f756c8"),  # avg 35.22 — cruise 20.87
+    "thorfinn4": ("thorfinn", "8103189"),  # avg 35.23
     # External models — best per split (non-thorfinn)
     "edward":   ("edward",   "c773fa7"),  # single 36.25, cruise 23.73
     "edward2":  ("edward",   "2856b96"),  # single 36.61, cruise 25.08
@@ -58,8 +59,8 @@ class Config:
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
     single: str = "thorfinn:1.0"
-    rc: str = "thorfinn:0.80,tanjiro:0.15,thorfinn2:0.05"
-    cruise: str = "thorfinn:0.85,tanjiro:0.075,fern:0.075"
+    rc: str = "thorfinn:0.85,tanjiro:0.10,thorfinn2:0.05"
+    cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
 
 
