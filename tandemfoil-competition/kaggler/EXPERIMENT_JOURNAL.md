@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13: validation-grid ensemble optimization → val avg_surf_p=49.16
+- **Hypothesis:** Hand-picked weights are likely suboptimal. Compute val predictions for every model, then greedy-search ensemble weights to minimize avg_surf_p directly. Frieren did this kind of search and squeezed 35.27 → 34.41 (3% gain).
+- **Change:** New `fast_optimize.py` that pre-stacks per-(model,sample-on-surface) pressure predictions into a `[K, T]` GPU tensor and evaluates ensemble metric in O(KT). Ran with all 11 single-model checkpoints (iter1-3, iter5-12).
+- **Result:** Single-model val surf_p (weighted L1):
+  - iter3 51.27 (best), iter2 51.87, iter1 53.46, iter11 53.59, iter9 53.81, iter8 54.71, iter6 57.51, iter10 58.06, iter7 58.09, iter12 62.81, iter5 66.41
+  - Top-5 (iter3+iter2+iter1+iter11+iter9) inv-weighted: 49.50
+  - After greedy refinement: **49.16** with weights iter1=0.005, iter2=0.20, iter3=0.39, iter9=0.24, iter11=0.17
+  - Bigger / vanilla branches (iter5,6,7,8,10,12) all dropped — too distinct from the dominant Fourier+chain family. Submitted under `d36d8cc`.
+- **Verdict:** kept; -2.1 vs hand-tuned 9-way (51.27 single → 49.16 ensemble val, but the ensemble doesn't include the diversity branches).
+- **Notes:** `optimize_ensemble.py` (greedy from Python lists) was too slow (no GPU). `fast_optimize.py` is the keeper. Best-single still iter3.
+
 ### 2026-04-27 — iter12: deeper 224d/8L/8H from scratch → val/loss=0.87, avg_surf_p=62.81
 - **Hypothesis:** Capacity ceiling in 192/6/6. Try 224/8/8 (3M params, 1.7x iter1) for more representation power. Same proven recipe (subsample=40k, p_weight=3, 25 epochs).
 - **Change:** `--n_hidden 224 --n_layers 8 --n_head 8 --slice_num 64 --fourier_scales 8 --epochs 25`. Run `62mgdajz`.
