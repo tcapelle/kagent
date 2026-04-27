@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter13 +Fourier features (NeRF-style) — BIG WIN
+
+- **Hypothesis:** The plateau at ~71 looked like a basin the chain couldn't leave with optimization-only changes. NeRF-style positional encoding on `(x, z, saf)` should give the model high-frequency capacity for the turbulent-flow patterns that vary on small spatial scales — and thorfinn's run config showed they used `num_pos_freqs=10` for their top result.
+- **Change:**
+  - `model.py`: optional Fourier encoding of the first 4 input dims (position + saf) at `num_pos_freqs` frequencies (geometric series, `2^k * π`). Concatenated to the original features before the preprocess MLP.
+  - `train.py`: when resuming a non-Fourier ckpt into a Fourier model, pad `preprocess.linear_pre.0.weight` with zeros for the new dims so iter11's prior is preserved at init.
+  - CLI: `--num_pos_freqs 6 --lr 1e-4 --constant_lr --epochs 9 --save_per_epoch`. Resumed iter11 ckpt.
+- **Result:** Best epoch 9 (EMA) mean=**66.85** (-5.6% over iter11 70.84). Per-split: single=58.38 (-6%), geom_camber_rc=91.20 (-4.7% — finally!), geom_cruise=47.72 (-7%), re_rand=70.10 (-5.6%). SWA last 4 = 68.54 (worse — trajectory still descending so averaging late epochs with earlier hurts). Submission `apr27/fern/745f0de`.
+- **Verdict:** kept — first real breakthrough since the chain plateaued. **All 4 splits improved meaningfully**, including the previously stubborn `geom_camber_rc`. The positional encoding gives the model enough high-frequency representation to model turbulent surface-pressure variations.
+- **Notes:** Trajectory was still descending at epoch 9 — more training will improve further. Iter14 continues the chain at lr=5e-5 constant. Lessons: when a plateau looks impervious to optimization tweaks, suspect representation capacity rather than training dynamics.
+
 ### 2026-04-27 — iter12 weighted ensemble [iter11:0.6, iter10:0.4] — submitted
 
 - **Hypothesis:** Average iter11 + iter10 (the two best chain ckpts) for one last small ensemble lift before pivoting.
