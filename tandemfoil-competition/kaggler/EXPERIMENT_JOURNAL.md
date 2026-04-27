@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3 d256/L6/s64 + bf16 (DISCARDED)
+- **Hypothesis:** Wider Transolver (d=256, L=6, s=64) + bf16 + select on `avg_mae_surf_p` would beat the 192/6/64 baseline.
+- **Change:** train.py — model d=256/L=6/s=64/heads=8/mlp_ratio=2; bf16 autocast; MSE+MSE; surf_weight=10; mirror best ckpt to PVC; free GPU before auto-submit.
+- **Result:** 9 epochs, peak 77 GB. Best epoch 9, **avg_mae_surf_p=149.94 (val)**, **128.75 (test)**. Auto-submit succeeded. Sanity check: prior thorfinn/26d8011 at 42.9 (test) was reachable from a checkpoint with d=192/L=6/s=64 (file `model-zwxdd9sm`) which I evaluated to ≈50 (val) / 42.9 (test). My iter3 run is a clear regression.
+- **Verdict:** Discarded.
+- **Notes:** Root-caused by reading the prior agent's session log (`/mnt/new-pvc/kagent/apr27/thorfinn/iter_1_*.jsonl`): the prior thorfinn used **L1 loss (vol+surf)**, **batch_size=8 with random 40 K-node subsampling per sample** (full-mesh fine-tune at batch 2), bf16 autocast. The current template ships MSE without subsampling — that's why even matching their `d=192` config in MSE never gets close to their 42.9 score. Iter4 will adopt L1 + 40 K subsample + batch=8.
+
 ### 2026-04-27 — iter2 d256/L8/s96 + bf16 (DISCARDED — OOM)
 - **Hypothesis:** Bigger Transolver (frieren-like, n_hidden=256, n_layers=8, slice_num=96) + bf16 mixed precision should fit in 30 min and beat the 192/6/64 baseline.
 - **Change:** train.py — model d256/L8/s96, autocast(bf16), MSE+MSE, surf_weight=10, select on `avg_mae_surf_p`, mirror best ckpt to PVC, free GPU before auto-submit subprocess.
