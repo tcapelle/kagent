@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7 p_weight=15
+- **Hypothesis:** Continue scaling p_weight (10 → 15) — gains were still present at p_weight=10.
+- **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter6_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 15.0`.
+- **Result:** Best epoch 27 (not 28 — slight oscillation), val/loss=0.9011, avg_surf_p=**44.23** (val splits: in_dist=1.03, geom_rc=1.33, geom_cruise=0.27, re_rand=0.97). Run `dmqzwdj7`.
+- **Verdict:** Kept (commit 1711d04). −1.16 vs iter6, smaller gain than the 5→6→10 step. Now within 2.12 of frieren's 42.11.
+- **Notes:** Striking pattern — `val_single_in_dist` keeps dropping rapidly (1.45 → 1.22 → 1.03 → 0.27 across iters 5-7), but `geom_camber_rc` is stuck near 1.33 across iters 6-7 — the OOD camber split has plateaued. Generalization ceiling is on geom_rc. Bigger model or input augmentation (NACA-channel noise) needed to break it.
+
 ### 2026-04-27 — iter6 p_weight=10
 - **Hypothesis:** iter5 (p_weight=6) gave a bigger gain than the prior pure-chain iters, so continue pushing pressure-channel emphasis to 10 to extract more signal aligned with the leaderboard metric.
 - **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter5_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 10.0`.
