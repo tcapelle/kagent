@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v9 chain from frieren's newest irysplar ckpt
+- **Hypothesis:** v8 took the leaderboard at 33.43 but frieren (still iterating) saved an even
+  newer ckpt `irysplar` at 19:07. Direct val on it gave 39.54 (vs my v8's 39.81), so it's a
+  better starting point than my own v8. Chain-training from `irysplar` should net me a ~33.0 test.
+  Also evaluated weight-averages (v7+v8+h3y73gp9+irysplar = 39.84; v8+irysplar = 39.63) — both
+  *worse* than `irysplar` alone, so simple Polyak averaging across these checkpoints does not
+  help in this loss basin. Sticking with chain-training.
+- **Change:** no code changes. Run: `--warm_start irysplar --train_subsample 0 --batch_size 2
+  --lr 2e-6 --p_weight 5 --surf_weight 10 --epochs 12` (lower LR than v8 since the start is
+  already excellent).
+- **Result:** wandb run, 12 epochs in 29.9 min. Best at epoch 11 → **val/avg_surf_p = 39.27**
+  (single 39.11 / geom_rc 52.96 / cruise 24.53 / re_rand 40.51). Improved on every split vs
+  `irysplar` alone. Predictions at `/mnt/new-pvc/predictions/apr27-5/alphonse/21cc687/`.
+  Expected test ≈ 33.0 (val/test ratio ~1.19 from prior runs).
+- **Verdict:** kept — best val_avg_surf_p I have seen so far.
+- **Notes:** trajectory still descending; another chain at lr=1e-6 should give one more 0.1-0.3.
+  Polyak averaging didn't help here, but the predictions-space ensemble (averaging output tensors
+  across multiple ckpts) is still untried and could be worth a single submission attempt.
+
 ### 2026-04-27 — v8 chain from frieren's newer h3y73gp9 ckpt (frieren leapt to 33.94)
 - **Hypothesis:** v7 took #1 at 33.70 from frieren's 33.94. While the scorer was running, frieren
   saved a newer ckpt `h3y73gp9` (presumably their 33.94 entry). Warm-starting from their newer
