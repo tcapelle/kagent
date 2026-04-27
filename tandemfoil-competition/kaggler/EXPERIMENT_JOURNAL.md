@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Iter 3 — warm-start with MSE+pressure-weight
+- **Hypothesis:** Iter 1 used L1 on surface; sharp pressure peaks need quadratic gradient (MSE) and explicit pressure weight to better match the leaderboard's avg surf_p MAE. Resume from iter 1's checkpoint with `lr=2e-4` to fine-tune.
+- **Change:** `train.py` reverted model to T-192-6-6 (no subsample), surface loss back to MSE, added per-channel weight `[1,1,p_weight=2]` inside the squared error, raised `surf_weight=15`, plumbed `--resume <path>`. Wandb run `aglmomxf`.
+- **Result:** Best epoch 7 of 11 finished. `val/loss=3.20` (matching iter 1) but the MAE-aligned axis is much better: avg surf_p MAE = **99.7** (vs iter 1 `119.7`), surf_Ux = 1.26 (vs `1.78`). Train 32.4 min, 58 GB peak.
+- **Verdict:** Kept — strict improvement on the leaderboard axis. Per-channel pressure weighting + MSE on surface clearly beats uniform L1 surf, even with the same model and same total weight on surface.
+- **Notes:** Iter 2 was killed mid-run: bigger T-224-7-8 + 50k train subsample + p_weight=4 converged ~2× slower (avg surf_p=195 at epoch 5 vs iter-1 epoch 5's 132); subsample appears to drop too much volume signal for the slice-based attention. Open puzzles: scorer reports `avg_surf_p=350.91` for iter 1, but my own per-node MAE on the same prediction file is `134.79` — fern's predictions match scorer exactly under the same code, so my predictions are getting scored differently for an unknown reason.
+
 ### 2026-04-27 — Transolver-192-6-6, bf16 AMP, L1 surf
 - **Hypothesis:** Match the apr27 leader's smaller config (n_hidden=192, n_layers=6, n_head=6, slice_num=64). Use L1 on surface to better align with the MAE leaderboard metric, and bf16 autocast to fit a bigger model in 30 min.
 - **Change:** `train.py` upsized model + bf16 forward+loss + L1 surf loss. `predict.py` loads `Transolver` from `train.py` and reads `config.yaml` next to the checkpoint.
