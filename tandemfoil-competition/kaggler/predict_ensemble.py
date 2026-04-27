@@ -62,9 +62,9 @@ class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
     # Default: thorfinn-dominant blend with small diversity from per-split runners-up.
-    # Try combining 1f9db55 + 0cc44bf in rc base (50/50) with tanjiro top-up.
+    # rc 88/8/4 (lighter tanjiro, lighter 1f9db55): see if curves are convex.
     single: str = "thorfinn5:0.7,thorfinn:0.15,thorfinn6:0.15"
-    rc: str = "thorfinn0:0.45,thorfinn:0.40,tanjiro:0.10,thorfinn5:0.05"
+    rc: str = "thorfinn0:0.88,tanjiro:0.08,thorfinn:0.04"
     cruise: str = "thorfinn:1.0"
     re_rand: str = "thorfinn:1.0"
 
