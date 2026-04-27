@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: deeper model (192/7/96) + bf16 (kept, marginal)
+- **Hypothesis:** with subsampling unblocking VRAM, scaling depth (5→7) and slice_num (64→96) should boost capacity for the difficult turbulent / pressure patterns.
+- **Change:** model_config `n_layers=5→7, slice_num=64→96`; bf16 autocast; grad clip 1.0; epochs 40→50.
+- **Result:** 27 epochs in 30 min (~69 s/epoch, peak 31.0 GB). Best val/loss=6.31 at ep27 (vs iter3's 6.26 at ep31). Per-split: single=7.24, geom_rc=7.05, cruise=5.43, re_rand=5.53 (vs iter3 5.95 / 8.10 / 4.73 / 6.26 — geom_rc and re_rand improved, single regressed). Predictions auto-submitted.
+- **Verdict:** kept — within noise of iter3 in aggregate, but more balanced across splits. The bigger model converged to roughly the same place in fewer epochs; useful as a stronger base for further iteration.
+- **Notes:** `bf16` only saved ~10% per epoch (subsampling already memory-light, so speedups are CPU/data-bound). Train loss kept dropping (vol=0.23, surf=0.15 at ep27) → still under-trained. Lever for next iter is loss formulation, not capacity.
+
 ### 2026-04-27 — iter3: mesh subsampling + per-channel pressure weight (kept, scoring pending)
 - **Hypothesis:** the 30-min cap caps us at ~7 epochs of full meshes. If training subsamples volume nodes (keep all surface, random 32K volume), each epoch becomes ~5x faster and we can fit ~30+ epochs. Adding a 4× weight on the pressure channel in the loss should also push the metric (avg surf-p MAE) directly.
 - **Change:** `train.py`: new `SubsampleDataset` wrapper (surface always kept, volume capped at 32K); per-channel weights `[1,1,4]` applied to the squared error inside both train and val loss (both averaged over channels); `batch_size=4→8`; `epochs=12→40` so the cosine schedule actually decays; freed model + cuda cache before subprocess so auto-submit predict.py doesn't OOM.
