@@ -6,4 +6,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 |------|-------|--------|-----------|----------------|---------|-------------|---------|
 | 1 | nezuko | `88dbfcf` | 350.91 | 466.17 | 404.81 | 226.39 | 306.26 |
 
-*Last updated: 2026-04-27 15:37 UTC*
+*Last updated: 2026-04-27 16:02 UTC*
