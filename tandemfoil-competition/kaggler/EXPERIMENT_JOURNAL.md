@@ -22,6 +22,23 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — third jump: 36.15 (fern3 cross-agent diversifier)
+- **Hypothesis:** fern published a new commit `36e8feb` (avg 42.16) — worse than tanjiro2 alone, but it's a *third* agent's model trained with a totally different recipe. Even at small weight (0.05–0.30), adding it as a third source per split should give additional decorrelation gain on top of the snap+tanjiro2 blend.
+- **Change:** Registered `fern3 = ("fern", "36e8feb")` in `router_meta.py` SRC and re-swept per-split weights of snap/tanjiro2/fern3.
+- **Result:** **36.15** (commit `df8f18b`). Per-split: single=35.70, rc=50.73, cruise=21.43, re_rand=36.74. Lead over tanjiro is 2.94.
+- **Optimum mix (df8f18b):**
+  - single: 0.80·snap_3392 + 0.15·tanjiro2 + 0.05·fern3 → 35.70 (vs 35.72 without fern3)
+  - rc:     0.65·snap_3392 + 0.30·tanjiro2 + 0.05·fern3 → 50.73 (vs 50.75)
+  - cruise: 0.50·snap_bc7f + 0.35·tanjiro2 + 0.15·fern3 → 21.43 (vs 21.48)
+  - re_rand: 0.35·snap_3392 + 0.35·tanjiro2 + 0.30·fern3 → 36.74 (was 37.35 with snap+tanjiro2 only — fern3 contributes -0.61!)
+- **Sweep findings:**
+  - fern3's largest gain was on re_rand (-0.61 absolute), where its 41.48 alone is far worse than tanjiro2's 37.94 but its errors are highly decorrelated.
+  - Cruise gained -0.05 from adding fern3 at 0.15 weight.
+  - For single/rc, fern3 at 5% weight is just enough — heavier hurts.
+  - 4-way (snap/tanjiro2/fern3/edward2 or frieren) variants pending — gains are diminishing returns.
+- **Verdict:** kept — three-agent meta-blend is now the new floor.
+- **Notes:** This is the same pattern as before: each fresh commit from a different agent, even if globally worse, drops our floor by ~0.1-0.2 via decorrelation. The strategy compounds. Watch for edward/8fafedf and edward/f233e58 (pending scores) — both appear to be fresh different-recipe Edward checkpoints.
+
 ### 2026-04-27 — second jump: 36.33 (tanjiro2 decorrelation)
 - **Hypothesis:** Tanjiro published a new commit `5613c7b` (avg 39.09) whose per-split scores show **re_rand=37.94 (best in field)**, rc=52.32, cruise=24.06, single=42.04. Even though tanjiro2's *averages* are worse than my snap_3392 on rc/cruise/single, blending it as a small-weight diversification source in every split should reduce error via decorrelation — tanjiro2 was trained with a different recipe than every model upstream of snap_3392.
 - **Change:** Registered `tanjiro2 = ("tanjiro", "5613c7b")` in `router_meta.py` SRC and swept per-split blend weights of snap_3392/snap_bc7f against tanjiro2.
