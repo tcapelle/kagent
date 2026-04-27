@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6: chain at lr=5e-7
+- **Hypothesis:** iter5b's val/avg_surf_p=50.53 was still trending down at the timeout (epoch 9). Chain another fine-tune from that ckpt at a smaller LR to squeeze more out before plateauing. Frieren's `iter4-warm-bs2-nosub-lr2e6-chain3` shows chaining works.
+- **Change:** No code change — just CLI `--warm_start models/model-hahrr3i7/checkpoint.pt --lr 5e-7 --epochs 8 --batch_size 2 --train_subsample 0`. Run id `rz1akevm`.
+- **Result:** Best val/avg_surf_p=**49.61** at epoch 5/8. Per-split: cruise=30.34, rc=64.96, re_rand=49.30, single=53.86. Marginal -0.9 absolute. **Pushed fern to RANK #1 on leaderboard at 45.01** (iter5b commit `cc186e5` actually scored — iter6 not yet rescored). predict.py OOM'd from training subprocess; ran manually.
+- **Verdict:** Kept (ckpt commit `df602dd`). Plateau is real — most of the gain came in iter5b; further chains return diminishing improvements.
+- **Notes:** Subsequent epochs at lr=5e-7 oscillated 49.61-50.13 (basically noise). Need fundamentally different angle for further gains: lower LR / camber augmentation / different loss / TTA.
+
 ### 2026-04-27 — iter5b: full-mesh fine-tune (frieren-style) — BREAKTHROUGH
 - **Hypothesis:** Frieren leaderboard scoring 46.87 jumped from val/avg_surf_p~78 to ~53 by fine-tuning with **full mesh** (`train_subsample=0`), `batch_size=2`, and very low LR (2e-6). Subsampling 40k pts during training was leaving a lot of supervision on the table — the model wasn't seeing the wake/far-field nodes during fine-tune.
 - **Change:** train.py: `make_subsample_collate` now treats `n_keep<=0` as "no subsampling". Killed iter5 (camber noise) early to free GPU. Run `--warm_start iter4 --slice_num 128 --train_subsample 0 --batch_size 2 --lr 2e-6 --epochs 10`. Code commit `cc186e5`. Run id `hahrr3i7`.
