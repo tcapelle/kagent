@@ -32,6 +32,8 @@ class Config:
     cruise_blend_w: float = 0.0   # same
     extra_w_single: float = 0.0   # weight on ITER1 for single (subtracts from main pair)
     extra_w_cruise: float = 0.0   # weight on ITER1 for cruise
+    rc_blend_w: float = 1.0       # 1=gold only (default)
+    re_blend_w: float = 1.0       # 1=gold only
 
 
 cfg = sp.parse(Config)
@@ -63,12 +65,9 @@ def blend(split: str, w_gold: float, w_extra_iter1: float = 0.0):
     torch.save(out, output_dir / f"{split}.pt")
 
 
-# rc and re_rand: copy gold (warm-start original)
-for split in ["test_geom_camber_rc", "test_re_rand"]:
-    src = PREDICTIONS_DIR / agent_name / GOLD / f"{split}.pt"
-    dst = output_dir / f"{split}.pt"
-    shutil.copy(src, dst)
-    print(f"  copied {GOLD}/{split}.pt")
+# rc and re_rand: blend with iter2 too (default w=1.0 = gold only)
+blend("test_geom_camber_rc", cfg.rc_blend_w)
+blend("test_re_rand", cfg.re_blend_w)
 
 # single and cruise: blend
 blend("test_single_in_dist", cfg.single_blend_w, cfg.extra_w_single)
