@@ -212,6 +212,7 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 20.0
     p_weight: float = 4.0  # extra weight on pressure channel inside loss
+    train_max_points: int = 50000  # subsample volume points during training
     epochs: int = 50
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -243,7 +244,7 @@ def main():
                                   sampler=sampler, **loader_kwargs)
 
     val_loaders = {
-        name: DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, **loader_kwargs)
+        name: DataLoader(ds, batch_size=max(1, cfg.batch_size // 2), shuffle=False, **loader_kwargs)
         for name, ds in val_splits.items()
     }
 
@@ -329,6 +330,42 @@ def main():
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             is_surface = is_surface.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
+
+            # Subsample to fit larger models in VRAM. Keep all surface points,
+            # randomly subsample volume points down to a budget.
+            if cfg.train_max_points and x.shape[1] > cfg.train_max_points:
+                B, N = x.shape[:2]
+                keep = is_surface | ~mask  # placeholder, will overwrite mask
+                # We sub-sample per batch element: keep all surface + random vol up to budget.
+                surf_count = is_surface.sum(dim=1)  # [B]
+                vol_budget = (cfg.train_max_points - surf_count).clamp(min=1)
+                keep_list = []
+                for b in range(B):
+                    valid = mask[b]
+                    sb = is_surface[b] & valid
+                    vb = (~is_surface[b]) & valid
+                    vb_idx = vb.nonzero(as_tuple=False).squeeze(-1)
+                    perm = torch.randperm(vb_idx.shape[0], device=x.device)[:vol_budget[b]]
+                    chosen_vol = vb_idx[perm]
+                    keep_b = torch.zeros(N, dtype=torch.bool, device=x.device)
+                    keep_b[sb] = True
+                    keep_b[chosen_vol] = True
+                    keep_list.append(keep_b)
+                keep = torch.stack(keep_list, dim=0)  # [B, N]
+                # Pad-pack the kept points into a uniform [B, M, ...] tensor.
+                kept_per = keep.sum(dim=1)
+                M = int(kept_per.max().item())
+                new_x = torch.zeros(B, M, x.shape[-1], device=x.device, dtype=x.dtype)
+                new_y = torch.zeros(B, M, y.shape[-1], device=y.device, dtype=y.dtype)
+                new_sf = torch.zeros(B, M, dtype=torch.bool, device=x.device)
+                new_mask = torch.zeros(B, M, dtype=torch.bool, device=x.device)
+                for b in range(B):
+                    n = int(kept_per[b].item())
+                    new_x[b, :n] = x[b, keep[b]]
+                    new_y[b, :n] = y[b, keep[b]]
+                    new_sf[b, :n] = is_surface[b, keep[b]]
+                    new_mask[b, :n] = True
+                x, y, is_surface, mask = new_x, new_y, new_sf, new_mask
 
             x = (x - stats["x_mean"]) / stats["x_std"]
             y_norm = (y - stats["y_mean"]) / stats["y_std"]
