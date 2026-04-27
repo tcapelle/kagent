@@ -33,6 +33,23 @@ from viz import visualize
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))  # minutes
 
+# Cp-space normalization constants. With kinematic pressure (p/rho m²/s²),
+# Cp = p / (0.5 * U_inf²). U_inf is recovered from log(Re) at x[..., 13]
+# via U_inf = exp(log_Re) * NU_OVER_L (rough air constants for unit chord).
+NU_OVER_L = 1.5e-5  # nu/L_ref ≈ 1.5e-5 m²/s for air over a 1m chord
+
+
+def y_scale_from_x_raw(x_raw: torch.Tensor) -> torch.Tensor:
+    """Compute per-node Cp-space y scale [Ux_scale, Uy_scale, p_scale] from raw x.
+
+    Velocities are scaled by U_inf; pressure (kinematic, p/rho) by U_inf².
+    All scales depend only on log(Re) which is a per-sample constant — but we
+    return per-node tensors so they broadcast cleanly with [B, N, 3] targets.
+    """
+    log_Re = x_raw[..., 13:14]
+    U_inf = log_Re.exp() * NU_OVER_L
+    return torch.cat([U_inf, U_inf, U_inf * U_inf], dim=-1)
+
 
 @dataclass
 class Config:
@@ -40,9 +57,10 @@ class Config:
     weight_decay: float = 3e-5
     batch_size: int = 4
     surf_weight: float = 1.5  # legacy; only used if balanced=False
-    surf_p_weight: float = 4.0  # weight on per-sample-balanced surface pressure loss
-    surf_uv_weight: float = 0.3  # weight on per-sample-balanced surface velocity loss
-    var_floor: float = 0.02  # added to per-sample variance — caps upweighting
+    surf_p_weight: float = 2.5  # weight on per-sample-balanced surface pressure loss
+    surf_uv_weight: float = 0.5  # weight on per-sample-balanced surface velocity loss
+    var_floor: float = 0.001  # tighter floor since Cp-space variance is O(0.05-0.5), not O(0.0006-0.12)
+    use_cp_norm: bool = True  # train targets in Cp / U_inf-normalized space
     epochs: int = 14
     n_hidden: int = 128
     n_layers: int = 6
@@ -170,8 +188,12 @@ for epoch in range(MAX_EPOCHS):
         is_surface = is_surface.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
+        if cfg.use_cp_norm:
+            y_scale = y_scale_from_x_raw(x)
+            y_norm = y / y_scale  # scale-free: Cp for p, U/U_inf for velocities
+        else:
+            y_norm = (y - stats["y_mean"]) / stats["y_std"]
         x = (x - stats["x_mean"]) / stats["x_std"]
-        y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             pred = model({"x": x})["preds"]
@@ -238,8 +260,12 @@ for epoch in range(MAX_EPOCHS):
                 is_surface = is_surface.to(device, non_blocking=True)
                 mask = mask.to(device, non_blocking=True)
 
+                if cfg.use_cp_norm:
+                    y_scale = y_scale_from_x_raw(x)
+                    y_norm = y / y_scale
+                else:
+                    y_norm = (y - stats["y_mean"]) / stats["y_std"]
                 x = (x - stats["x_mean"]) / stats["x_std"]
-                y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                     pred = model({"x": x})["preds"]
@@ -252,7 +278,10 @@ for epoch in range(MAX_EPOCHS):
                 val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
                 n_vb += 1
 
-                pred_orig = pred * stats["y_std"] + stats["y_mean"]
+                if cfg.use_cp_norm:
+                    pred_orig = pred * y_scale
+                else:
+                    pred_orig = pred * stats["y_std"] + stats["y_mean"]
                 err = (pred_orig - y).abs()
                 mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))

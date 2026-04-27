@@ -42,6 +42,9 @@ TEST_SPLITS = [
 ]
 
 
+NU_OVER_L = 1.5e-5  # must match train.py — see y_scale_from_x_raw
+
+
 @dataclass
 class Config:
     """Generate test predictions from a trained checkpoint."""
@@ -49,6 +52,7 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None  # kaggler name for output path
     batch_size: int = 4
+    use_cp_norm: bool = True  # must match the training run's setting
 
 
 cfg = sp.parse(Config)
@@ -103,7 +107,14 @@ for split in TEST_SPLITS:
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
-            pred = pred_norm.float() * y_std + y_mean
+            pred_norm = pred_norm.float()
+            if cfg.use_cp_norm:
+                log_Re = x_pad[..., 13:14]
+                U_inf = log_Re.exp() * NU_OVER_L
+                y_scale = torch.cat([U_inf, U_inf, U_inf * U_inf], dim=-1)
+                pred = pred_norm * y_scale
+            else:
+                pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
                 predictions.append(pred[j, :x.shape[0]].cpu())
