@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: ultra-low-LR continuation chain step
+
+- **Hypothesis:** One more chain step at lr=3e-6 → 1e-7. Final squeeze before pivoting to a different approach.
+- **Change:** `train.py`: WARMSTART=qsywg20y, lr=3e-6. Otherwise same as iter9 (L1-only, p_weight=5, single_boost=2.0, 14 epochs).
+- **Result:** 14 epochs in 32 min. 44.73 → epoch 10 = **44.32** (best). Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/db7f105/`. Run `ii1fhq90`.
+- **Verdict:** kept — gain of -0.41. **iter11 SCORED 37.81 on test → #2 leaderboard**, but askeladd jumped to 32.07 — they're 5.7 ahead. Single split for me 39.81 vs askeladd 29.93 (-10!). Need a fundamentally bigger/different model to close this gap; chain incrementalism cannot do it.
+- **Notes:** my 4 best test scores (840db61=39.49, 819c1d1=38.87, db7f105=37.81) form a clear chain trajectory: ~0.7 test gain per iter. To reach askeladd's 32.07 at this rate would take ~8 more chain iters (4 hours). Iter12 should pivot to a bigger architecture trained from scratch (hid=256 L=8 with proper recipe) to break this trend.
+
 ### 2026-04-27 — iter10: prediction averaging across chain ckpts (also fails)
 
 - **Hypothesis:** Where weight averaging (iter8 soup) fails because earlier chain ckpts pull the average toward worse weights, prediction-space averaging might still help by canceling stochastic errors.
