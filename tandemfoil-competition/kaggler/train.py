@@ -55,6 +55,11 @@ class Config:
     finetune_epochs: int = 0   # number of full-mesh fine-tune epochs at the end
     finetune_batch_size: int = 2
     finetune_lr: float = 5e-5
+    # Per-channel loss weights [Ux, Uy, p] applied to L1 diffs.
+    # Default emphasises pressure (leaderboard metric).
+    w_ux: float = 1.0
+    w_uy: float = 1.0
+    w_p: float = 3.0
 
 
 cfg = sp.parse(Config)
@@ -141,6 +146,9 @@ model_config = dict(
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
+
+channel_weights = torch.tensor([cfg.w_ux, cfg.w_uy, cfg.w_p], device=device)
+print(f"Channel weights [Ux, Uy, p]: {channel_weights.tolist()}")
 
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
@@ -236,7 +244,7 @@ for epoch in range(MAX_EPOCHS):
 
         with autocast_ctx():
             pred = model({"x": x})["preds"]
-        diff = (pred.float() - y_norm).abs()  # L1 loss in normalized space
+        diff = (pred.float() - y_norm).abs() * channel_weights  # weighted L1
 
         vol_mask = mask & ~is_surface
         surf_mask = mask & is_surface
