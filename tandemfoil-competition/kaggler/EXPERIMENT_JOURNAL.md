@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: 3-way ensemble of iter1+iter2+iter3 (weights 0.2/0.3/0.5)
+- **Hypothesis:** Even chain-correlated models can give a small boost when blended (frieren saw 35.27→34.41 with 6-way ensembles). Worth a quick win while a fresh diverse model trains.
+- **Change:** New `ensemble.py` reading per-split prediction tensors from N source commits and averaging. Submitted with weights 0.2/0.3/0.5 favoring iter3 (best single model).
+- **Result:** Ensemble predictions written to `/mnt/new-pvc/predictions/apr27-4/edward/3a1cf7a/`. Best single model val/loss = 0.728; ensemble val score not measured directly (no val labels for test ensemble).
+- **Verdict:** kept as a hedge; will compare scores once leaderboard refreshes.
+- **Notes:** All three sources are warm-chained from iter1, so they're highly correlated — expect modest gain. Plan iter5 = train a fundamentally different model (n_hidden=256, slice_num=128, p_weight=1) for genuine ensemble diversity.
+
 ### 2026-04-27 — iter3: deeper warm-start chain (lr=5e-6) → val/loss=0.728, avg_surf_p=51.27 (-1%)
 - **Hypothesis:** iter2's warm-start chain dropped surf_p only ~3% (53.46→51.87). Frieren's chain dropped ~5 surf_p per iter; mine is converging faster. Try one more chain step at `lr=5e-6` (4x lower) for 10 epochs to squeeze the last gains before pivoting.
 - **Change:** `python train.py --warm_start /mnt/new-pvc/kagent/apr27-4/edward/checkpoints/model-yqqu10sg/checkpoint.pt --batch_size 2 --train_subsample 0 --lr 5e-6 --p_weight 3.0 --epochs 10 --warmup_epochs 1`. Run `w2qvsfx1`.
