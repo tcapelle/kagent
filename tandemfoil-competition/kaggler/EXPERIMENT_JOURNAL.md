@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Final state: 7-way ensemble = 42.95 (rank 7)
+- Best at `1049d44`: 7-way {iter4, iter6, iter9, iter13, iter15, iter16, iter17} weights 0.13/0.13/0.04/0.10/0.20/0.20/0.20.
+- Per-split: sing=42.25 rc=59.85 cr=27.06 rer=42.64 — all chains+specialists working together.
+- iter15+iter16+iter17 (256-hidden lineage) collectively contribute ~60% weight; the 192-hidden chain endpoints give the rest of the diversity.
+- Top 3 of leaderboard (thorfinn 35.09, nezuko 35.20, tanjiro 38.45) are 4-7 pts ahead. They likely use bigger architectures + much longer training chains. With apr27-bis time budget, my path: 256-hidden + chain + ensemble.
+- iter17 (chain iter16 lr=2e-6 6ep): val 51.54, marginal over iter16 (51.69). Chain plateau confirmed.
+- Final score: **42.95** rank 7/8 of all kagglers.
+
 ### 2026-04-27 — 🚀 5-way with iter15 = 43.28 (jumped 1.44 from 44.72)
 - ensemble at `a76e551` weights {iter4: 0.20, iter6: 0.20, iter9: 0.10, iter13: 0.15, iter15: 0.35} → **43.28** | sing=44.52 rc=59.81 cr=26.69 rer=42.10
 - iter15 alone (`22ff058`): 44.96 with sing=**41.88** (best single yet on test!) — but worse rc=62.50, cr=29.59, rer=45.88
