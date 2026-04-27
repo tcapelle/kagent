@@ -52,6 +52,7 @@ class Config:
     grad_clip: float = 1.0
     warmup_epochs: int = 3
     huber_beta: float = 0.1         # SmoothL1 transition; lower → more L1-like
+    warm_start: str | None = None   # path to checkpoint to load (e.g. checkpoints/best.pt)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -130,6 +131,13 @@ model_config = dict(
 
 model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
+
+if cfg.warm_start:
+    ws_path = Path(cfg.warm_start)
+    state = torch.load(ws_path, map_location=device, weights_only=True)
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    print(f"Warm-started from {ws_path} (missing={len(missing)}, unexpected={len(unexpected)})")
+
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
 
