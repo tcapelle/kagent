@@ -54,7 +54,8 @@ SRC = {
     "thorfinnI": ("thorfinn", "55cc0ab"),  # avg 34.9361 — best cruise (20.7336)
     "thorfinnJ": ("thorfinn", "63bacc5"),  # avg 35.0335
     "thorfinnK": ("thorfinn", "644f1c4"),  # avg 34.9300
-    "thorfinnL": ("thorfinn", "03652c4"),  # avg 34.9022 — best s/rc/re — current #1
+    "thorfinnL": ("thorfinn", "03652c4"),  # avg 34.9022 — best single (35.2169), best rc (48.6820)
+    "thorfinnM": ("thorfinn", "34c2f44"),  # avg 34.8781 — best cruise (20.6861), best re (34.9163)
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -80,12 +81,12 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter17d: 50/50 blend of TOP-2 per split — chase decorrelation gain (proven on single in bbb33f7).
-    # bbb33f7 showed 50/50(644f1c4,55cc0ab)=35.2169 single, 0.04 below either. Apply same trick to rc/c/re.
-    single: str = "thorfinnL:0.5,thorfinnI:0.5"  # 03652c4 + 55cc0ab
-    rc: str = "thorfinnL:0.5,thorfinnK:0.5"  # 03652c4 + 644f1c4
-    cruise: str = "thorfinnI:0.5,thorfinnL:0.5"  # 55cc0ab + 03652c4
-    re_rand: str = "thorfinnL:0.5,thorfinnK:0.5"  # 03652c4 + 644f1c4
+    # iter18: route to thorfinn's NEWEST 34c2f44 — best cruise (20.6861) and re (34.9163).
+    # 03652c4 still best single/rc; 34c2f44 best cruise/re. Per-split-best floor ~34.8753.
+    single: str = "thorfinnL:1.0"  # 03652c4
+    rc: str = "thorfinnL:1.0"      # 03652c4
+    cruise: str = "thorfinnM:1.0"  # 34c2f44
+    re_rand: str = "thorfinnM:1.0" # 34c2f44
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
