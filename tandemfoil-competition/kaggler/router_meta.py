@@ -43,7 +43,11 @@ SRC = {
     "thorfinn": ("thorfinn", "a4bbc13"),  # current blend (best ours): single 39.13, rc 59.18, cruise 26.14, re 50.33
     # Frozen snapshots of our own meta-router blends — useful as starting points
     # since the source files for these commits are immutable on PVC.
-    "snap_3392": ("thorfinn", "3392fb4"),  # our 36.82 #1 blend (single 35.77, rc 51.19, cr 22.32, re 38.01)
+    "snap_3392": ("thorfinn", "3392fb4"),  # 36.82 (sd 35.77, rc 51.19, cr 22.32, re 38.01)
+    "snap_bc7f": ("thorfinn", "bc7f7dd"),  # 36.88 (sd 35.77, rc 51.46, cr 22.27, re 38.01)
+    "snap_853d": ("thorfinn", "853d98f"),  # 36.91 (sd 35.91, rc 51.41, cr 22.32, re 38.01)
+    "snap_5fb":  ("thorfinn", "5fb015e"),  # 36.96
+    "snap_1128": ("thorfinn", "1128609"),  # 37.05
 }
 
 
