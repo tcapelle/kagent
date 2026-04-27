@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter16: polish iter15 (lr=4e-6, pw=15, sw=15)
+- **Hypothesis:** Standard polish with slightly higher lr (4e-6 vs 3e-6) to allow more movement in 10 epochs.
+- **Change:** Resume iter15; --lr 4e-6 (other unchanged).
+- **Result:** **surf_p 43.91 → 43.51** (~0.9%, best ep10). W&B `fxyy0wmw`.
+- **Verdict:** Kept (best). Polish gave the typical ~1%.
+- **Notes:** iter17 6th warm-restart with pw=18 (was 15) and lr=2.5e-5 — should push under 42 to top frieren's apr27 score.
+
 ### 2026-04-27 — iter15: 5th warm-restart (lr=2.5e-5, pw=15, sw=15)
 - **Hypothesis:** 5th warm-restart cycle. Push pw further (12→15) and slightly higher LR (2e-5→2.5e-5).
 - **Change:** Resume iter14; --lr 2.5e-5 --p_weight 15 --surf_weight 15.
