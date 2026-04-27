@@ -230,23 +230,23 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter5: chain from iter4 best (d215g7ng, val=48.50).
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-d215g7ng/checkpoint.pt"
+# Iter6: chain from iter5 best (4ydobzth, val=47.17).
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-4ydobzth/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 1e-5
+    lr: float = 8e-6
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
     surf_weight: float = 10.0
-    epochs: int = 12
+    epochs: int = 14
     grad_clip: float = 1.0
     l1_weight: float = 1.0
     l2_weight: float = 1.0
     # Channel weights for pressure-focused loss (eval metric is surf_p MAE).
-    p_weight: float = 3.0
+    p_weight: float = 5.0
     ema_decay: float = 0.99
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
