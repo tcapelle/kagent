@@ -43,6 +43,8 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 10.0
     huber_beta: float = 1.0
+    p_weight: float = 1.0  # multiplier on the pressure-channel loss (leaderboard metric)
+    v_weight: float = 1.0  # multiplier on the velocity-channel loss
     epochs: int = 50
     grad_clip: float = 1.0
     warmup_steps: int = 100
@@ -212,16 +214,23 @@ train_start = time.time()
 amp_dtype = torch.bfloat16
 
 
-def compute_loss(pred, y_norm, mask, is_surface, surf_weight, beta):
-    """Huber loss split into volume and surface components."""
+def compute_loss(pred, y_norm, mask, is_surface, surf_weight, beta,
+                 p_weight=1.0, v_weight=1.0):
+    """Huber loss split into volume and surface components, with per-channel weights.
+
+    Channel order is [Ux, Uy, p]; v_weight applies to Ux and Uy, p_weight to p.
+    """
     abs_err = (pred - y_norm).abs()
     sq = 0.5 * (pred - y_norm) ** 2
     huber = torch.where(abs_err < beta, sq / beta, abs_err - 0.5 * beta)
 
+    ch_w = torch.tensor([v_weight, v_weight, p_weight], device=pred.device, dtype=huber.dtype)
+    huber_w = huber * ch_w
+
     vol_mask = (mask & ~is_surface).unsqueeze(-1).float()
     surf_mask = (mask & is_surface).unsqueeze(-1).float()
-    vol_loss = (huber * vol_mask).sum() / vol_mask.sum().clamp(min=1.0)
-    surf_loss = (huber * surf_mask).sum() / surf_mask.sum().clamp(min=1.0)
+    vol_loss = (huber_w * vol_mask).sum() / (vol_mask.sum().clamp(min=1.0) * ch_w.mean())
+    surf_loss = (huber_w * surf_mask).sum() / (surf_mask.sum().clamp(min=1.0) * ch_w.mean())
     return vol_loss + surf_weight * surf_loss, vol_loss, surf_loss
 
 
@@ -308,7 +317,8 @@ for epoch in range(MAX_EPOCHS):
         with torch.amp.autocast("cuda", dtype=amp_dtype):
             pred = model({"x": x})["preds"]
         loss, vol_loss, surf_loss = compute_loss(
-            pred.float(), y_norm, mask, is_surface, cfg.surf_weight, cfg.huber_beta
+            pred.float(), y_norm, mask, is_surface, cfg.surf_weight, cfg.huber_beta,
+            p_weight=cfg.p_weight, v_weight=cfg.v_weight,
         )
         loss.backward()
         if cfg.grad_clip > 0:
