@@ -42,6 +42,10 @@ class Config:
     surf_uv_weight: float = 1.0
     vol_p_weight: float = 0.5
     vol_uv_weight: float = 0.5
+    # If "frieren": L1 in normalized space, surf_weight=10, p_weight=3.
+    loss_kind: str = "default"
+    surf_weight: float = 10.0
+    p_weight: float = 3.0
 
     # Memory: subsample N points per sample during training.
     train_subsample: int = 40000
@@ -169,19 +173,30 @@ def compute_loss(pred_norm, y, surf_mask, vol_mask):
     e_surf = (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1)) / surf_n
     e_vol = (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1)) / vol_n
 
-    # Normalize per channel by y_std so the scales are commensurate.
-    s = stats["y_std"]
-    surf_uv = (e_surf[0] + e_surf[1]) / (s[0] + s[1])
-    surf_p = e_surf[2] / s[2]
-    vol_uv = (e_vol[0] + e_vol[1]) / (s[0] + s[1])
-    vol_p = e_vol[2] / s[2]
+    if cfg.loss_kind == "frieren":
+        # Frieren-style: L1 in normalized space, [Ux, Uy, p*p_weight] summed.
+        # Surface side weighted by surf_weight.
+        y_norm = (y - stats["y_mean"]) / stats["y_std"]
+        err_norm = (pred_norm - y_norm).abs()  # [B, N, 3]
+        ch_w = torch.tensor([1.0, 1.0, cfg.p_weight], device=err_norm.device)
+        per_pt = (err_norm * ch_w).sum(-1)  # [B, N]
+        surf_loss = (per_pt * surf_mask).sum() / surf_n
+        vol_loss = (per_pt * vol_mask).sum() / vol_n
+        loss = vol_loss + cfg.surf_weight * surf_loss
+    else:
+        # Normalize per channel by y_std so the scales are commensurate.
+        s = stats["y_std"]
+        surf_uv = (e_surf[0] + e_surf[1]) / (s[0] + s[1])
+        surf_p = e_surf[2] / s[2]
+        vol_uv = (e_vol[0] + e_vol[1]) / (s[0] + s[1])
+        vol_p = e_vol[2] / s[2]
+        loss = (
+            cfg.surf_p_weight * surf_p
+            + cfg.surf_uv_weight * surf_uv
+            + cfg.vol_p_weight * vol_p
+            + cfg.vol_uv_weight * vol_uv
+        )
 
-    loss = (
-        cfg.surf_p_weight * surf_p
-        + cfg.surf_uv_weight * surf_uv
-        + cfg.vol_p_weight * vol_p
-        + cfg.vol_uv_weight * vol_uv
-    )
     return loss, dict(
         surf_p=e_surf[2].item(), surf_ux=e_surf[0].item(), surf_uy=e_surf[1].item(),
         vol_p=e_vol[2].item(), vol_ux=e_vol[0].item(), vol_uy=e_vol[1].item(),
