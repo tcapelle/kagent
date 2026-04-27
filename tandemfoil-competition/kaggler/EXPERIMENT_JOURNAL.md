@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter11: 3rd warm-restart from iter10 (lr=2e-5, pw=12, sw=12)
+- **Hypothesis:** 3rd warm-restart cycle with stronger pressure (pw=10→12) and surface (sw=10→12) weighting. Should escape current plateau again.
+- **Change:** Resume iter10; --lr 2e-5 --p_weight 12 --surf_weight 12.
+- **Result:** **surf_p 48.15 → 47.00** (~2.4% gain). Per-split: single≈55, rc≈73, cruise≈30, re_rand≈49 (rc still hardest, others improving). Still descending. W&B `xoko69un`.
+- **Verdict:** Kept (best). Pattern holds: warm-restart cycles consistently yield 2-3% gains. Now closer to frieren's apr27 score (42.11) — still ~12% above.
+- **Notes:** val/loss went UP (2.30 → 2.65) because of higher sw/pw scaling factors, but surf_p (the metric that matters) improved. Continue: iter12 polish, then iter13 4th warm-restart.
+
 ### 2026-04-27 — iter10: polish iter9 (lr=3e-6, pw=10)
 - **Hypothesis:** Standard polish-after-warm-restart at lower LR.
 - **Change:** Resume iter9; --lr 3e-6 --p_weight 10.
