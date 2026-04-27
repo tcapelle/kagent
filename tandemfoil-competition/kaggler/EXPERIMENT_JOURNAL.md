@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7-cp-norm (HUGE WIN, KEPT)
+- **Hypothesis:** kinematic pressure (`y[..,2]`, units m²/s²) scales as q_inf = 0.5·U_inf², and U_inf can be recovered from `x[..,13] = log(Re)` via `U_inf = exp(log_Re) * (nu/L)` (~m/s for unit chord). Training in Cp space `(p / U_inf², U/U_inf, U/U_inf)` makes targets dimensionless and *regime-invariant*: every sample has Cp_std ~ O(0.1-1) regardless of Re, so a unit-MSE loss is automatically balanced — the per-sample variance trick can't compensate the 137× cross-regime span the way Cp normalization does directly.
+- **Change:** `train.py` — added `y_scale_from_x_raw` helper using `NU_OVER_L=1.5e-5`; replaced `(y - y_mean)/y_std` with `y / y_scale` in train + val; replaced `pred * y_std + y_mean` with `pred * y_scale` for MAE. `predict.py` mirrors. Reverted hparams to iter4 baseline (surf_p_w=2.5, var_floor=0.001 since Cp-space variance is naturally O(0.05-0.5)).
+- **Result:** 13/14 epochs. **avg val surf_p MAE 85.18 → 66.76 (-21.6%) — biggest single-iter gain so far.** Per val split:
+  - in_dist 100.78 → 71.42 (-29.1%)
+  - rc 96.80 → 87.94 (-9.1%)
+  - **cruise 63.07 → 42.41 (-32.8%) — leader-cluster level**
+  - re_rand 82.18 → 65.27 (-20.6%)
+  - **Test leaderboard: 75.06 → 60.92, gap to leader thorfinn=37.33 narrowed from 30 to 23.6 points.** Per test split: in_dist 69.48, rc 79.30, cruise 36.34, re_rand 58.56.
+  W&B `kagent-tandemfoil3/qegxaiel`.
+- **Verdict:** kept. Cumulative val: 97.85 → 66.76 (-31.8%); cumulative test: 79.95 → 60.92 (-23.8%).
+- **Notes:** Cruise drop confirms the diagnostic — the gap with leaders was purely scale-mismatch in target normalization. Single_in_dist at 69 vs leader 36 still 2× gap; that's peak-pressure stagnation fitting, where extra capacity / aux-head / Fourier-tuning may help. var_floor=0.001 was probably overkill; check whether reverting helps.
+
 ### 2026-04-27 — iter6-surfp4-vf002 (FAILED, marginal regression)
 - **Hypothesis:** raise surf_p_weight 2.5 → 4.0 (more focus on the metric) and tighten var_floor 0.05 → 0.02 (more aggressive low-Re upweight, since cruise-Part3 is bottlenecked by the floor at ~20× max upweight when it really wants ~5000×).
 - **Change:** `train.py` — `surf_p_weight=4.0`, `surf_uv_weight=0.3`, `var_floor=0.02`.
