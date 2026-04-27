@@ -69,3 +69,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 61.60` at epoch 8. **2.8% over v6 (63.39→61.60), 83% over baseline.** Per-split p MAE: single_in_dist=67, geom_camber_rc=76, geom_camber_cruise=43, re_rand=60. W&B `alphonse/v7-warm-l1surfp30-lr1e5` (`bu63jrg0`).
 - **Verdict:** Kept, but gain shrinking fast (29%→8%→5%→5.5%→2.8%). LR may be too low (apr23 v14 lesson).
 - **Notes:** Need a step-change — geom_camber_rc still bottleneck (76). Trying lr restart up + arch change next.
+
+### 2026-04-27 — v8-warm-lr3e5-l1surfp30 (LR restart up)
+- **Hypothesis:** apr23 v14 lesson — when chain gains shrink, lower LR may be the cause not convergence. Restart from 1e-5 → 3e-5.
+- **Change:** `--resume model-bu63jrg0 --lr 3e-5 --train_max_points 0 --batch_size 2 --surf_weight 50 --surf_p_l1_weight 30`.
+- **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 59.10` at epoch 8. **4.1% over v7 (61.60→59.10), 84% over baseline.** Per-split p MAE: single_in_dist=64, geom_camber_rc=72, geom_camber_cruise=42, re_rand=58. W&B `alphonse/v8-warm-lr3e5-l1surfp30` (`2behuc15`).
+- **Verdict:** Kept — LR-up restart worked again, confirming apr23 lesson.
+- **Notes:** Gap to thorfinn now ~22% (59 vs 46). Continue chain with another LR-up restart.
