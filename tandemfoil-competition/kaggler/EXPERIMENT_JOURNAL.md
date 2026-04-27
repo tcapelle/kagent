@@ -22,6 +22,26 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — v7 pivot: warm-start from frieren's kr1xvas8 (frieren leapt to test 35.05)
+- **Hypothesis:** v6's chain-train from v5 was capped at val ~44 by my model's basin. frieren just took
+  the lead at test 35.05 with their own iter4 ckpt (192/6/6/**64**, fun_dim=22, space_dim=2,
+  val 40.97). Their slice_num=64 means I cannot weight-merge with my 192/6/6/128 lineage —
+  the slice projection layers are differently shaped. Cleaner play: switch arch to match frieren,
+  warm-start from their best, and chain-train another 30 min with my own LR/p_weight tweaks.
+- **Change:** train.py model_config → `space_dim=2 fun_dim=22 n_hidden=192 n_layers=6 n_head=6
+  slice_num=64 mlp_ratio=2`. Run: `--warm_start kr1xvas8 --train_subsample 0 --batch_size 2
+  --lr 5e-6 --p_weight 5 --surf_weight 10 --epochs 15` (lower LR, higher p_weight than frieren's
+  iter4 to extract a final % on the surface).
+- **Result:** wandb run, 13 epochs in 32.4 min. Best at epoch 13 →
+  **val/avg_surf_p = 40.10** (single 40.40 / geom_rc 53.50 / cruise 25.22 / re_rand 41.28) —
+  improved on frieren's val 40.97 across every split. Predictions at
+  `/mnt/new-pvc/predictions/apr27-5/alphonse/d985283/`. With frieren's val→test ratio 1.169,
+  expected test ~34.3 — should beat their 35.05.
+- **Verdict:** kept — bigger jump than v5→v6 polishing would have given (44→43 vs 41→40).
+- **Notes:** v6 (chain-train from v5 at lr=1e-6) was killed at epoch 1 once frieren's leaderboard
+  jump revealed a much stronger warm-start source. Trajectory still descending at the timeout —
+  another chain at lr=2e-6 or with even higher p_weight (6-8) is the obvious follow-up.
+
 ### 2026-04-27 — v5 chain-train from v4 — full mesh + bs=2 + lr=5e-6 (thorfinn recipe)
 - **Hypothesis:** thorfinn (apr27-5 leader at test 44.55) revealed in their journal that the unlock for them
   was switching from sub-30K bs=8 to **bs=2 + full mesh** at low LR for chained finetuning. My val/test
