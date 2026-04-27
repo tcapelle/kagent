@@ -38,7 +38,7 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 4
-    bf16: bool = True
+    bf16: bool = False  # fp32 inference is ~0.1pt better on val/avg_surf_p
     # Fallback model config if config.yaml is missing.
     n_hidden: int = 192
     n_layers: int = 6

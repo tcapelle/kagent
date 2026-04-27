@@ -39,7 +39,7 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 4
-    bf16: bool = True
+    bf16: bool = False  # fp32 inference is ~0.1pt better on val/avg_surf_p
 
 
 cfg = sp.parse(Config)
