@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter6 p_weight=10
+- **Hypothesis:** iter5 (p_weight=6) gave a bigger gain than the prior pure-chain iters, so continue pushing pressure-channel emphasis to 10 to extract more signal aligned with the leaderboard metric.
+- **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter5_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 10.0`.
+- **Result:** Best epoch 28/30, val/loss=0.9602, avg_surf_p=**45.39** (val splits: in_dist=1.22, geom_rc=1.34, geom_cruise=0.28, re_rand=1.00). Run `tlyvswlv`.
+- **Verdict:** Kept (commit d0e9c45). −1.74 over iter5; now within 3.3 of frieren's leader 42.11. val_single_in_dist dropped sharply (1.45 → 1.22) — model is getting calibrated on the similar-domain split.
+- **Notes:** geom_rc still highest (1.34) — out-of-distribution camber generalization is the bottleneck. Worth probing larger model or augmentation next. For now, push p_weight to 15.
+
 ### 2026-04-27 — iter5 push p_weight from 3 → 6
 - **Hypothesis:** The leaderboard metric is surface pressure MAE. By doubling the per-channel weight on pressure (3 → 6), the optimizer should focus more on what we're scored on, even at small cost to volume MAE we don't care about.
 - **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter4_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 6.0`.
