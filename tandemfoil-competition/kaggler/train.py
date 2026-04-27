@@ -52,6 +52,8 @@ class Config:
     grad_clip: float = 1.0
     warmup_epochs: int = 3
     huber_beta: float = 0.1         # SmoothL1 transition; lower → more L1-like
+    fourier_dim: int = 0            # 0 = off; otherwise N random Fourier frequencies on spatial coords
+    fourier_sigma: float = 5.0      # std of Fourier-feature frequencies (chord units ≈ 1)
     warm_start: str | None = None   # path to checkpoint to load (e.g. checkpoints/best.pt)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -125,6 +127,8 @@ model_config = dict(
     n_head=cfg.n_head,
     slice_num=cfg.slice_num,
     mlp_ratio=cfg.mlp_ratio,
+    fourier_dim=cfg.fourier_dim,
+    fourier_sigma=cfg.fourier_sigma,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )
@@ -135,6 +139,17 @@ n_params = sum(p.numel() for p in model.parameters())
 if cfg.warm_start:
     ws_path = Path(cfg.warm_start)
     state = torch.load(ws_path, map_location=device, weights_only=True)
+    # If loading an old checkpoint into a model with extra Fourier-feature input
+    # dims, pad the preprocess MLP's first Linear weight columns with zeros so the
+    # model initially behaves identically and learns to use the new features.
+    pre_w_key = "preprocess.linear_pre.0.weight"
+    if pre_w_key in state and state[pre_w_key].shape[1] != model.state_dict()[pre_w_key].shape[1]:
+        old_w = state[pre_w_key]
+        new_w = model.state_dict()[pre_w_key].clone()
+        new_w[:, :old_w.shape[1]] = old_w
+        new_w[:, old_w.shape[1]:] = 0
+        state[pre_w_key] = new_w
+        print(f"Padded preprocess weight {old_w.shape} → {new_w.shape} for warm-start.")
     missing, unexpected = model.load_state_dict(state, strict=False)
     print(f"Warm-started from {ws_path} (missing={len(missing)}, unexpected={len(unexpected)})")
 

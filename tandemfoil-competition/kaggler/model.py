@@ -1,5 +1,7 @@
 """Transolver model — shared between train.py and predict.py."""
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -125,20 +127,31 @@ class Transolver(nn.Module):
     def __init__(self, space_dim=1, n_layers=5, n_hidden=256, dropout=0.0,
                  n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
                  slice_num=32, ref=8, unified_pos=False,
+                 fourier_dim: int = 0, fourier_sigma: float = 5.0,
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None):
         super().__init__()
         self.ref = ref
         self.unified_pos = unified_pos
+        self.fourier_dim = fourier_dim
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
 
-        if self.unified_pos:
-            self.preprocess = MLP(fun_dim + ref**3, n_hidden * 2, n_hidden,
-                                   n_layers=0, res=False, act=act)
+        # Fixed random Fourier-feature frequencies on spatial coords.
+        # 2 cols (x, z) → fourier_dim freqs → 2*fourier_dim sin/cos features.
+        if fourier_dim > 0:
+            B = torch.randn(2, fourier_dim) * fourier_sigma
+            self.register_buffer("fourier_B", B)
+            extra = 2 * fourier_dim
         else:
-            self.preprocess = MLP(fun_dim + space_dim, n_hidden * 2, n_hidden,
-                                   n_layers=0, res=False, act=act)
+            extra = 0
+
+        if self.unified_pos:
+            in_dim = fun_dim + ref**3 + extra
+        else:
+            in_dim = fun_dim + space_dim + extra
+        self.preprocess = MLP(in_dim, n_hidden * 2, n_hidden,
+                               n_layers=0, res=False, act=act)
 
         self.n_hidden = n_hidden
         self.space_dim = space_dim
@@ -164,6 +177,10 @@ class Transolver(nn.Module):
 
     def forward(self, data, **kwargs):
         x = data["x"]
+        if self.fourier_dim > 0:
+            ff = x[..., :2] @ self.fourier_B  # [B, N, fourier_dim]
+            ff = 2 * math.pi * ff
+            x = torch.cat([x, torch.sin(ff), torch.cos(ff)], dim=-1)
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for block in self.blocks:
             fx = block(fx)

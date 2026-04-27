@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter4: warm-start iter3 @ lr=5e-5, p_weight=5
+
+- **Hypothesis:** Push pressure-channel weight from 3 → 5 to focus the model harder on the leaderboard metric, with even lower LR to fine-tune.
+- **Change:** `--warm_start checkpoints/best.pt --lr 5e-5 --p_weight 5.0 --weight_decay 3e-4 --epochs 30 --warmup_epochs 0`. Ran 21 epochs (timeout).
+- **Result:** Best val avg_mae_surf_p=**86.09 at E8** (vs iter3=86.36 — basically a tie). single=57, geom_rc=139, cruise=58, re_rand=91.
+- **Verdict:** kept (very small win on noise level).
+- **Notes:** Plateau is firmly established at ~86 with this architecture. Higher p_weight didn't move geom_camber_rc. Need a real architectural change. Next iter: add Fourier positional features for spatial coords (random Gaussian frequencies, sigma=5) and warm-start with zero-padded preprocess weights so the model starts from current behavior and learns to use the new features.
+
 ### 2026-04-27 — iter3: warm-start iter2 ckpt @ lr=1e-4, wd=3e-4
 
 - **Hypothesis:** Iter2 hit val=87.57 then bounced/overfit on geom_camber_rc (129→152). Drop LR by 2× and 3× weight decay to slow overfit while letting other splits keep improving.
