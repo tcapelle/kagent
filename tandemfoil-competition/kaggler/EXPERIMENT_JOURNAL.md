@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: surface MSE → L1 (FAILED)
+
+- **Hypothesis:** the metric is MAE in physical units; switching surface loss
+  from MSE to L1 (in normalized space) should align the optimization with the
+  metric.
+- **Change:** `train.py` — surface loss uses `abs_err = err.abs()` instead of
+  `err**2`; volume stays MSE.
+- **Result:** 40 epochs, best val avg_surf_p = 92.71 at epoch 39
+  (single=65.51, geom_rc=145.52, geom_cruise=65.13, re_rand=94.68). Run
+  `f6...`.
+- **Verdict:** discarded — worse than iter2 (87.59). Code reset.
+- **Notes:** L1 won on `single_in_dist` (65 vs 72) but lost on
+  `geom_camber_rc` (146 vs 123) — so it overfit the in-distribution ranges
+  and hurt the OOD-camber generalization. Average dragged down by geom_rc.
+  Lesson: L1 in normalized space ≠ MAE in physical units (off by a per-channel
+  y_std factor) and seems to hurt generalization. If trying L1 again, scale by
+  `y_std` to actually match the physical metric and possibly clip
+  high-pressure outliers.
+
 ### 2026-04-27 — iter2: surf_p_weight 2→4
 
 - **Hypothesis:** scored metric is purely surface pressure MAE, so doubling the
