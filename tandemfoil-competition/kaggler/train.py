@@ -207,12 +207,13 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 4e-6
+    lr: float = 6e-6
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 15.0
     surf_p_weight: float = 1.5  # gentle pressure-channel emphasis
-    ema_decay: float = 0.9995  # higher decay = slower EMA = smoother averaging
+    ema_decay: float = 0.999
+    rc_single_boost: float = 2.5  # up-weight raceCar-single in the sampler
     epochs: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -245,6 +246,16 @@ def main():
 
     train_ds, val_splits, stats, sample_weights = load_data(cfg.splits_dir, debug=cfg.debug)
     stats = {k: v.to(device) for k, v in stats.items()}
+
+    # Re-weight sampler to fight my weakness on test_single_in_dist (val/test perf
+    # is much worse on this split than tandem/cruise). Boost racecar_single samples.
+    if cfg.rc_single_boost != 1.0 and not cfg.debug:
+        import json as _json
+        _meta = _json.load(open(Path(cfg.splits_dir) / "meta.json"))
+        _rc_single_idx = set(_meta["domain_groups"]["racecar_single"])
+        for i in _rc_single_idx:
+            sample_weights[i] *= cfg.rc_single_boost
+        print(f"Boosted {len(_rc_single_idx)} racecar_single samples by x{cfg.rc_single_boost}")
 
     loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                          persistent_workers=True, prefetch_factor=2)
