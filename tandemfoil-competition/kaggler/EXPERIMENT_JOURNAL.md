@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: chain ft iter7 (lr=2e-6, pw=8)
+- **Hypothesis:** Polish iter7 with low LR — same recipe as iter3 after iter2.
+- **Change:** Resume from iter7; --lr 2e-6 --p_weight 8 (other unchanged).
+- **Result:** **surf_p 50.51 → 50.30** (~0.4%). Per-split: single≈55, rc≈73, cruise≈30, re_rand≈53. W&B `1tx534yz`.
+- **Verdict:** Kept (best). Plateau again — same shape as post-iter3 plateau (warm-restart → polish → small gain).
+- **Notes:** Pattern is clear: warm-restart yields ~2.5% jumps, polishing yields ~0.5%. Going to attempt another warm-restart at even higher LR + pw=10 (iter9).
+
 ### 2026-04-27 — iter7: warm-restart from iter5 (lr=1e-5, p_weight=8)
 - **Hypothesis:** iter5 plateaued at 51.82 with very low LR. A warm-restart at higher LR (1e-5, ~5x iter5) plus stronger pressure weight (pw=6→8) should kick the optimizer out of the local min and bias more toward pressure error.
 - **Change:** Resume from iter5 ckpt; --lr 1e-5 --p_weight 8 (other hyperparams unchanged).
