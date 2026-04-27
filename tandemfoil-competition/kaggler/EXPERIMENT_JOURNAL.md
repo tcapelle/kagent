@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Bigger model h144-l7 with iter 8 recipe (iter 10) — DISCARDED
+- **Hypothesis:** Iter 7 (h160-l8-s48) overfit, but the gentler bump h144-l7-s32 (1.69M params) under iter 8's full recipe (Cp + huber_delta=0.1) might find a better optimum without overfitting.
+- **Change:** train.py — n_hidden=128→144, n_layers=6→7; epochs 80→70 to fit in budget.
+- **Result:** 64 epochs in 30 min. Best val avg_surf_p=39.22 at epoch 64 — worse than iter 8's 35.88. Each epoch ~28s vs iter 8's 21s, so we trained fewer epochs at higher per-epoch cost.
+- **Verdict:** Discarded — h128-l6 is the sweet spot for this 30-min budget.
+- **Notes:** Even with iter 8's loss recipe, the bigger model reaches a worse val. May simply be that larger models need more total compute to generalize as well. Future bigger-model attempt would need either dropout or much longer training (which we don't have).
+
+### 2026-04-27 — Velocity Cp normalization too (iter 9) — DISCARDED
+- **Hypothesis:** Velocity scales linearly with Re. Extending the Cp recipe to also divide Ux/Uy by exp(log_re - log_re_ref) gives nondimensional velocity targets, mirroring the pressure rescaling that gave iter 6's win.
+- **Change:** train.py — added velocity_norm flag, _scale_y/_unscale_pred helpers; recompute stats over rescaled (Ux/re_v, Uy/re_v, p/re_p) targets. predict.py — same logic in inference.
+- **Result:** Best val avg_surf_p=37.59 at epoch 64 — worse than iter 8's 35.88 across every split.
+- **Verdict:** Discarded — disabled velocity_norm flag (kept code path for future).
+- **Notes:** Velocity errors are ~50× smaller than pressure errors anyway. Forcing this rescaling probably destabilizes training without giving the model anything to gain. Pressure has wide regime-dependent dynamic range (>100×) — velocity does not.
+
 ### 2026-04-27 — Sharper Huber (delta=0.1) on iter 6 architecture (iter 8) — KEPT — RANK 1
 - **Hypothesis:** Iter 6's training surf loss is ~0.005 in normalized space — typical errors are well below huber_delta=1, so the loss is essentially MSE. Lowering huber_delta to 0.1 makes the loss almost-pure-L1 for typical errors, which directly matches the MAE test metric and reduces sensitivity to outlier nodes.
 - **Change:** train.py — only huber_delta=1.0 → 0.1. Architecture, Cp norm, surf_weight, epochs all unchanged from iter 6.
