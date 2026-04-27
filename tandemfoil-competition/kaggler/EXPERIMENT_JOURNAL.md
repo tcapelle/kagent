@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — input-noise-slice128
+- **Hypothesis:** iter6/7 plateau driven by overfitting on val_geom_camber_rc (unseen-camber generalization). Add Gaussian input noise (σ=0.03 on normalized features) for cheap regularization, and bump slice_num 96→128 for more attention capacity.
+- **Change:** train.py — `input_noise=0.03` config, applied per-step on real (non-padded) nodes; model_config slice_num=128.
+- **Result:** 32 epochs in 30.5 min (57s/epoch). Best epoch 32: avg_surf_p=93.62. val_geom_camber_rc=1.98 (best of any iter so far, was 2.05 in iter5 and 2.47 in iter6). Predictions to `apr27-4/fern/23bf834`.
+- **Verdict:** kept (commit `512e49c`). 5% gain over iter6 (98.53 → 93.62). Curve still descending at epoch 32. Now within 4 points of edward (90.12) but still behind nezuko (79.95) and far from thorfinn (45.94).
+- **Notes:** input noise was the surprise win — confirms train data is the bottleneck and regularization helps generalization. Next: more noise or other augmentations (feature dropout / mixup), or revisit bigger model now that regularization is stronger.
+
 ### 2026-04-27 — warmstart-finetune (DISCARDED)
 - **Hypothesis:** iter6 was still descending; warm-start from iter6 ckpt (98.53), lower LR (8e-4 → 2e-4), short warmup, sub25k. Squeeze more convergence.
 - **Change:** added `--resume_from` to load checkpoint into both model and EMA at start. Ran with lr=2e-4 warmup_epochs=1 train_max_nodes=25000 epochs=60.
