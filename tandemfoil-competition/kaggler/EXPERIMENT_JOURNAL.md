@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter5: deeper finetune (lr=5e-6, p_weight=5, surf_weight=15)
+- **Hypothesis:** marginal further refinement by stepping lr way down and weighting pressure surface harder. The next stage of apr27 frieren's chain.
+- **Change:** `python train.py --warm_start checkpoints/best.pt --batch_size 2 --train_subsample 0 --lr 5e-6 --p_weight 5.0 --surf_weight 15 --loss_type l1 --epochs 15`. Predictions auto-saved at commit `7c0c3c8`. (Note iter4 leaderboard score under `37a85cf` came in at **35.05** test — already #1, beating thorfinn's 44.55.)
+- **Result:** 12 epochs, best epoch 12: val/avg_mae_surf_p=40.12 (vs iter4's 40.97 — marginal). Run id `h3y73gp9`. Per-split val_loss numbers can't be compared directly to iter4 because surf_weight/p_weight changed.
+- **Verdict:** kept (slightly better val), but improvement is small; lr too low for big moves. Net leaderboard impact unknown until iter5 predictions get scored.
+- **Notes:** Diminishing returns from deeper finetuning. Next options: (a) try a *different* optimisation lever — e.g. moderate lr (1e-5) with p_weight=4, surf_weight=12, longer schedule; (b) ensemble iter4 + iter5 predictions; (c) re-run iter3 from scratch with a different subsample size or model size.
+
 ### 2026-04-27 — iter4: full-resolution finetune chained from iter3 (p_weight=3)
 - **Hypothesis:** subsampled training stops short of solving the surface boundary layer that drives `mae_surf_p`. Warm-start iter3's checkpoint, train at full resolution (subsample=0, batch_size=2) with very low lr (2e-5) and a 3× weight on the pressure channel — this is exactly what apr27 frieren did to drop from ~54 → 42.
 - **Change:** `python train.py --warm_start checkpoints/best.pt --batch_size 2 --train_subsample 0 --lr 2e-5 --p_weight 3.0 --surf_weight 10 --loss_type l1 --epochs 20`. No code changes (uses iter3's `--warm_start` plumbing).
