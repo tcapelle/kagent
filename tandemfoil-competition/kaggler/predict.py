@@ -2,6 +2,9 @@
 
 Run:
   python predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <name>
+
+  # Ensemble of multiple checkpoints (comma-separated, predictions averaged):
+  python predict.py --checkpoint a/checkpoint.pt,b/checkpoint.pt --agent <name>
 """
 
 import json
@@ -32,8 +35,8 @@ TEST_SPLITS = [
 
 @dataclass
 class Config:
-    """Generate test predictions from a trained checkpoint."""
-    checkpoint: str  # path to best model checkpoint
+    """Generate test predictions from a trained checkpoint (or comma-separated ensemble)."""
+    checkpoint: str  # path to best model checkpoint, or comma-separated list
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 4
@@ -43,16 +46,19 @@ cfg = sp.parse(Config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
-ckpt_path = Path(cfg.checkpoint)
-config_path = ckpt_path.parent / "config.yaml"
-with open(config_path) as f:
-    model_config = yaml.safe_load(f)
-
-model = Transolver(**model_config).to(device)
-state = torch.load(ckpt_path, map_location=device, weights_only=True)
-model.load_state_dict(state)
-model.eval()
-print(f"Loaded model from {ckpt_path}")
+ckpt_paths = [Path(p.strip()) for p in cfg.checkpoint.split(",") if p.strip()]
+models = []
+for ckpt_path in ckpt_paths:
+    config_path = ckpt_path.parent / "config.yaml"
+    with open(config_path) as f:
+        mcfg = yaml.safe_load(f)
+    m = Transolver(**mcfg).to(device)
+    state = torch.load(ckpt_path, map_location=device, weights_only=True)
+    m.load_state_dict(state)
+    m.eval()
+    models.append(m)
+    print(f"Loaded model from {ckpt_path}")
+print(f"Ensemble of {len(models)} model(s)")
 
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
@@ -89,8 +95,11 @@ for split in TEST_SPLITS:
                 x_pad[j, :x.shape[0]] = x.to(device)
                 mask[j, :x.shape[0]] = True
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std, "mask": mask})["preds"]
-            pred = pred_norm.float() * y_std + y_mean
+            x_norm = (x_pad - x_mean) / x_std
+            pred_norm = sum(
+                m({"x": x_norm, "mask": mask})["preds"].float() for m in models
+            ) / len(models)
+            pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
                 predictions.append(pred[j, :x.shape[0]].cpu())
