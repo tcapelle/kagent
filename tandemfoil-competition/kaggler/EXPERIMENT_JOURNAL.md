@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter7-globalfilm-chain (iter 7)
+- **Hypothesis:** Pure point-wise ResMLP can't reason about per-sample globals (Re, geometry, AoA gestalt) beyond what's repeated at every node. Inserting a zero-init GlobalFiLM after each block — `mean_pool(masked) → MLP → (γ, β) → x*(1+γ)+β` — adds cheap global context. Zero-init makes warm-starting iter 6 a no-op at step 0. Should attack the OOD weakness on geom_rc and re_rand.
+- **Change:** New `GlobalFiLM` module (LayerNorm + 2-layer MLP, last layer weight/bias zero-inited). New `use_global` flag wires one FiLM after each ResMLP block; predict.py + train forward pass `mask` so FiLM pools only valid nodes. `train.py` uses `model({"x": x, "mask": mask})`.
+- **Result:** Best epoch 34, mean val surf_p MAE = **45.51** (single_in_dist=38.17, geom_rc=**69.45**, geom_cruise=21.63, re_rand=**52.78**). val/loss=1.82. 36 epochs in 28.1 min, 51s/val-epoch + 41s no-val. 16.1GB peak. 12.59M params (+5.3M for FiLM stack vs iter 6's 7.27M). Run: `frieren/iter7-globalfilm-chain` (`amq6vhi5`). Commit `fb168e0`.
+- **Verdict:** Kept — **biggest jump since iter 4** (47.47 → 45.51, 4.1% drop). FiLM specifically attacked what we wanted: `geom_rc` -4.86, `re_rand` -2.57; in-distribution tracks barely moved. Confirms the hypothesis that the bottleneck was per-sample global context, not per-point capacity. Trajectory still descending at timeout — chain iter 8 will continue.
+- **Notes:**
+  - Zero-init verified empirically: `m_global.load_state_dict(m_pure.state_dict(), strict=False)` then forward gives identical output to pure ResMLP.
+  - First val (epoch 1) was 51.50 — slightly worse than iter 6's 47.47 because EMA was reinitialised. By epoch 2 it was at 47.54, parity restored.
+  - geom_rc dropped from 74.31 → 69.45 over 36 epochs (-0.135/epoch) — consistent monotone descent. Continue chaining for further gains.
+  - Possible further wins: deeper FiLM MLP, residual gate, or use the same FiLM mechanism with `[B, S]` slice tokens (Transolver-lite).
+
 ### 2026-04-27 — iter5-chain-lr5e-4-sw15 (iter 5)
 - **Hypothesis:** Iter 4 was still improving when timeout hit. Warm-start a fresh 30-min run from iter 4's best checkpoint with halved LR (5e-4) and bumped surf_weight (15) to keep pushing surface error down.
 - **Change:** `--warm_start /mnt/new-pvc/.../iter4_best_backup.pt --lr 5e-4 --surf_weight 15 --warmup_steps 100 --cosine_epochs 60`. EMA shadow weights are reinitialised from the loaded weights (so they're consistent at start).
