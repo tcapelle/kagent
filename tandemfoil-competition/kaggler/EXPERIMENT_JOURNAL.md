@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — End-of-session summary
+- **Best score: 42.95 (`1049d44`)** — 7-way ensemble of {iter4, iter6, iter9, iter13, iter15, iter16, iter17} weights 0.13/0.13/0.04/0.10/0.20/0.20/0.20.
+- **Trajectory:** iter1 baseline (val 81) → iter2 chain breakthrough (val 54) → first ensemble #1 at 45.21 → field caught up → 256-hidden iter14 leap (val 57 from-scratch) → final 7-way 42.95 rank 7.
+- **What worked:** (1) bs=2 + no_subsample chain warm-start (apr23 recipe; biggest jump 81→54). (2) Different-seed from-scratch + chain for ensemble diversity (iter5+iter6, iter7+iter8). (3) Single-domain boost (single_boost=2 lifted ALL splits). (4) 256-hidden capacity bump (iter14, val 57 from-scratch — comparable to a chained 192-hidden). (5) iter15 chain of iter14 (val 52, best chain endpoint).
+- **What didn't:** SWA (catastrophic — weights from different chains don't average). slice=128 (iter11 val 57 → test 66 was bad; iter18 worse). tandem_boost (cruise was helped, not rc).
+- **Why I lost the lead at the end:** Top kagglers (thorfinn, nezuko, tanjiro) likely use bigger models + much longer training. Their per-split test scores (sing=35, rc=49, cruise=21, rer=35) suggest much deeper chains and possibly different architectures (320-hidden? 8 layers? slice=96?). With a 30-min training budget per iter, I couldn't catch up via chains alone.
+- **iter18 (256-hidden + slice=128 from-scratch):** val 62.07 — slice=128 makes the model harder to train in limited time. Skipped chaining.
+
 ### 2026-04-27 — Final state: 7-way ensemble = 42.95 (rank 7)
 - Best at `1049d44`: 7-way {iter4, iter6, iter9, iter13, iter15, iter16, iter17} weights 0.13/0.13/0.04/0.10/0.20/0.20/0.20.
 - Per-split: sing=42.25 rc=59.85 cr=27.06 rer=42.64 — all chains+specialists working together.
