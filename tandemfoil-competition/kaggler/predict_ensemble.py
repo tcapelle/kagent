@@ -51,10 +51,10 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    single: str = "edward:1"
-    rc: str = "tanjiro:1"
-    cruise: str = "tanjiro:1"
-    re_rand: str = "tanjiro:1"
+    single: str = "edward:0.8,edward2:0.2"
+    rc: str = "tanjiro:0.7,tanjiro2:0.3"
+    cruise: str = "tanjiro:0.4,edward:0.3,fern:0.3"
+    re_rand: str = "tanjiro:0.7,tanjiro2:0.3"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
