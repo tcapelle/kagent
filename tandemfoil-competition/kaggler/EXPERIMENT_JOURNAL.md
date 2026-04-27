@@ -48,3 +48,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** 7 epochs in 30 min, all monotonic. Best `avg_surf_p = 70.55` at epoch 7. **8.3% over v3 (76.97→70.55), 80% over baseline.** Per-split p MAE: single_in_dist=78, geom_camber_rc=84, geom_camber_cruise=51, re_rand=68. W&B `alphonse/v4-warm-fullmesh-lr5e5` (`6ntu28pb`).
 - **Verdict:** Kept — chain still working but gains diminishing. Auto-submit fix worked.
 - **Notes:** Now ~rank 2 (between nezuko 79.95 and thorfinn 45.94). Gap to thorfinn is ~35%, which is too big to close with warm-start alone. Need a structural change (bigger model, surf_weight bump, or arch experiment). Continue chain one more iter while parallel-thinking new directions.
+
+### 2026-04-27 — v5-warm-fullmesh-lr2e5-surfw50
+- **Hypothesis:** Continue chain w/ lower lr (5e-5 → 2e-5) and bump surf_weight 30 → 50 since the leaderboard cares only about surface.
+- **Change:** `--resume models/model-6ntu28pb/checkpoint.pt --lr 2e-5 --train_max_points 0 --batch_size 2 --surf_weight 50`.
+- **Result:** 8 epochs in 30 min, monotonic. Best `avg_surf_p = 67.04` at epoch 8. **5% over v4 (70.55→67.04), 81% over baseline.** Per-split p MAE: single_in_dist=72, geom_camber_rc=82, geom_camber_cruise=49, re_rand=66. W&B `alphonse/v5-warm-fullmesh-lr2e5-surfw50` (`26rinnut`).
+- **Verdict:** Kept — gain shrinking (29%→8%→5%). Time for a structural change.
+- **Notes:** Plain warm-start chain at this rate would need ~10+ more iters to catch thorfinn (46). Trying L1 surface-p loss next — directly matches the metric.
