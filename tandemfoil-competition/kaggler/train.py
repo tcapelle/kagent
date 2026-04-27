@@ -230,8 +230,9 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter7: chain from iter6 best (6ulvj74p, val=46.14).
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-6ulvj74p/checkpoint.pt"
+# Iter9: chain from iter7 best (4hbvu7xe, val=45.46) with L1-only loss
+# and single-foil sampling boost (single_in_dist is our weakest split).
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-4hbvu7xe/checkpoint.pt"
 
 
 @dataclass
@@ -244,10 +245,11 @@ class Config:
     epochs: int = 14
     grad_clip: float = 1.0
     l1_weight: float = 1.0
-    l2_weight: float = 1.0
-    # Channel weights for pressure-focused loss (eval metric is surf_p MAE).
+    l2_weight: float = 0.0  # pure L1 — directly aligned with MAE eval metric
     p_weight: float = 5.0
     ema_decay: float = 0.99
+    # Sampler boost for the racecar_single domain (our weakest split).
+    single_boost: float = 2.0
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -288,6 +290,17 @@ def main():
         train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                                   shuffle=True, **loader_kwargs)
     else:
+        # Optionally upweight the racecar_single domain (our weakest val split).
+        if cfg.single_boost != 1.0:
+            import json as _json
+            with open(Path(cfg.splits_dir) / "meta.json") as f:
+                _meta = _json.load(f)
+            single_idxs = set(_meta["domain_groups"].get("racecar_single", []))
+            boosted = sample_weights.clone()
+            for i in single_idxs:
+                boosted[i] = boosted[i] * cfg.single_boost
+            print(f"Sampler: single_boost={cfg.single_boost} applied to {len(single_idxs)} samples")
+            sample_weights = boosted
         sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
         train_loader = DataLoader(train_ds, batch_size=cfg.batch_size,
                                   sampler=sampler, **loader_kwargs)
