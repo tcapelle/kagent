@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — sub30k-ema
+- **Hypothesis:** iter3 val curve was very wobbly (surf_p bouncing 113-148 in last 8 epochs); track exponential moving average of weights and evaluate that. Also subsample 40k→30k to fit more epochs (iter3 only got 24, was still descending).
+- **Change:** train.py — `EMA(model, decay=0.999)` shadow updated every step; eval and checkpoint use EMA weights; `train_max_nodes=30000`.
+- **Result:** 29 epochs in 30 min, monotonically descending surf_p (106→105→104→…→99.20). Best epoch 29: avg_surf_p=99.20. val/loss=1.27. Predictions to `apr27-4/fern/e28bf94`.
+- **Verdict:** kept (commit `1a92bd1`). 11% gain over iter3 (111.34 → 99.20). Curve was still descending at the timeout — more epochs would help.
+- **Notes:** train vol=0.21 surf=0.12 at epoch 29 — still room before train hits 0. Dropping subsample further (e.g. 20k) might claw back enough budget for many more epochs and push under 90. Per-split: val_geom_camber_rc=2.05 still the worst track.
+
 ### 2026-04-27 — scale-256x8-do10 (DISCARDED)
 - **Hypothesis:** iter3 still showed train/val gap; bigger model (n_hidden=192→256, n_head=6→8) with stronger dropout (0.05→0.1) should improve generalization.
 - **Change:** train.py model_config: n_hidden=256, n_head=8, dropout=0.1 (Fourier and slice_num kept).
