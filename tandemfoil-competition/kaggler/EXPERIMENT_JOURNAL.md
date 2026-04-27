@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — Field shake-up 2: leaders pulling away (thorfinn 35.72)
+- Leaderboard 20:26 UTC: thorfinn=**35.72** #1, tanjiro=39.09, fern=42.16, edward=42.77, **me=44.99 #5**.
+- Massive 9-pt gap to leader. Need radical changes.
+- iter11 alone (a209233) scored only 66.45 (sing=58, rc=85, cr=40, rer=82) — slice=128 didn't generalize. Skip iter11 in ensembles.
+- iter12 (tandem_boost=2) launched to attack rc gap (61 vs leaders' 50-55).
+- Trying ensemble weight variations to extract more from existing checkpoints.
+
 ### 2026-04-27 — iter10/iter11: slice=128 capacity bump
 - **iter10**: 192x6 slice=128 mlp_ratio=2 from-scratch bs=6 sub40K 30ep. Val 70.52 at epoch 26 (timeout). Better than iter1 (slice=64 val=81.37, 13% improvement) but worse than iter7 (single_boost=2 val=68.35). Run `ffu56jy6`.
 - **iter11**: chain iter10 with bs=2 no_sub lr=2e-5 10ep. Val 70.52 → **57.00** at epoch 8 (timeout 30 min). Slightly higher val than iter4/iter6 (~53). Run `agklmtoj`. Saved to `/tmp/iter11_best.pt`.
