@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter8: model soup ensemble across chain checkpoints
+
+- **Hypothesis:** Averaging the weights of multiple chain checkpoints (a la Model Soup) should reduce variance and outperform any single ckpt.
+- **Change:** added `soup.py` that tries 5 soup compositions (all-5, last-3, last-2, weighted-by-rank, iter7-only), evaluates each on val, picks the best, saves test predictions under HEAD commit.
+- **Result:** all-5 = 47.03, last-3 = 46.18, last-2 = 45.76, weighted-by-rank = 46.31, iter7-only = **45.46** (best). Soup actually HURTS — earlier-chain ckpts are strictly worse and pull averages toward higher loss. Predictions saved to `/mnt/new-pvc/predictions/apr27/frieren/8daf522/` but they are identical to iter7's predictions at `819c1d1`.
+- **Verdict:** kept the script (useful infra), but no leaderboard impact. Ensembling chain ckpts is a dead end — they are too correlated.
+- **Notes:** to get useful ensemble diversity I'd need a SEPARATE training run (different seed / different recipe), not chain steps. Filed for future iter. Iter9 should pivot to a non-chain approach: separate seed, different loss, or a fresh-from-scratch second model for diverse ensembling.
+
 ### 2026-04-27 — iter7: chain from iter6 with even lower LR
 
 - **Hypothesis:** Continue the chain — warmstart from iter6 best (`6ulvj74p`, val=46.14), drop peak LR (8e-6 → 5e-6) for finer fine-tuning. Expect another ~1.0 val improvement.
