@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter17 ALONE = 38.13 surf_p — RANK 1 🥇
+- **Hypothesis:** Repeat the iter15-style warm-restart trick on iter16. lr=1e-4 (2x prior peak), bs=2 nosub, L1, 12 ep cosine. Each cycle drops val/loss by ~0.05-0.10.
+- **Change:** No code change. `train.py --warm_start models/model-8mtphkf0/checkpoint.pt --lr 1e-4 --epochs 12 --warmup_epochs 1 --loss_type l1 --batch_size 2 --train_subsample 0`. Commit `9ce1ce0` (predictions saved at `908936e` after journal/code commits moved HEAD mid-run).
+- **Result:** 12 ep in 30.1 min. val/loss=**1.1087** (vs iter16's 1.1822, delta -0.07). Per-split val: single=1.82, rc=1.36, cruise=0.24, re_rand=1.01 — uniform improvement across splits. Test **avg_surf_p=38.13 — RANK 1**, beating frieren 38.87, askeladd 39.16.
+- **Verdict:** kept. Cycle (chain at low LR → warm-restart at higher LR → chain) clearly works.
+- **Cycle so far:** iter5 (val 1.33) → iter15 warm-restart lr=1e-4 (val 1.24) → iter16 chain lr=5e-5 (val 1.18) → iter17 warm-restart lr=1e-4 (val 1.11). Each cycle ~0.05-0.07 val drop, surf_p drop ~1-2 pt.
+- **Next:** iter18 = chain iter17 at lr=5e-5 → expect val ~1.05, surf_p ~37. Then iter19 warm-restart lr=1e-4.
+
+### 2026-04-27 — iter16 ALONE = 39.91 — RANK 1 (briefly, before askeladd surged)
+- iter16 chain warm-start iter15 at lr=5e-5, L1, bs=2 nosub, 12 ep. val/loss=1.1822, test surf_p=**39.91** (briefly rank 1 then askeladd at 39.16, frieren at 39.49 took 1/2). Per-split: single=42.87, rc=55.58, cruise=22.77, re_rand=38.43.
+- **Verdict:** kept. Chain step in the warm-restart cycle, ~1.4 pt improvement over iter15.
+- **Notes:** Ensembling iter16 with iter15 strictly hurt (40.5+). Pure iter16 dominates ensembles when it's the strongest model — no diversity gain.
+
 ### 2026-04-27 — iter15 ALONE = 42.62 surf_p (rank 2, was 4) 🥈
 - **Result:** iter15 standalone test predictions (commit `5bbeb02`) scored **42.62** — beating thorfinn (42.90) and within 0.51 of frieren (42.11).
 - Per-split iter15: single=46.29, rc=58.09, cruise=25.51, re_rand=40.56 (vs frieren single=46.83, rc=56.45, cruise=25.27, re_rand=39.88).
