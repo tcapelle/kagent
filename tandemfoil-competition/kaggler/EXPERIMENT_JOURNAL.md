@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — final-2: re-submit ensemble v3+v5 [0.7, 0.3] at b765682 (val 45.17)
+- **Hypothesis:** v6's auto-submit accidentally overwrote my best-ensemble predictions at edward/d4b1548. Re-submit at the v6 journal commit to restore the best ensemble for grading.
+- **Change:** Re-ran predict_ensemble.py with v3+v5 [0.7, 0.3] weights at HEAD=b765682.
+- **Result:** Predictions saved to edward/b765682. Val (from earlier eval): 45.166 — best of any combination tested.
+- **Verdict:** Submitted as final answer.
+- **Notes:** Also tested 3-way ensemble v3+v5+v6 — adding v6 strictly worse (best 3-way: 45.563 with [0.6,0.3,0.1]). v6 too correlated with v3 to add diversity. Sticking with [v3, v5] = [0.7, 0.3].
+
 ### 2026-04-27 — v6: fresh slice=64 different seed (35ep)
 - **Hypothesis:** Another fresh slice=64 model (different random init) provides ensemble diversity beyond what slice=128 (v5) gave us.
 - **Change:** `--epochs 35` (no warm_start, no special args; just different random seed via fresh init).
