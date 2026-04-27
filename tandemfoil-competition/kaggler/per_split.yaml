@@ -1,0 +1,23 @@
+test_single_in_dist:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+  weights: [0.7, 0.3]
+
+test_geom_camber_rc:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+  weights: [0.6, 0.4]
+
+test_geom_camber_cruise:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+  weights: [0.5, 0.5]
+
+test_re_rand:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+  weights: [0.6, 0.4]
