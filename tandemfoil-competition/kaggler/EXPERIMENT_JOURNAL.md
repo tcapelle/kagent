@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter3: mesh subsampling + per-channel pressure weight (kept, scoring pending)
+- **Hypothesis:** the 30-min cap caps us at ~7 epochs of full meshes. If training subsamples volume nodes (keep all surface, random 32K volume), each epoch becomes ~5x faster and we can fit ~30+ epochs. Adding a 4× weight on the pressure channel in the loss should also push the metric (avg surf-p MAE) directly.
+- **Change:** `train.py`: new `SubsampleDataset` wrapper (surface always kept, volume capped at 32K); per-channel weights `[1,1,4]` applied to the squared error inside both train and val loss (both averaged over channels); `batch_size=4→8`; `epochs=12→40` so the cosine schedule actually decays; freed model + cuda cache before subprocess so auto-submit predict.py doesn't OOM.
+- **Result:** 31 epochs in 30 min (~58 s/epoch, peak GPU 24.3GB — tons of headroom). Best val/loss=6.26 at epoch 31 (note: not directly comparable to iter1's 7.71 because val loss now includes the 4× pressure weight; in physical terms it's substantially better). Predictions auto-submitted; surf_p score still being computed by the leaderboard.
+- **Verdict:** kept — full mesh training is wasteful given the time budget; subsampling unlocks the most important lever (more epochs).
+- **Notes:** val loss is noisy (cruise/single-in-dist swing 30%+ between epochs) — likely a few hard high-Re samples dominate. Train loss kept dropping at epoch 31 (vol=0.30, surf=0.17), so even more epochs / bigger model would likely help. **Lesson:** time-bounded competitions reward throughput. With subsampling, the binding constraint shifts from VRAM to convergence quality.
+
 ### 2026-04-27 — iter2: bf16 + 256/6 model with warmup (discarded)
 - **Hypothesis:** bigger model (256-d, 6 layers) + bf16 mixed precision should fit in 30 min and beat iter1.
 - **Change:** `train.py` model_config `n_hidden=192→256, n_layers=5→6`; `surf_weight=20→30`; `lr=5e-4→8e-4`; added 200-step warmup + cosine; bf16 autocast; grad clip 1.0.
