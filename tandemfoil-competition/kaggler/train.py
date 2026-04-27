@@ -207,7 +207,7 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 2e-5
+    lr: float = 1e-5
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 15.0
