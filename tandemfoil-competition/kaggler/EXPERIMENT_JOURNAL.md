@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter16 chain w_p=16, LR=5e-6 (KEPT, marginal)
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 5e-6 --w_p 16.0`.
+- **Result:** Best epoch 11, **val avg_surf_p=41.99** (Δ -0.50), **test avg_surf_p=36.73** (Δ -0.35). Rank 3.
+- **Verdict:** Kept (commit `5c52a39`). Channel-weighting+chain is now diminishing fast.
+- **Notes:** Time to pivot. Iter17 attempt **Re²-scaling on the pressure target** (Cp-style): predict pressure normalized by Re² (which dominates pressure variance across regimes), then rescale at inference. Implementation is risky (target distribution changes; can't trivially chain from current ckpt since channel 2 was trained for raw normalized pressure).
+
 ### 2026-04-27 — iter15 chain w_p=12, LR=1e-5 (KEPT, plateauing)
 - **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 1e-5 --w_p 12.0`. Chain from iter14.
 - **Result:** Best epoch 10, **val avg_surf_p=42.49** (Δ -0.55), **test avg_surf_p=37.08** (Δ -0.40). Still rank 3, 0.99 behind frieren (36.09).
