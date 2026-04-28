@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 24 — weighted 6-combo (val-optimized weights) → **test 28.69** (lead +0.48)
+- **Hypothesis:** Uniform averaging is sub-optimal when components have unequal val quality. Adam-fit a softmax-weight vector against the (vol+surf surf-only) val MAE for the iter23 6-combo. Expect 0.05-0.15 reduction.
+- **Change:** Added `weighted_ens.py` (Adam, 2000 iters, softmax weights) and extended `predict_ensemble.py` with a `--weights` arg. Marker `fc7405ad`.
+- **Result:**
+  * Optimal weights found: `ond1uxrl=0.375, q7xvguyx=0.001, muw3tkhd=0.265, w40wsjwv=0.181, dc6adxaw=0.087, 6vti4j15=0.091`. q7xvguyx weight collapsed to ~0 — almost-redundant with ond1uxrl (same alphonse polish chain → high prediction correlation).
+  * Val: weighted 33.624 vs uniform 33.771 (-0.147).
+  * Submitted weighted 6-combo at `fc7405ad` → leaderboard test = **28.69 (#1)**, alphonse 29.17 (+0.48).
+  * Per-split test: single=30.34, geom_rc=42.14, cruise=15.51, re_rand=26.78. Better on 3 of 4 splits vs iter23.
+- **Verdict:** Submitted, leading. Weighted optimization yields ~0.05 test improvement — small but real, and especially valuable when nearly-redundant ckpts (q7xvguyx ↔ ond1uxrl) sit in the pool.
+- **Notes:** val/test ratio 33.624/28.692=0.853 — same range as uniform iter22/23. Could iterate by removing q7xvguyx (essentially zero weight) and re-optimizing.
+
 ### 2026-04-28 — Iter 23 — 6-combo with frieren muw3tkhd (val 37.30) → **test 28.74** (lead +0.43)
 - **Hypothesis:** Frieren published `muw3tkhd` (val 37.30) — their best single by a wide margin (next is n0vcw20w 38.09). Replacing n0v with muw3 in iter22's 6-combo should yield a stronger basin mix.
 - **Change:** No code, just new combo. Marker `60cc3400`.
