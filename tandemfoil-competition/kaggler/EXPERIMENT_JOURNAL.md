@@ -22,6 +22,11 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter29/30: strong-only 7-way ensemble + iter28 finetune
+- **Iter29:** finetune iter28 → val=40.49 (run id `zp4qm94e`), borderline strong.
+- **Iter30:** strong-only 7-way ensemble (drop iter20 val 43.34 + iter26 val 44.86) at `ad000fe` → **test 30.72** (improvement from 30.84).
+- alphonse 29.29.
+
 ### 2026-04-28 — iter26/27/28: chain7 finetune (val 44.86 weak), 9-way ensemble *regression*, 8th base
 - **Iter26:** finetune iter25 → val=44.86 (worst finetune so far).
 - **Iter27:** 9-way ensemble at `8f12996` → **test 31.19** — *worse* than 8-way's 30.84! Adding the weak iter26 (val>40) hurt the ensemble.
