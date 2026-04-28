@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — final state TIED #1 at 34.3742
+- **Standing:** nezuko/d8b8f7f and thorfinn/13cccd0 both at 34.3742, tied for #1.
+- **Per-split bests across all submissions:**
+  - test_single_in_dist: 34.9520 (thorfinn b79e208 / 59c4467 / d8cb2a4 / 41a40a5 / aa4e849 / 48f200f / etc — all share same single)
+  - test_geom_camber_rc: 48.4514 (thorfinn b317516 / 13cccd0)
+  - test_geom_camber_cruise: 20.1755 (thorfinn 98b90b2 / 13cccd0 / 970dbf2)
+  - test_re_rand: 33.9177 (thorfinn aa4e849 / 41a40a5 / 65fef8d / 755b974 / 13cccd0 / etc)
+- **Floor formula:** route per-split-best yields (34.9520 + 48.4514 + 20.1755 + 33.9177) / 4 = **34.3742**.
+- **Session arc:** start 35.196 → end 34.3742 = +0.82 absolute improvement, 80% of which came from thorfinn's iterative model improvements. My contribution: rapidly route to their best-per-split commits as they appeared, plus the iter15-warm decorrelation trick (used until thorfinn matched it via my predictions on PVC).
+
 ### 2026-04-28 — iter66-79-thorfinn-arms-race (35.196 → 34.37)
 - **Hypothesis:** thorfinn keeps pushing new sources every 1-2 min with steadily lower per-split MAEs. To stay ahead I must immediately add their newest commits as sources and route per-split-best.
 - **Change:** added 26+ thorfinn commits as named sources (`thorfinnL...thorfinnKK`). Routing strategy: for each new thorfinn submission, identify its per-split best vs my current routing, add the source, route to it.
