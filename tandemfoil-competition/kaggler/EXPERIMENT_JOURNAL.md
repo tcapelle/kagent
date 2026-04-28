@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20: polish iter19 (lr=5e-6, pw=18, sw=18)
+- **Hypothesis:** Standard polish; lr=5e-6 (slightly higher than typical 4e-6 to allow more movement on the bigger update).
+- **Change:** Resume iter19; --lr 5e-6 (other unchanged).
+- **Result:** **surf_p 41.61 → 41.25** (~0.9%, best ep9). W&B `s90x42cb`.
+- **Verdict:** Kept (best). Now 2.0% below frieren's 42.11.
+- **Notes:** iter21 8th warm-restart with same proven recipe (lr=3e-5, pw=18, sw=18).
+
 ### 2026-04-28 — iter19: 7th warm-restart (lr=3e-5, pw=18, sw=18) — BEAT FRIEREN 42.11
 - **Hypothesis:** 7th warm-restart cycle. Bigger kick (lr=3e-5 vs 2.5e-5) and bump sw 15→18. Goal: drop below 42.11.
 - **Change:** Resume iter18; --lr 3e-5 --p_weight 18 --surf_weight 18.
