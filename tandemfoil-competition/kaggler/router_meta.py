@@ -49,6 +49,7 @@ SRC = {
     "alphonse5": ("alphonse", "7697f58"),  # 40.09 (improved alphonse)
     "tanjiro5":  ("tanjiro",  "a5b7f50"),  # newest tanjiro
     "askeladd3": ("askeladd", "6343096"),  # newest askeladd
+    "frieren_new": ("frieren", "dee6e1d"),  # 42.80 best frieren
     "nezuko":   ("nezuko",   "08cdd12"),  # 60.92 alone (worst), but fully different model
     "nezuko2":  ("nezuko",   "a6bcbcd"),  # JUMP! 37.39 (single 38.62, rc 51.78, cr 21.78, re 37.39)
     "nezuko3":  ("nezuko",   "012619a"),  # 38.32 (single 40.93, rc 51.60, cr 23.55, re 37.20)
