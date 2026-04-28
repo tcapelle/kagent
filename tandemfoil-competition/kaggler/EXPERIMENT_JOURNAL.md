@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter26: cycle-5 bs=2 fine-tune NEW BEST (commit d33081e)
+- **Hypothesis:** Apply bs=2/no-subsample to iter25 (val 1.106). Standard breakthrough recipe — same step that took iter9→iter10.
+- **Change:** `--warm_start /tmp/iter25_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** **val/loss=1.0630** at epoch 5 (25 min). Per-split val: 1.70, 1.33, 0.25, 0.97. **NEW BEST** — 4% improvement over iter25.
+- **Verdict:** **NEW BEST.** Per-split looks like score ~34-35 territory.
+- **Notes:** Best at epoch 5 then val rose slightly — lr=2e-5 was a touch too aggressive at this convergence level. Could try lr=5e-6 or 1e-5 for a smoother descent in iter27. Or do another high-LR refresh cycle-6.
+
 ### 2026-04-28 — iter25: cycle-5 HIGH-LR refresh 🚀 NEW BEST 36.96 (commit eabda69)
 - **Hypothesis:** Cycle-3 (iter16) + cycle-4 (iter18) saturated at val ~1.16. Maybe the model is stuck in a local minimum. A higher LR (5e-5 vs prior 1e-5) cycle should "shake" the weights into a different/better basin.
 - **Change:** `--warm_start /tmp/iter16_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`. Same arch.
