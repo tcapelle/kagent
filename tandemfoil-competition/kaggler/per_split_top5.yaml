@@ -1,0 +1,35 @@
+test_single_in_dist:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-l0nw6exf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-8fazsiug/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-bxvp8448/checkpoint.pt
+  weights: [0.20, 0.20, 0.20, 0.20, 0.20]
+
+test_geom_camber_rc:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-l0nw6exf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-8fazsiug/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-bxvp8448/checkpoint.pt
+  weights: [0.20, 0.20, 0.20, 0.20, 0.20]
+
+test_geom_camber_cruise:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-l0nw6exf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-8fazsiug/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-bxvp8448/checkpoint.pt
+  weights: [0.20, 0.20, 0.20, 0.20, 0.20]
+
+test_re_rand:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-l0nw6exf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-8fazsiug/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-bxvp8448/checkpoint.pt
+  weights: [0.20, 0.20, 0.20, 0.20, 0.20]
