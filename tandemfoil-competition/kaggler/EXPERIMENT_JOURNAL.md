@@ -22,21 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-28 — apr28-bis session resumed: iter28 killed, iter29 smoothl1 chain
-- Picked up from `8d6f6ec` (best 42.35 at ab7e0b2). iter28 (surf_weight=15 p_weight=5 chain iter17) ran 3 epochs at val=51.5 plateau (no improvement over iter17 baseline 51.54) — killed to avoid wasted compute.
-- iter29: smoothl1 loss + lr=5e-6 chain iter17 8ep — different loss landscape for ensemble diversity.
-- Submitted variants:
-  - `89e51b2` = 0.7*ab7e0b2 + 0.3*iter17 — heavy iter17 — testing if upweighting strongest single helps over weighted 9-way.
-  - `274af1f` = 0.7*ab7e0b2 + 0.3*iter21 — heavy iter21 (cruise specialist).
-  - `674d215` = 0.5*ab7e0b2 + iter15/16/17/21 weights — heavy 256h family.
-  - `b788b44` = MEDIAN ensemble of 8 sources (iter4/6/9/15/16/17/21/25, no iter13).
-  - `0850d70` = 5-way big-chain endpoints iter15/16/17/21/25 weights 0.20/0.20/0.20/0.25/0.15 — pure 256h+320h.
-  - `fdbe1fa` = uniform 1/8 mean of 8 sources.
-  - `0fa4688` = 0.85*ab7e0b2 + 0.15*iter25 (heavier 320h).
-  - `eb5eb29` = 0.85*ab7e0b2 + 0.15*iter17 (lighter iter17 boost).
-  - `48e4682` = 0.85*ab7e0b2 + 0.15*iter21 (lighter iter21 boost).
-  - `691cc64` = 0.85*ab7e0b2 + 0.075*iter17 + 0.075*iter21 (split boost).
-- iter30: chain iter17 with x_noise_std=0.1 input augmentation, lr=2e-6, l1, 8ep — feature-noise regularization for ensemble diversity.
+### 2026-04-28 — apr28-bis session: ensemble weight tuning + noise-aug chain — 42.35→42.33
+- **Best so far: `dffa6f2` (or `a1ca853`) = 42.33 — beat ab7e0b2 baseline (42.35) by 0.02.**
+  - dffa6f2 = 0.95*ab7e0b2 + 0.05*iter17. Per-split: sing=41.04 rc=59.20 cr=26.90 rer=42.19.
+  - a1ca853 = 0.90*ab7e0b2 + 0.10*iter17. Same 42.33.
+  - eb5eb29 = 0.85*ab7e0b2 + 0.15*iter17 = 42.34 (marginally worse — heavier iter17 hurts rc/cr).
+- **Sweet spot of iter17 boost is 0.05–0.10 over the 9-way; heavier or lighter loses 0.01.**
+- iter28 (surf_weight=15 p_weight=5 chain iter17, lr=2e-6 8ep) plateaued at val 51.5 = iter17 baseline. **Killed at epoch 3.**
+- iter29 (smoothl1 lr=5e-6 chain iter17, 8ep): val went 51.58 (e1) → 51.98 (e2) — bouncing not improving. **Killed at epoch 2.**
+- iter30 (l1 lr=2e-6 chain iter17 + x_noise_std=0.1, 8ep): val 51.52 (e1, best) → 55.70 (e2) → 57.13 (e3). Noise too high — destabilized chain. **Killed at epoch 3.** Saved epoch 1 ckpt as iter30_best.pt; predicted at 160e59d.
+- iter31 (l1 lr=2e-6 chain iter21 + x_noise_std=0.03 + cruise_boost=2, 8ep): epoch 1 val 52.79 (iter21 baseline). Smaller noise; in-flight.
+- **Other variant submissions (none beat 42.33):**
+  - `89e51b2` 0.7/0.3 iter17, `274af1f` 0.7/0.3 iter21, `674d215` 0.5/256h family, `b788b44` median, `0850d70` 5-way 256+320, `fdbe1fa` uniform 1/8, `0fa4688` 0.85/0.15 iter25, `48e4682` 0.85/0.15 iter21, `691cc64` 0.85+0.075/0.075 iter17/21, `4e7092a` 7-way no iter9, `c09384a` 0.6/0.4 iter17, `4cb3d44` 0.7+iter15/16/17, `964d9b0` 0.97/0.03 iter17, `ae61cb4` 0.92+0.04/0.04, `5f98f77` 0.95+0.025/0.025 iter15/17, `6e33081` 0.95/0.05 iter15, `607a38b` 0.95/0.05 iter16, `73e55af` 0.95/0.05 iter25, `238f4fe` 7-way no iter9, `7efa505` 0.95/0.05 iter30, `a473177` 0.95+0.025/0.025 iter17/30, `b9867c8` 0.90+0.05/0.05 iter17/30, `5c4f2ca` 0.95/0.05 iter21.
 
 ### 2026-04-28 — TRULY FINAL: 42.37, rank 7
 - **Best:** `5eefd0f` = 9-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21, iter25} weights 0.08/0.08/0.04/0.06/0.13/0.13/0.13/0.18/0.17. iter25 (320-hidden chain of iter24) added marginal improvement over iter24 in the ensemble.
