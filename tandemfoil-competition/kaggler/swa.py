@@ -7,21 +7,16 @@ import torch
 import yaml
 
 
-CKPTS = [
-    "models/model-3fsnww54/checkpoint.pt",  # iter16 (vol=50k)
-    "models/model-zvhh3d5w/checkpoint.pt",  # iter17 (vol=80k)
-    "models/model-lhl3kzpw/checkpoint.pt",  # iter18 (full mesh)
-    "models/model-ti5dv6wo/checkpoint.pt",  # iter19 (full mesh fine-tune)
-    "models/model-jx7l45ya/checkpoint.pt",  # iter20 (placeholder; replaced below)
-]
+import simple_parsing as sp
+from dataclasses import dataclass, field
 
-# discover the latest model dir for iter20 (placeholder above may not exist)
-import sys, os
-candidates = sorted(Path("models").glob("model-*/checkpoint.pt"), key=lambda p: p.stat().st_mtime)
-# take the most recently created checkpoint as iter20
-latest = candidates[-1]
-CKPTS[-1] = str(latest)
-print(f"iter20 latest: {latest}")
+@dataclass
+class Args:
+    out: str = "models/model-swa"
+    ckpts: str = "models/model-3fsnww54/checkpoint.pt,models/model-zvhh3d5w/checkpoint.pt,models/model-lhl3kzpw/checkpoint.pt,models/model-ti5dv6wo/checkpoint.pt,models/model-cxipgis3/checkpoint.pt"
+
+args = sp.parse(Args)
+CKPTS = [c.strip() for c in args.ckpts.split(",") if c.strip()]
 
 states = []
 configs = []
@@ -45,7 +40,7 @@ for k in states[0]:
     avg_state[k] = sum(s[k].float() for s in states) / len(states)
     avg_state[k] = avg_state[k].to(states[0][k].dtype)
 
-out_dir = Path("models/model-swa")
+out_dir = Path(args.out)
 out_dir.mkdir(parents=True, exist_ok=True)
 torch.save(avg_state, out_dir / "checkpoint.pt")
 shutil.copy(Path(CKPTS[0]).parent / "config.yaml", out_dir / "config.yaml")
