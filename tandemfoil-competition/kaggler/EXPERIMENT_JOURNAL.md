@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter19: fullmesh fine-tune at lr=5e-6
+- **Hypothesis:** Iter18 only had one good epoch — lr too high for the fully-converged checkpoint. Drop lr to 5e-6 and run shorter cycle.
+- **Change:** lr 1e-5→5e-6, epochs 14→10. Initial = iter18 (model-lhl3kzpw).
+- **Result:** Trained 9 epochs in 32.6 min. Best epoch 4, val/loss=1.4593 (vs iter18 1.4767, vs iter17 1.5368). Val mae_surf_p avg=41.64. Auto-submit predict.py OOM'd; ran manually after process exit. Predictions at commit c6b824f. Test pending.
+- **Verdict:** kept (best val/loss yet, expect rank 4 hold or improvement).
+- **Notes:** Test-time fragmentation may differ from training, need to wait for scoring.
+
 ### 2026-04-28 — iter18: full mesh + batch=2 chain
 - **Hypothesis:** Eliminate train/test mesh-size mismatch by training on full meshes (no subsample).
 - **Change:** train_max_volume 80k→0, batch 4→2, lr 1.5e-5→1e-5, epochs 16→14. Initial = iter17 (model-zvhh3d5w).
