@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18 polish iter17 at lr=1e-5
+- **Hypothesis:** After the iter17 jolt, polish at lr=1e-5 with slow EMA to consolidate the new basin.
+- **Change:** No code change; flags `--lr 1e-5 --resume /tmp/iter17_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9999 --p_weight 20.0 --feature_noise 0.0 --n_vol_subsample 50000`.
+- **Result:** Best epoch 23, val/loss=0.8355, **avg_surf_p=41.73** (val splits: in_dist=0.85, geom_rc=1.30, geom_cruise=0.25, re_rand=0.93). Run `c23s8hgq`.
+- **Verdict:** Kept (commit 4b6bef5). Marginal gain (−0.02). Polish iters give diminishing returns; the jolt is what moves the needle. Try another jolt next.
+- **Notes:** Iter18 alone (41.73) ≈ iter18+iter17 ensemble (41.74). Auto-submit at HEAD 65d930f overwrote with iter18-single.
+
 ### 2026-04-28 — iter17 LR-jolt branch + small noise (broke asymptote)
 - **Hypothesis:** Chain at lr=1e-5/2e-5 was asymptoting at 42.08–42.11. Inject optimization energy: jump LR back up to 1e-4 (10× higher than iter16) and add a touch of feature_noise (0.03) to perturb the loss landscape — EMA at 0.999 will smooth the resulting trajectory. Goal: escape the local minimum the polish chain settled into.
 - **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter16_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 20.0 --feature_noise 0.03 --n_vol_subsample 50000`.
