@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20 fresh d192 + Cp(Re²) pressure scaling (DISCARDED)
+- **Hypothesis:** Predict Cp = y_p / Re² instead of raw normalized pressure. Re² dominates pressure variance across regimes; rescaling should give a more uniform target. Implementation: multiply pressure prediction by re_factor in both train loss and inference.
+- **Change:** train.py + predict.py — added `cp_scale`, `cp_ref_re` flags. Compute `re_factor = (exp(log_re_raw) / 1e6)²` from raw inputs. Multiply pred[..., 2] by re_factor before computing loss/MAE.
+- **Run config:** Fresh from scratch with full recipe: `--epochs 25 --finetune_epochs 5 --batch_size 8 --subsample_n 40000 --lr 5e-4 --w_p 8.0 --cp_scale`. 27 min.
+- **Result:** Best epoch 24, **val avg_surf_p=85.10**. (Auto-submit forgot to pass `--cp_scale` to predict.py, so first scoring under thorfinn/5b68e43 was 393 — meaningless.) After re-running predict with `--cp_scale`, the test score is still pending. Model is converging far slower than non-Cp baselines did.
+- **Verdict:** Discarded. Even at val=85 it's much worse than iter19's val=41 chain ckpt; Cp would need 5+ chain iters to catch up — too costly.
+- **Notes:** Cp scaling fundamentally reshapes the target distribution; the model couldn't recover lost capacity in 25 min. Reset commit, restored iter19 checkpoint from git, and continue chain.
+
 ### 2026-04-28 — iter18 chain w_p=24, LR=5e-6, surf_weight=30 (KEPT)
 - **Hypothesis:** Drive more gradient through surface vs volume (3× surf_weight) without changing channel weights.
 - **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 5e-6 --w_p 24.0 --surf_weight 30`.
