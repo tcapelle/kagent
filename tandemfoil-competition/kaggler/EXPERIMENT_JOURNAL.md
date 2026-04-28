@@ -22,6 +22,39 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27 — iter15-ensemble-iter13+iter14 (iter 15)
+- **Hypothesis:** Iter 13 (no noise, in_dist-strong) and iter 14 (with input noise, OOD-strong) have *complementary* errors. Averaging them should beat either alone, even though they share ancestry.
+- **Change:** New `ensemble_predict.py`: loads multiple ckpts, averages forward outputs, writes to current commit dir. Validated on val set with `eval_ensemble.py`.
+- **Result:** Val (across 4 splits): **mean_surf_p = 41.00** (single_in_dist=35.88, geom_rc=60.44, geom_cruise=20.10, re_rand=47.58). Beat iter 14 alone (41.44) by 0.44. Saved test predictions at commit `2fb108a`. Other ensembles tried: iter11+12+13 (43.15, ≈ iter13 alone — chain ckpts too correlated), iter4+iter14 (43.15, iter 4 is too weak), iter12+iter14 (41.06, ≈ iter13+14), iter12+13+14 (41.41, 3-way hurts).
+- **Verdict:** Kept — best score yet. Confirms pattern from research: ensembles work when component models have *structurally diverse training* (here: noise vs no noise), not just different epochs of the same recipe.
+- **Notes:**
+  - Tested bs=1 vs bs=4 inference on iter 14 — exactly identical output (41.442 each). Our masking is correct everywhere; askeladd's bs=1 trick doesn't apply to us.
+  - Best 2-way combo is iter13+iter14 (1:1). 3-way and weighted 2:1 variants didn't help.
+
+### 2026-04-27 — iter14-chain-noise0.03 (iter 14)
+- **Hypothesis:** Pure chain has plateaued. Add Gaussian input noise (σ=0.03 in normalised feature space, on dims 0-12 only — keep physical context dims 13-23 clean) as a regulariser. Expect OOD splits (geom_rc, re_rand) to benefit most.
+- **Change:** Added `noise_std` config; train loop adds `randn_like(x) * noise_std` masked to dims 0:13 before model forward.
+- **Result:** Best epoch 24, mean val surf_p MAE = **41.44** (single_in_dist=38.72, geom_rc=58.75, geom_cruise=21.53, re_rand=46.76). val/loss=1.42. 25 epochs in 28.9 min. Run: `frieren/iter14-chain-noise0.03` (`cz3zpalt`). Commit `2fb108a`.
+- **Verdict:** Kept — **biggest single jump in late chain** (43.04 → 41.44, -1.60). Track movement is exactly what input noise should do: hurt in-dist (single +2.12, cruise +1.18) but big OOD wins (geom_rc -6.14, re_rand -3.58). Net win because OOD was the bottleneck.
+- **Notes:**
+  - Trajectory still descending at timeout (41.69 → 41.44 in last 2 vals). Continue chain with noise.
+  - Crucially, noise was masked to dims 0-12 (geometry features) but NOT 13-23 (physical conditions Re/AoA/NACA/gap/stagger). Conditions should be exact; geometry can tolerate jitter.
+  - Iter 13 (no noise) and iter 14 (noise) ensemble cleanly because they made different in-dist vs OOD trade-offs.
+
+### 2026-04-27 — iter13-chain-sw25-lr5e-5 (iter 13)
+- **Hypothesis:** With ContextFiLM + GlobalFiLM + GatedSliceAttn now all in place, push surface focus harder (`surf_weight=25` vs 20) and chain at lr=5e-5.
+- **Change:** `--lr 5e-5 --surf_weight 25`. No code change.
+- **Result:** Best epoch 22, mean val surf_p MAE = **43.04** (single_in_dist=36.60, geom_rc=64.89, geom_cruise=20.35, re_rand=50.34). 25 epochs. Run `47mxgkas`. Commit `a9ffffa`.
+- **Verdict:** Kept — but only -0.08 over iter 12 (43.12). Plateau confirmed.
+- **Notes:** surf_weight bump made train-loss bigger but didn't translate to better val; the L1 + p_weight=3 channel weighting was already sufficient.
+
+### 2026-04-27 — iter12-ctxfilm-chain (iter 12)
+- **Hypothesis:** Add a per-sample ContextFiLM conditioned on input dims 13-23 (Re/AoA/NACA/gap/stagger). Zero-init residual makes it identity at warm-start. Should help re_rand and geom_rc by giving the model an explicit, stable Re-conditioning route.
+- **Change:** New `ContextFiLM` module (LN-free, MLP with zero-init last layer), `use_ctx` flag. Per-sample context = `x[:, 0, 13:13+ctx_dim]` (constant across nodes, taken from a real node).
+- **Result:** Best epoch 24, mean val surf_p MAE = **43.12** (single_in_dist=36.63, geom_rc=64.82, geom_cruise=20.54, re_rand=50.50). 25 epochs. Run `t921h79f`. Commit `ed5e740`.
+- **Verdict:** Kept — modest -0.28 over iter 11. geom_rc -0.94, re_rand -0.34 (the OOD splits the layer was meant to help). +0.09 in-dist trade-off.
+- **Notes:** Architectural moves consistently help OOD but at small magnitude relative to chain. Combined arch is now: ResMLP × 6 + GlobalFiLM × 6 + ContextFiLM × 6 + GatedSliceAttn × 2 = 15.3M params.
+
 ### 2026-04-27 — iter11-chain-lr5e-5 (iter 11)
 - **Hypothesis:** Iter 10's gated attention had only 23 epochs and γ was barely off zero. Chain at much lower LR (5e-5) so the new attention can converge cleanly without disturbing iter 10's well-tuned ResMLP+FiLM core.
 - **Change:** `--lr 5e-5 --train_subsample 50000`. Same architecture as iter 10.
