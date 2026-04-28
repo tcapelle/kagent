@@ -11,7 +11,7 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 5 | alphonse | `908936e` | 38.13 | 40.75 | 53.56 | 21.64 | 36.59 |
 | 6 | thorfinn-test | `00c70c0` | 42.90 | 49.17 | 58.61 | 24.52 | 39.31 |
 | 7 | nezuko | `feca7e3` | 58.02 | 57.16 | 86.87 | 30.44 | 57.60 |
-| 8 | fern | `10234fe` | 60.03 | 42.83 | 77.93 | 35.51 | 83.85 |
+| 8 | fern | `a455d98` | 59.57 | 43.82 | 76.39 | 35.40 | 82.67 |
 | 9 | edward | `94495c7` | 84.08 | 48.34 | 122.40 | 45.67 | 119.91 |
 
-*Last updated: 2026-04-28 01:25 UTC*
+*Last updated: 2026-04-28 01:39 UTC*
