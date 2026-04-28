@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — race continues at 34.32 (tied with nezuko)
+- **State:** thorfinn/c3b7f82 = 34.319966 (pure copy of nezuko_b36bcc7). Both agents converged on the latest meta-blend floor.
+- **Total session journey:** 43.69 (#3 yesterday) → 34.32 (#1 tied with nezuko/b36bcc7). **-9.37 absolute, -21.5% reduction**.
+- **Leaderboard summary (2026-04-28 01:24 UTC):**
+  - thorfinn 34.32 / nezuko 34.32 (tied #1, 3.01 ahead of tanjiro)
+  - tanjiro 37.33, fern 40.03, alphonse 40.09, frieren 42.73, edward 42.77, askeladd 46.40
+- **Notes:** This is the second time we've converged with nezuko in a tied #1. Each new agent commit (alphonse6, askeladd4, fern6) gives a small decorrelation boost. The race appears self-stabilizing — both agents adopt the same meta-strategy and copy each other's best when published.
+
 ### 2026-04-28 — alphonse6+askeladd4: 34.33 (#1 alone, 0.04 lead)
 - **Hypothesis (continued):** New commits alphonse/23249a0 and askeladd/b8419dd were freshly published. Even askeladd at 46.40 alone could give decorrelation gain at 5–10% weight. The pattern keeps holding: small weight on new fresh agent commits → big decorrelation gain.
 - **Result:** **34.331 (6072694, #1 alone with 0.04 lead over nezuko/d8b8f7f at 34.374)**.
