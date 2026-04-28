@@ -141,3 +141,10 @@ Keep entries short. Link W&B run URLs when useful.
 
 ### 2026-04-28 — ENSEMBLE: v15+v16+v17 (commit 2a43132)
 - **Note:** Ran predict.py with 3 chain checkpoints averaged in normalized space and saved to commit `2a43132`. Pure infer-time experiment, no new training.
+
+### 2026-04-28 — v18-warm-lr5e5
+- **Hypothesis:** Continue chain.
+- **Change:** `--resume model-zlag2ysu --lr 5e-5 --surf_weight 50 --surf_p_l1_weight 30 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `avg_surf_p = 43.78` at epoch 8 (mostly monotonic, tiny bump at ep6). **3.7% over v17 (45.44→43.78), 88% over baseline.** Per-split p MAE: single_in_dist=47, geom_camber_rc=53, geom_camber_cruise=37, re_rand=39. **Test: 37.68 → rank 4.** W&B `alphonse/v18-warm-lr5e5` (`pav3usp8`).
+- **Verdict:** Kept. Best single-step gain in 6 iters — chain not done yet.
+- **Notes:** Ensemble at commit 2a43132 was unscored ("incomplete" in scores.json — likely because it wasn't the latest commit when scoring ran). Will retry ensemble as the latest commit.
