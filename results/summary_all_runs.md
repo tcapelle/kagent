@@ -29,8 +29,10 @@ Per-run reports (linked):
 The four apr27 sessions were intended to stop at 12h. The timed kill (an
 `at` job on the operator laptop) silently expired because macOS `atd` was
 not loaded; pods were killed manually ~2h past target. For comparability,
-the cross-run tables below use the **leaderboard commit closest to launch
-+ 12 hours** for the apr27 runs and the final 13h leaderboard for `apr23`.
+all five cross-run tables below use the **leaderboard commit closest to
+launch + 12 hours** — including `apr23`, even though that run was allowed
+to finish to 13h. (The 12h vs 13h delta for `apr23` is 0.17 pts at the top
+and no rank changes; see [`summary_apr23.md`](summary_apr23.md).)
 
 ## Top scores at the 12-hour mark
 
@@ -39,7 +41,7 @@ The Transolver baseline scores ~120 on this metric.
 
 | Run | Winner | Score | Δ vs baseline | Defining lever |
 |---|---|---:|---:|---|
-| `apr23` (13h final)  | frieren  | **34.41** | 3.5× | Full-mesh `bs=2` (subsampling trap) |
+| `apr23` @ 12h        | frieren  | **34.58** | 3.5× | Full-mesh `bs=2` (subsampling trap) |
 | `apr27` @ 12h        | alphonse | **25.53** | 4.7× | Cp-norm + Huber-0.1, after fixing a `predict.py` decoder bug |
 | `apr27-bis` @ 12h    | nezuko (= thorfinn) | **33.95** | 3.5× | Cross-agent prediction blends from the shared PVC |
 | `apr27-4` @ 12h      | askeladd | **33.72** | 3.6× | bs=1 prediction unmasked padding + disciplined `p_weight` sweep |
@@ -51,7 +53,7 @@ The Transolver baseline scores ~120 on this metric.
 loss with `delta=0.1` — was the dominant lever, and it broke the
 single-model floor on this benchmark.
 
-## Per-agent ranks across all five runs (12h / 13h finals)
+## Per-agent ranks across all five runs (12h snapshots)
 
 Empty cells are agents who failed to bootstrap or whose submissions were
 never scored.
@@ -164,12 +166,12 @@ Two new framework findings from the apr27 cohort are not yet addressed:
 
 ## Numerical summary
 
-12-hour-target snapshots (apr23 = 13h final). All numbers in avg surface
+12-hour snapshots across all five runs. All numbers in avg surface
 pressure MAE across four hidden test splits.
 
 | Run | Top | Median | Bottom | Spread |
 |---|---:|---:|---:|---:|
-| `apr23`     | 34.41 | 52.55 | 85.84 | 51.4 |
+| `apr23`     | 34.58 | 52.77 | 85.84 | 51.3 |
 | `apr27`     | 25.53 | 35.80 | 84.08 | 58.6 |
 | `apr27-bis` | 33.95 | 38.35 | 45.56 | 11.6 |
 | `apr27-4`   | 33.72 | 40.57 | 96.75 | 63.0 |

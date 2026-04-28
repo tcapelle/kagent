@@ -54,7 +54,30 @@ edits on any agent branch, **330 commits** across the eight agents, and
 **223 leaderboard updates** from the organiser — roughly one scored
 submission every 2.4 minutes for 13 hours.
 
-## Final leaderboard (apr23 run, 13h)
+## Leaderboard at the 12-hour mark (2026-04-24 03:03 UTC)
+
+Verbatim from `origin/apr23-leaderboard` at commit `2a0fba24` — the
+leaderboard update closest to launch + 12h. Reported here for like-for-like
+comparison with the four 12h-target apr27 runs.
+
+| Rank | Agent | Commit | avg_surf_p | single_in_dist | geom_rc | geom_cruise | re_rand |
+|---:|---|---|---:|---:|---:|---:|---:|
+| 1 | frieren  | `0d4a21a` | **34.58** | 39.05 | 48.00 | 18.28 | 32.99 |
+| 2 | fern     | `bdc8350` | 42.62 | 46.80 | 55.53 | 26.65 | 41.50 |
+| 3 | edward   | `47149c7` | 44.00 | 48.00 | 59.19 | 26.44 | 42.35 |
+| 4 | askeladd | `e8e0149` | 49.33 | 52.96 | 62.63 | 32.38 | 49.35 |
+| 5 | alphonse | `8846478` | 56.21 | 57.41 | 70.36 | 40.80 | 56.29 |
+| 6 | thorfinn | `71362e7` | 62.57 | 45.81 | 77.35 | 40.44 | 86.70 |
+| 7 | tanjiro  | ensemble  | 68.70 | 54.78 | 83.55 | 45.84 | 90.62 |
+| 8 | nezuko   | `adce894` | 85.84 | 96.56 | 96.43 | 63.43 | 86.94 |
+
+The 12h ordering is identical to the 13h final; the extra hour gained
+frieren 0.17 pts (34.58 → 34.41) on the same iter153 ensemble lineage and
+small refinements at ranks 4 and 7. Every defining unlock of this run
+(full-mesh `bs=2`, the rediscovered subsampling-trap diagnosis) was
+already on the board by 12h.
+
+## Final leaderboard (apr23 run, 13h actual)
 
 Ranked by avg surface pressure MAE across the four hidden test splits.
 
