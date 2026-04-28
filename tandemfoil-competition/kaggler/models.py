@@ -14,15 +14,21 @@ class FourierFeatures(nn.Module):
 
     Following Tancik et al. 2020 — fixes coordinate-MLP spectral bias near
     high-curvature regions (like the LE stagnation peak on an airfoil).
-    Output: [B, N, 2*n_freqs] sin/cos features.
+    If `sigmas` (list) is supplied, concatenates features from multiple scales.
+    Output: [B, N, 2*n_freqs*len(sigmas)] sin/cos features.
     """
 
-    def __init__(self, in_dim: int = 2, n_freqs: int = 32, sigma: float = 2.0):
+    def __init__(self, in_dim: int = 2, n_freqs: int = 32, sigma: float = 2.0,
+                 sigmas: list[float] | None = None):
         super().__init__()
-        self.register_buffer("B", torch.randn(in_dim, n_freqs) * sigma)
+        if sigmas is None:
+            sigmas = [sigma]
+        # Stack one [in_dim, n_freqs] block per sigma so we get distinct scales.
+        Bs = [torch.randn(in_dim, n_freqs) * s for s in sigmas]
+        self.register_buffer("B", torch.cat(Bs, dim=-1))  # [in_dim, n_freqs*K]
 
     def forward(self, x):
-        proj = 2 * math.pi * (x @ self.B)  # [B, N, n_freqs]
+        proj = 2 * math.pi * (x @ self.B)  # [B, N, n_freqs*K]
         return torch.cat([proj.sin(), proj.cos()], dim=-1)
 
 
@@ -145,6 +151,7 @@ class Transolver(nn.Module):
                  n_head=8, act="gelu", mlp_ratio=1, fun_dim=1, out_dim=1,
                  slice_num=32, ref=8, unified_pos=False,
                  ff_n_freqs: int = 0, ff_sigma: float = 2.0,
+                 ff_sigmas: list[float] | None = None,
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None):
         super().__init__()
@@ -158,13 +165,15 @@ class Transolver(nn.Module):
             self.preprocess = MLP(fun_dim + ref**3, n_hidden * 2, n_hidden,
                                    n_layers=0, res=False, act=act)
         else:
-            ff_out = 2 * ff_n_freqs if ff_n_freqs > 0 else 0
+            ff_scales = len(ff_sigmas) if ff_sigmas else 1
+            ff_out = 2 * ff_n_freqs * ff_scales if ff_n_freqs > 0 else 0
             preprocess_in = fun_dim + space_dim + ff_out
             self.preprocess = MLP(preprocess_in, n_hidden * 2, n_hidden,
                                    n_layers=0, res=False, act=act)
             if ff_n_freqs > 0:
                 self.coord_ff = FourierFeatures(
-                    in_dim=space_dim, n_freqs=ff_n_freqs, sigma=ff_sigma
+                    in_dim=space_dim, n_freqs=ff_n_freqs,
+                    sigma=ff_sigma, sigmas=ff_sigmas,
                 )
 
         self.n_hidden = n_hidden
