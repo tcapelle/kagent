@@ -36,6 +36,7 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 4
+    weights: list[float] | None = None  # parallel to checkpoints; defaults to uniform
 
 
 cfg = sp.parse(Config)
@@ -52,6 +53,14 @@ for ckpt_path_s in cfg.checkpoints:
     models.append(m)
     print(f"Loaded {ckpt_path}")
 print(f"Ensemble size: {len(models)}")
+
+if cfg.weights is None:
+    weights_t = torch.full((len(models),), 1.0 / len(models), device=device)
+else:
+    assert len(cfg.weights) == len(models), "weights must align with checkpoints"
+    weights_t = torch.tensor(cfg.weights, dtype=torch.float32, device=device)
+    weights_t = weights_t / weights_t.sum()
+print(f"Weights: {weights_t.tolist()}")
 
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
@@ -93,7 +102,8 @@ for split in WRITE_ORDER:
             preds_norm = []
             for m in models:
                 preds_norm.append(m({"x": x_norm})["preds"])
-            avg_norm = torch.stack(preds_norm, dim=0).mean(dim=0)
+            stacked = torch.stack(preds_norm, dim=0)  # [K, B, N, 3]
+            avg_norm = (weights_t[:, None, None, None] * stacked).sum(dim=0)
             pred = avg_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
