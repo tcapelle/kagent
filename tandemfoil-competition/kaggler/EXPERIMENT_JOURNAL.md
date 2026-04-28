@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter19: 5th parallel re-chain → prediction-ensemble wins
+- **Hypothesis:** add a 5th SWA member with LR 3e-6, p_weight 40 to keep growing the ensemble.
+- **Change:** args only.
+- **Result:** 28 epochs. Best epoch 8 → val/avg_surf_p=44.97. Run kj789wks.
+- **Combination experiments (val/avg_surf_p):**
+  - iter19 alone: 44.97
+  - **Prediction-ensemble all 5 (13,15,17,18,19): 44.896** ← new best
+  - SWA(13,15,17,18,19): 44.905
+  - SWA(13,15,17,19): 44.905
+  - SWA(13,15,17,18): 44.913 (previous best)
+- **Verdict:** kept — submitted prediction-ensemble of all 5 at apr27-5/askeladd/2eaccfa.
+- **Notes:** Big shift — at 5 members, *prediction-ensemble* (44.896) beats *weight-space SWA* (44.905). Weight averaging starts losing fidelity as the basin sample widens because each model picks slightly different features; prediction averaging captures every model's contribution. Going forward, predict_ensemble.py over the 5+ models is the right move.
+
 ### 2026-04-28 — iter18: another re-chain from iter13 (LR 2.5e-6, p_weight 44)
 - **Hypothesis:** add a 4th SWA member with slightly different LR/p_weight to keep expanding the basin sample.
 - **Change:** args only.
