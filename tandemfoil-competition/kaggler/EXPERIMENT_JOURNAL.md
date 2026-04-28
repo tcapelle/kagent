@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter23: slice=128 mature — warm iter22 bs=2 no-sub L1 (commit 8f852ee)
+- **Hypothesis:** Apply bs=2/no-subsample to slice=128 base. Different physics-attention head capacity provides architectural ensemble diversity.
+- **Change:** `--warm_start /tmp/iter22_best.pt --slice_num 128 --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. 217s/ep due to slice=128.
+- **Result:** val/loss=1.7891 at epoch 9 (32.6 min — over budget, ep10 wasn't reached). Per-split val: 2.89, 2.28, 0.53, 1.45. Much weaker than iter16 (1.87, 1.46, 0.28, 1.03).
+- **Verdict:** kept for diversity ensemble. Standalone too weak to compete.
+- **Notes:** slice=128 fresh-train is undertrained. Even at maturity it remains 50% worse than slice=64 chain (which has 4 cycles of training behind it). Ensemble with small weight may help.
+
 ### 2026-04-27 — iter21: ensemble iter16 (L1) + iter20 (MSE) — DISCARDED (commit 758d1c3)
 - **Hypothesis:** L1 + MSE losses produce decorrelated errors, ensemble at 0.8/0.2 should beat iter16 alone.
 - **Change:** `python ensemble.py --sources db4d762 c40c4d8 --weights 0.8 0.2`.
