@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21: chain from iter20 (LR 2e-6, p_weight 36); ensemble within new basin
+- **Hypothesis:** since iter20 jumped to a deeper basin, a re-chain from iter20 should land at another point in the same basin and ensemble well with it.
+- **Change:** args only.
+- **Result:** 28 epochs. Best epoch 20 → val/avg_surf_p=44.78. Run q9w4z85v.
+- **Combination experiments:**
+  - **Ensemble(iter20, iter21): 44.687** ← new best
+  - SWA(iter20, iter21): 44.695
+  - iter20 alone: 44.696
+  - iter21 alone: 44.775
+- **Verdict:** kept — submitted Ensemble(20,21) at apr27-5/askeladd/48666af (-0.009 vs single iter20).
+- **Notes:** Within-basin ensemble works. Iter22 plan: another chain from iter20 with slightly different settings to grow the basin sample.
+
 ### 2026-04-28 — iter20: BIG WIN — single model val 44.70 (LR 4e-6, p_weight 36)
 - **Hypothesis:** keep growing the SWA/ensemble pool. Picked LR 4e-6 + p_weight 36 (a bit higher LR, lower p_weight than iter19).
 - **Change:** args only.
