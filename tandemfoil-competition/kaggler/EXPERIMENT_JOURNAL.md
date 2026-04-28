@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter27: high-p chain on iter17 → val_surf_p=53.21, ensemble val=48.84
+- **Hypothesis:** Apply same p_weight=8 chain recipe to iter17 (the seed=123 chain branch).
+- **Change:** Warm-start iter17 (`model-q636386k`), `lr=1e-6 p_weight=8 epochs=11`. Run `7p5u51js`.
+- **Result:** val/loss=0.8203, surf_p=**53.21**. Ensemble val=**48.84** (-0.005). iter27 got near-zero weight; chain has clear diminishing returns. Submitted at `ac1dc3a`.
+- **Verdict:** kept; minimal gain. Ensemble truly saturated.
+
 ### 2026-04-28 — iter26: extreme p_weight=15 chain on iter24 → val_surf_p=51.05, ensemble val=48.85
 - **Hypothesis:** Push p_weight even higher (askeladd-territory) on the deepest chain.
 - **Change:** Warm-start iter24 (`model-2hapqwcc`), `lr=1e-6 p_weight=15 epochs=11`. Run `7dmlgkos`.
