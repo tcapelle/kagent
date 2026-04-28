@@ -1,4 +1,4 @@
-"""Ensemble: weighted average of predictions across multiple trained checkpoints.
+"""Ensemble predictions: weighted average across multiple trained checkpoints.
 
 Loads each checkpoint with its own runtime.yaml (so Cp / velocity normalization
 specific to that run is honored), runs inference, and averages the per-sample
