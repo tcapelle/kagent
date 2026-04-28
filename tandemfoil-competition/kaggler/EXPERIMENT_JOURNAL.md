@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter15: longer cycle (40 epochs at lr=3e-5)
+- **Hypothesis:** Stretch the cosine cycle to 40 epochs to extract more from each chain step.
+- **Change:** epochs 30→40. Initial = iter14 (model-6t65htqq), lr=3e-5.
+- **Result:** Trained 38/40 epochs in 30.2 min. Best epoch 13, val/loss=1.5494 (vs iter14 1.6053). Val mae_surf_p avg=45.75. **Test 42.49 (commit 4d83214) — rank 5 best yet for me.**
+- **Verdict:** kept (small improvement: 42.64 → 42.49 on test).
+- **Notes:** Training has flatlined after epoch 13; longer schedule didn't help much. Chain is in deep diminishing returns. Need a step-change approach: bigger model from scratch with KD, or test-time augmentation.
+
 ### 2026-04-28 — iter14: chain warm-start from iter13 (plateauing)
 - **Hypothesis:** Continue chain at lr=3e-5.
 - **Change:** lr 5e-5→3e-5. Initial = iter13 (model-04j8mo2u).
