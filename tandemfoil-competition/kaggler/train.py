@@ -218,6 +218,7 @@ class Config:
     use_val_in_train: bool = True
     val_holdout_pct: float = 0.10  # tinier holdout: more train data
     epochs: int = 10
+    save_last: bool = True  # save the final epoch's EMA state (overrides best-val selection)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -493,8 +494,8 @@ def main():
         # Note: validation above ran on EMA weights when enabled — so the avg_surf_p
         # we are scoring is the EMA model's, and we save the EMA state.
         tag = ""
-        if avg_surf_p < best_val:
-            best_val = avg_surf_p
+        if cfg.save_last or avg_surf_p < best_val:
+            best_val = min(best_val, avg_surf_p)
             best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "avg_surf_p": avg_surf_p}
             for sm in split_metrics.values():
                 best_metrics.update({f"best_{k}": v for k, v in sm.items()})
