@@ -22,6 +22,64 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18: EMA (decay=0.995) (running)
+- **Hypothesis:** val swings 5-15% between epochs even after the loss/feature recipe stabilized; an exponential moving average of weights smooths late-training noise and routinely gives 1-3% gains for free.
+- **Change:** `train.py`: `EMA` class; update after every optimizer.step; eval on EMA copy (apply_to / restore around val); save EMA weights at every best checkpoint so predict.py loads the EMA version.
+- **Result:** RUNNING.
+
+### 2026-04-28 — iter17: epochs=60 + val_every=2 (kept, marginal)
+- **Hypothesis:** with 70s/epoch (val takes ~15s), skipping val on every other epoch buys ~5 extra training epochs.
+- **Change:** `train.py` `epochs 50→60`, added `val_every=2` config (skip val unless ep%2==0 or last); train-only epochs run in 52s vs 70s.
+- **Result:** 30 epochs in 30 min (vs iter15's 26). Best at last epoch (ep30): val_surf_p=85.8 (single=82.2 / geom_rc=126.3 / cruise=50.5 / re_rand=84.2). val/loss=2.15.
+- **Verdict:** kept — slight improvement (86.0 → 85.8) and better single_in_dist; geom_rc regressed.
+- **Notes:** train was still falling at 30 epochs (vol=0.148, surf=0.059). EMA next.
+
+### 2026-04-28 — iter16: inlet velocity canonicalization (discarded)
+- **Hypothesis:** rotate the scene so AoA1=0 in the network frame; removes a learning burden the ~150-sample dataset can barely cover. Should improve OOD AoA generalization.
+- **Change:** `canonicalize_inputs` rotates positions/saf and Ux/Uy by R(-AoA1); AoA1 set to 0; AoA2 shifted; un-rotate predicted velocity in val/predict.
+- **Result:** 26 epochs. Best ep26 val_surf_p=89.2. Test surf_p=81.35 (vs iter12's 80.35).
+- **Verdict:** discarded — slight regression in both val and test. Pressure (the metric) is rotation-invariant so canonicalization doesn't directly help; only Ux/Uy benefit.
+- **Notes:** lesson: pressure = scalar field on the airfoil = invariant under input rotation. Canonicalization is more useful for *velocity* prediction tasks than pressure-MAE.
+
+### 2026-04-28 — iter15: multi-sigma Fourier features (kept, marginal)
+- **Hypothesis:** sigma=1.0 (iter10) underrepresented LE-region high frequencies; sigma=2.0 (iter9) overfit on training cambers. Combining sigmas={0.5, 1.0, 2.0} should let the model pick the right scale per node.
+- **Change:** `FourierFeatures` extended to take `sigmas: list[float]`, concatenates the random projections.
+- **Result:** 26 epochs. Best ep25 val_surf_p=86.0 (vs iter12's 86.4). Per-split val: single=106.5 / geom_rc=108.9 / cruise=50.3 / re_rand=78.5. Test scoring queued.
+- **Verdict:** kept — marginal but consistent improvement, especially on geom_rc (108.9 vs 117.8).
+
+### 2026-04-28 — iter14: bigger model 256/8/128 (discarded)
+- **Hypothesis:** the loss recipe is now strong; more capacity should help.
+- **Change:** model_config `n_hidden 192→256, n_layers 7→8, slice_num 96→128`.
+- **Result:** 18 epochs only (slower) in 30 min. Best val_surf_p=100.2; test=91.46 (vs iter12 80.35).
+- **Verdict:** discarded — bigger model = fewer epochs = under-trained at this time budget.
+
+### 2026-04-28 — iter13: LE-relative coords (discarded)
+- **Hypothesis:** add per-sample (pos − leading-edge) as 2 raw features so the network has airfoil-anchored coordinates.
+- **Change:** `Transolver.forward` computes LE = argmin x among surface nodes (per sample), appends (pos − LE) before Fourier encoding.
+- **Result:** 26 epochs. Best val_surf_p=87.8 (vs iter12's 86.4).
+- **Verdict:** discarded — slight regression. The Fourier features already encode position; adding raw LE-rel didn't help.
+- **Notes:** worth retrying with Fourier-encoded LE-rel (not just raw).
+
+### 2026-04-27 — iter12: dropout=0.1 (kept, scored 80.35 — current best test)
+- **Hypothesis:** iter11 train surf=0.05 vs val surf_p≈90 → overfitting. Dropout in attention/MLP should narrow the gap.
+- **Change:** model_config `dropout=0.1`.
+- **Result:** 26 epochs. Best ep25 val_surf_p=86.4. **Test surf_p=80.35** (single=81.14, geom_rc=97.32, cruise=44.25, re_rand=98.71).
+- **Verdict:** kept — best fern submission so far.
+- **Notes:** Big win: ~18 points off iter11 test (98 → 80). Confirms overfitting was the bottleneck at that point.
+
+### 2026-04-27 — iter11: signed_log target on pressure (kept)
+- **Hypothesis:** pressure is heavy-tailed; transforming target via signed_log compresses dynamic range, making per-node gradient magnitudes more uniform across Re regimes.
+- **Change:** `train.py` and `predict.py`: `y_target[..., 2] = signed_log(y_norm[..., 2])`; invert at val MAE and predict.
+- **Result:** 27 epochs. Best ep24 val_surf_p=88.5 (single=87.3 / geom_rc=124.9 / cruise=56.6 / re_rand=85.3).
+- **Verdict:** kept — clear improvement vs iter10 (val 92.7 → 88.5). Test scoring queued.
+- **Notes:** train was still falling at termination (vol=0.158, surf=0.064). Suggests dropout would help.
+
+### 2026-04-27 — iter10: lower Fourier sigma to 1.0 (kept)
+- **Hypothesis:** iter9's sigma=2.0 hurt OOD camber (val_geom_rc spiked). Lower sigma should reduce spectral overfit.
+- **Change:** `ff_sigma 2.0 → 1.0`.
+- **Result:** 27 epochs. Best ep27 val_surf_p=92.7. Test=incomplete.
+- **Verdict:** kept — improvement over iter9 (sigma=2.0 had val=100). Single split improved most.
+
 ### 2026-04-27 — iter9: Fourier features for spatial coords (running)
 - **Hypothesis:** Tancik's coordinate-MLP spectral-bias result + every NeurIPS 2024 ML4CFD top-4 method using positional encodings → vanilla Transolver feeding raw (x,z) into the preprocess MLP underrepresents the high-frequency Cp curvature near the LE stagnation point. Adding random Fourier features (n_freqs=32, sigma=2.0) before preprocess should let the model represent the LE pressure peak and reduce surface-p MAE.
 - **Change:** `models.py`: new `FourierFeatures` class; `Transolver` now takes `ff_n_freqs/ff_sigma` and concatenates `[B, N, 2*n_freqs]` sin/cos features to the input of `preprocess`; `train.py` model_config sets `ff_n_freqs=32, ff_sigma=2.0`. Everything else identical to iter8 (pure-L1 Huber beta=0.05, surf_weight=20, p_weight=4).
