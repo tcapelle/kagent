@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter27: 11th warm-restart (lr=3e-5, pw=22, sw=22)
+- **Hypothesis:** Continue cycling.
+- **Change:** Resume iter26; --lr 3e-5 --p_weight 22 --surf_weight 22.
+- **Result:** **surf_p 38.61 → 38.07** (~1.4% gain). W&B `24j8ey05`.
+- **Verdict:** Kept (best). 9.6% below frieren. Cycle still effective.
+- **Notes:** iter28 polish, iter29 12th cycle.
+
 ### 2026-04-28 — iter26: polish iter25 (lr=5e-6, pw=22, sw=22)
 - **Hypothesis:** Standard polish.
 - **Change:** Resume iter25; --lr 5e-6 (other unchanged).
