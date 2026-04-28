@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18 chain w_p=24, LR=5e-6, surf_weight=30 (KEPT)
+- **Hypothesis:** Drive more gradient through surface vs volume (3× surf_weight) without changing channel weights.
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 5e-6 --w_p 24.0 --surf_weight 30`.
+- **Result:** Best epoch 11, **val avg_surf_p=41.40** (Δ -0.49), **test avg_surf_p=36.20** (Δ -0.26). Rank 3.
+- **Verdict:** Kept (commit `f64320b`). Then ran a 3-way prediction ensemble (iter16+17+18 ckpts via `predict_ensemble.py`) — scoring still pending. Predictions written to `thorfinn/f64320b/`.
+- **Notes:** Even higher surf_weight gave consistent gain — surf_weight should have been larger from the start. Iter19 push surf_weight=50, w_p=32, LR=3e-6.
+
 ### 2026-04-28 — iter17 chain w_p=24, LR=5e-6 (KEPT, near-flat) + SWA experiment (no help)
 - **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 5e-6 --w_p 24.0`. Best epoch 11, **val=41.89, test=36.46** (Δ -0.27 test). Rank 3.
 - **SWA experiment:** added `swa.py` to weight-average state dicts. Tried averaging iter14+15+16+17 ckpts (4-way) → val=42.25, worse than iter17 alone. Tried iter16+17 (2-way) → val=41.90, also slightly worse. Conclusion: ckpts from chain trajectory are not on a flat basin; weight averaging hurts.
