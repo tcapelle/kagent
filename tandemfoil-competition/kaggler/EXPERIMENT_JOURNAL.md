@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21: **SWA over iter16-20 — RANK 2** 🎉
+- **Hypothesis:** Stochastic-weight-averaging the latest checkpoints in the warm-start chain (iter16, iter17, iter18, iter19, iter20) should produce a smoother model with better generalization than any single checkpoint.
+- **Change:** Added swa.py — averages the 5 state_dicts in fp32, saves as `models/model-swa/`. Predicted with the SWA model.
+- **Result:** **Test 37.21 (commit defe248) — RANK 2!** Per-split: single=35.28, geom_rc=49.02 (best of any agent!), geom_cruise=24.12, re_rand=40.41. Single best result of the run.
+- **Verdict:** kept. Jumped from rank 4 (40.57) to rank 2 in one shot.
+- **Notes:** SWA + chain warm-starts = the killer combo. The chain produces correlated-but-different checkpoints and averaging cancels their independent errors. Plan iter22 fine-tune SWA at tiny lr to push further.
+
+### 2026-04-28 — iter20: deeper fullmesh chain at lr=3e-6
+- **Hypothesis:** One more chain cycle at even lower lr to seed more SWA candidates.
+- **Change:** lr 5e-6→3e-6, epochs 10→9. Initial = iter19 (model-ti5dv6wo).
+- **Result:** Best epoch 1, val/loss=1.4610 (vs iter19 1.4593). Predictions auto-submitted to commit 00c6a74.
+- **Verdict:** kept (used in SWA average).
+
 ### 2026-04-28 — iter19: fullmesh fine-tune at lr=5e-6
 - **Hypothesis:** Iter18 only had one good epoch — lr too high for the fully-converged checkpoint. Drop lr to 5e-6 and run shorter cycle.
 - **Change:** lr 1e-5→5e-6, epochs 14→10. Initial = iter18 (model-lhl3kzpw).
