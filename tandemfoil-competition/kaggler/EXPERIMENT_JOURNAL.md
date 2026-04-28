@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter24: deepest chain on iter22 (lr=5e-7, p_weight=10) → val_surf_p=51.13, ensemble val=48.85
+- **Hypothesis:** Squeeze a tiny gain from the best chain by going lr=5e-7 with p_weight=10.
+- **Change:** Warm-start iter22 (`model-0t9gz1g7`), p_weight=10. Run `2hapqwcc`.
+- **Result:** epoch 3 best, val/loss=0.8000, surf_p=**51.13** — new best single (was iter22 51.16). Ensemble val=**48.85** (-0.01). Submitted at `cb7ca23`.
+- **Verdict:** kept; chain is fully saturated.
+
 ### 2026-04-28 — iter23: chain iter18 with p_weight=8 → val_surf_p=52.73, ensemble val=48.86
 - **Hypothesis:** Same recipe as iter22 but on iter18 (the other strong chain). Adds another high-p chain checkpoint.
 - **Change:** Warm-start iter18 (`model-cxsc8wnv`), `lr=1e-6 p_weight=8 epochs=11`. Run `4vknxeki`.
