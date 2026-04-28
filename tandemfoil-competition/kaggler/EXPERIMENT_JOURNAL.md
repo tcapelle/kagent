@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17 LR-jolt branch + small noise (broke asymptote)
+- **Hypothesis:** Chain at lr=1e-5/2e-5 was asymptoting at 42.08–42.11. Inject optimization energy: jump LR back up to 1e-4 (10× higher than iter16) and add a touch of feature_noise (0.03) to perturb the loss landscape — EMA at 0.999 will smooth the resulting trajectory. Goal: escape the local minimum the polish chain settled into.
+- **Change:** No code change; flags `--lr 1e-4 --resume /tmp/iter16_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 20.0 --feature_noise 0.03 --n_vol_subsample 50000`.
+- **Result:** Best epoch 24/30, val/loss=0.8335, **avg_surf_p=41.75** (val splits: in_dist=0.85, geom_rc=1.30, geom_cruise=0.25, re_rand=0.93). Run `8nl5vry4`.
+- **Verdict:** Kept (commit dd468c0). −0.33 vs iter16, the biggest gain since iter6→iter7. This refutes my earlier "asymptote" call — restoring optimization energy after slow polish *did* let the model find a better basin. iter17 alone (41.75) again beats ensembles iter17+16 (41.86) and iter17+16+15 (41.91).
+- **Notes:** Pattern: alternating "polish" (low LR) and "jolt" (medium LR) iterations may keep extracting gains beyond pure cosine decay. geom_camber_rc finally dropped (1.32 → 1.30) — the OOD camber plateau cracked. Try iter18 = another polish pass at lr=1e-5 to consolidate.
+
 ### 2026-04-27 — iter16 chain polish at lr=1e-5
 - **Hypothesis:** One more polish round at extreme low LR (1e-5) to squeeze the last 0.05.
 - **Change:** No code change; flags `--lr 1e-5 --resume /tmp/iter15_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9999 --p_weight 20.0 --feature_noise 0.0 --n_vol_subsample 50000`.
