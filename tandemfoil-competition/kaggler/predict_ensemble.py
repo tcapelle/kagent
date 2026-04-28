@@ -68,7 +68,10 @@ commit = subprocess.run(
 output_dir = PREDICTIONS_DIR / agent_name / commit
 output_dir.mkdir(parents=True, exist_ok=True)
 
-for split in TEST_SPLITS:
+# Write test_single_in_dist last so the scorer's glob (which keys on it)
+# only detects this commit-dir once all other splits are already saved.
+WRITE_ORDER = TEST_SPLITS[1:] + TEST_SPLITS[:1]
+for split in WRITE_ORDER:
     test_dir = splits_dir / split
     test_files = sorted(test_dir.glob("*.pt"))
     print(f"{split}: {len(test_files)} samples")
@@ -96,8 +99,9 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 predictions.append(pred[j, :x.shape[0]].cpu())
 
-    output_path = output_dir / f"{split}.pt"
-    torch.save(predictions, output_path)
-    print(f"  → {output_path} ({len(predictions)} samples)")
+    tmp_path = output_dir / f"{split}.pt.tmp"
+    torch.save(predictions, tmp_path)
+    tmp_path.rename(output_dir / f"{split}.pt")
+    print(f"  → {output_dir / f'{split}.pt'} ({len(predictions)} samples)")
 
 print(f"\nAll ensemble predictions saved to {output_dir}")
