@@ -22,6 +22,42 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20: ensemble iter19+iter18*2 (val_bs1=39.49)
+
+- **Hypothesis:** iter19's single-model is worse than iter18 (41.25 vs
+  40.08) but it has DIFFERENT failure patterns — better on geom_cruise
+  (24.72 vs 25.54) and re_rand (40.25 vs 41.56), worse on single. Ensemble
+  averages out the differences.
+- **Change:** No new training. Run `predict.py --checkpoints iter19,iter18
+  --weights 1,2`.
+- **Result (bs=1 val):** **39.49** — single=34.68, geom_rc=57.87,
+  geom_cruise=24.85, re_rand=40.57. First time below 40.
+- **Verdict:** kept — submit. Expected test ≈ 34.0.
+- **Notes:** Pattern: when a single model regresses but has different
+  errors than the previous best, weighted ensemble (with the better one
+  getting more weight) wins. iter19+iter18*2 [1,2] beats both iter19+iter18
+  [1,1] (39.59) and iter19*2+iter18 [2,1] (39.93).
+
+### 2026-04-28 — iter19: sub80k resume from iter18 (kept for ensemble only)
+
+- **Hypothesis:** iter18's sub60k breakthrough suggested denser gradient
+  helps. Push to sub80k for even denser per-step signal.
+- **Change:** `train.py:45` — `train_subsample 60000 → 80000`. Run with
+  `--resume_from .../model-rvlag6rf/`.
+- **Result:** ~10 epochs (sub80k slows training to ~120s/epoch — the run
+  ran 32 min total, just over the timeout). Best val_bs4 = 66.12 at
+  epoch 10. Real bs=1 val: **41.25** — *worse* than iter18 alone (40.08).
+  Run `n7b7iwno`. Splits: single=40.52, geom_rc=59.53, geom_cruise=24.72,
+  re_rand=40.25.
+- **Verdict:** kept the ckpt for ensembling — combined with iter18 it
+  beats iter18 alone (39.49 ensemble vs 40.08 solo). Solo it's a
+  regression.
+- **Notes:** sub80k at 10 epochs probably wasn't enough to fine-tune a
+  256x6 model in 30 min. The denser gradient is genuinely helping per
+  step but we only got 10 of them. iter19's lower geom_cruise and
+  re_rand (vs iter18) hint that the new basin would be better with more
+  time, but ensemble extraction is faster ROI.
+
 ### 2026-04-27 — iter18: train_subsample 40k→60k, resume iter16 (BREAKTHROUGH 40.08)
 
 - **Hypothesis:** the resume chain has been giving diminishing returns
