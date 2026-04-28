@@ -117,3 +117,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** Best `avg_surf_p = 48.93` at epoch 8 — **WORSE than v13 (47.94)**. Epoch 1 already regressed (47.94→48.97). LR was too aggressive — model destabilized and never recovered in 8 epochs.
 - **Verdict:** Discarded — keep v13 weights.
 - **Notes:** lr=1e-4 used to work in v3 but the model has now warm-started 10 times and is much further along the loss surface — large LR perturbs too much. Stay at lr=5e-5 going forward, only ever bump by ~1.5x at restart.
+
+### 2026-04-28 — v15-warm-lr5e5 (chain reset after v14)
+- **Hypothesis:** Resume from v13 weights at safe lr=5e-5 (skipping v14's 1e-4 disaster).
+- **Change:** `--resume model-py4jw21y --lr 5e-5 --surf_weight 50 --surf_p_l1_weight 30 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `avg_surf_p = 46.81` at epoch 8 (monotonic). **2.4% over v13 (47.94→46.81), 87% over baseline.** Per-split p MAE: single_in_dist=51, geom_camber_rc=57, geom_camber_cruise=37, re_rand=42. **Leaderboard: rank 4 at test 40.09.** W&B `alphonse/v15-warm-lr5e5` (`dj2jt48t`).
+- **Verdict:** Kept.
+- **Notes:** Chain still extracting gains. Gap to leader (34.54) is ~16%. Continue.
