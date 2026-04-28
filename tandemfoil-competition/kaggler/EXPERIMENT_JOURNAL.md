@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17: chain from SWA(13,15) → 3-way SWA wins
+- **Hypothesis:** Train *from the SWA checkpoint* would be a way to refine the average back into the basin and create a 3rd point near the centre. Use iter15-style hyperparams (LR 1.5e-6, p_weight 42).
+- **Change:** `--warm_start /tmp/swa1315.pt` (SWA model loads cleanly via the standard state-dict path). `save_last_k=15`.
+- **Result:** 28 epochs in 30.9 min. Best epoch 18 → val/avg_surf_p=44.96. Run 77t8heef.
+- **SWA experiments:**
+  - **SWA(iter13, iter17): 44.915** (new best 2-way SWA)
+  - **SWA(iter13, iter15, iter17): 44.917** (best multi-way)
+  - SWA(iter15, iter17): 44.944
+  - Ensemble(13, 15, 17): 44.929
+  - SWA(iter13, iter15): 44.935 (previous best)
+- **Verdict:** kept — 3-way SWA(13,15,17) at 44.917 (-0.018 from previous best). Submitted SWA(13,15,17) predictions at apr27-5/askeladd/2f72511.
+- **Notes:** Chaining from a SWA checkpoint produced a *different* basin point than iter15 (which started from iter13's raw checkpoint). The two basin trajectories combine well. Pattern confirmed: parallel re-chains from related but distinct starts → SWA gain.
+
 ### 2026-04-28 — iter16: re-chain from iter13 with diverse hyperparams for SWA expansion
 - **Hypothesis:** SWA(iter13, iter15) won (44.93). Adding a 3rd parallel re-chain at *more different* settings (LR 1e-6, p_weight 38) should expand the basin sample.
 - **Change:** args only.
