@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21 chain LR=8e-6 (KEPT, marginal)
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 8e-6 --w_p 32.0 --surf_weight 50`. Chain from iter19.
+- **Result:** Best epoch 11, **val avg_surf_p=40.99** (Δ -0.21 vs iter19), **test avg_surf_p=35.80**. Rank 5 — alphonse jumped to 25.63, askeladd 32.07, frieren 33.12, tanjiro 34.04.
+- **Verdict:** Kept (commit `e65a10d`). Then ran 7-way prediction ensemble (iter14-21) → predictions at `thorfinn/e65a10d/`, score pending.
+- **Notes:** Chain has flatlined (Δ < 0.5 last 4 iters). Other agents made big leaps (alphonse −12.5, frieren −2.0). I'm now 10 surf_p behind alphonse #1. Iter22 chain again at LR=3e-6 in background while ensemble result lands.
+
 ### 2026-04-28 — iter20 fresh d192 + Cp(Re²) pressure scaling (DISCARDED)
 - **Hypothesis:** Predict Cp = y_p / Re² instead of raw normalized pressure. Re² dominates pressure variance across regimes; rescaling should give a more uniform target. Implementation: multiply pressure prediction by re_factor in both train loss and inference.
 - **Change:** train.py + predict.py — added `cp_scale`, `cp_ref_re` flags. Compute `re_factor = (exp(log_re_raw) / 1e6)²` from raw inputs. Multiply pred[..., 2] by re_factor before computing loss/MAE.
