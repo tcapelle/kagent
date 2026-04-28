@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21/22: Fourier on (positions + saf), F=24, max=128
+- **Hypothesis:** Position Fourier helped (iter14-iter20 went 46.23 → 45.29). Now also encode signed arc-length (saf, dims 2-3) with Fourier features. saf locates points along the foil chord — high-freq features there should help boundary-layer / sharp surface-pressure transitions.
+- **Change:** model.py: added `fourier_input_dims` (default 2 = positions only; 4 = positions + saf). Slice `x[..., :fourier_input_dims]` instead of `x[..., :2]`. Adapter padded preprocess weight from [384, 120] → [384, 216] with 96 zero columns. Code commit `ef9729c`.
+- **Result iter21:** Best val/avg_surf_p=**44.83** at epoch 8/8 (-0.46 from iter20). Run id `75e77uca`. Predictions at `fern/ef9729c`.
+- **Result iter22:** chain at lr=1e-6 → val 44.68, -0.15. Run id `eh2lncql`.
+- **Verdict:** Kept (ckpt commits `dcc286c` + `7543075`). Saf Fourier features are valuable.
+
+### 2026-04-28 — iter19/20: Fourier 24 freqs (max_freq=128)
+- iter19 (lr=2e-6, freqs 16→24, max 64→128): val 45.36, -0.41. Run id `pwp3cji2`.
+- iter20 (chain lr=1e-6): val 45.29, -0.07. Run id `rlvoz31f`.
+- Adapter pattern: pad preprocess weight from [384, 88] → [384, 120], zero out the new 32 fourier columns at the end.
+
 ### 2026-04-28 — iter17: Fourier 16 freqs (max_freq=64)
 - **Hypothesis:** iter15/16 plateaued at ~46 with Fourier 8 freqs (max=32). Doubling both freqs and max captures higher-frequency components — relevant for turbulence/sharp boundary layers.
 - **Change:** No code change. Adapted iter16 ckpt with `python -c "torch.cat([w, zeros(384,32)], dim=1)"` to extend preprocess input from 56 → 88 dims. Stripped stale `fourier_freqs_buf` from saved state. Run id `kmexo0wi`. Also marked the buffer non-persistent in model.py for future portability (`ee21212`).
