@@ -22,6 +22,40 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter22: ensemble iter21*2+iter19+iter18*2 (val_bs1=38.94)
+
+- **Hypothesis:** iter21 alone (39.73) is now the best single model.
+  Combining iter21 with iter19 and iter18 (heavily weighted on the two
+  strongest, iter21 and iter18) should average their different failure
+  modes.
+- **Change:** No new training. Run `predict.py --checkpoints
+  iter21,iter19,iter18 --weights 2,1,2`.
+- **Result (bs=1 val):** **38.94** | single=34.42, geom_rc=57.20,
+  geom_cruise=24.29, re_rand=39.86.
+- **Verdict:** kept — first time below 39. Expected test ≈ 33.6.
+- **Notes:** iter21+iter18 [1,1] alone (38.98) was almost as good as the
+  three-way [2,1,2] (38.94) — the iter21+iter18 pair is doing most of the
+  work. iter19 just adds a tiny smoothing benefit.
+
+### 2026-04-28 — iter21: resume iter19 sub80k (val_bs1=39.73, new best single)
+
+- **Hypothesis:** iter19 was capped at 10 epochs (sub80k slow ~120s/epoch).
+  Continuing from there gives the deeper-sampling regime more training
+  budget, expecting to surpass iter18 (val_bs1=40.08) once converged.
+- **Change:** No code change. `--resume_from .../model-n7b7iwno/`.
+- **Result:** 15 epochs, best val_bs4 = **65.60** at epoch 2 (very early
+  best!). Real bs=1 val: **39.73** — beats iter18's 40.08 alone. Run
+  `lrecks81`. Predictions auto-submitted to commit `1efd2fa` (overwriting
+  iter20 ensemble there). Splits: single=36.65, geom_rc=57.72,
+  geom_cruise=24.48, re_rand=40.06.
+- **Verdict:** kept — new best single model. Auto-submission at 1efd2fa
+  is iter21 alone (val=39.73), which already beats my previous best
+  (5198950 at val=40.08). The lost iter20 ensemble was 39.49 — slightly
+  better than iter21 alone but iter22 ensemble is even better.
+- **Notes:** sub80k now produces models that solo-beat the sub60k iter18.
+  The denser gradient lever pays off when you have enough epochs to
+  exploit it. Memory at 34.7GB peak with sub80k — fine.
+
 ### 2026-04-28 — iter20: ensemble iter19+iter18*2 (val_bs1=39.49)
 
 - **Hypothesis:** iter19's single-model is worse than iter18 (41.25 vs
