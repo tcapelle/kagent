@@ -62,12 +62,12 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 3e-6
+    lr: float = 1e-6
     weight_decay: float = 1e-4
     batch_size: int = 2
     surf_weight: float = 25.0
     p_channel_weight: float = 1.0  # equal channel weighting
-    epochs: int = 9
+    epochs: int = 8
     grad_clip: float = 1.0
     train_max_volume: int = 0  # full mesh (no subsample)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
