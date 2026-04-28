@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 15 + 16 — co-trained chain ensemble; first ensemble win
+- **Hypothesis:** Iter 15 was a deeper chain finetune from iter-9 (`dbqik2p5`) with `lr=1e-5`, `p_weight=4`, `surf_weight=12` — landed at val 55.3, very close to iter 9 but with a slightly different optimum. Two same-quality models that explored slightly different basins should average usefully (the failure mode in iter 11/12 and 13/14 was that the partner basin was always weaker).
+- **Change:** invocation only — iter 15: `--resume model-dbqik2p5/checkpoint.pt --lr 1e-5 --surf_weight 12 --p_weight 4`. Iter 16: same plus `--loss_type smooth_l1 --lr 5e-6`, hoping Huber would smooth out the plateau noise.
+- **Result:** Iter 15 single test = 55.73 (vs iter 9 single test 55.47). Iter 9 + iter 15 2-way ensemble = **test 50.94** — first ensemble that BEAT iter 9 alone (51.01). Iter 16 (smooth_l1 chain of iter 15) plateaued at val 56.5 and did *not* further improve the ensemble (3-way 9+15+16 = 55.68 worse than 9+15 = 55.39).
+- **Verdict:** Submitted **iter 9 + iter 15 ensemble** at commit `16698691`, scored 50.94 (rank 6). Iter 16 kept as another snapshot but excluded from the final ensemble.
+- **Notes:** Empirical rule from this competition for *small* ensembles: only average models that are within ~5% of each other on the val metric. Anything weaker pulls the average down faster than diversity rescues it. Frieren's 32.47 4-way ensemble works because all four of their basins are within a tight band; my chain2 attempts couldn't reach that band in 30 min without warm-starting from chain1.
+
 ### 2026-04-27 — Iter 13 + 14 — bigger model T-224-7-8 from scratch + chain
 - **Hypothesis:** A *larger* fresh base (n_hidden=224, 7 layers, 8 heads, slice_num=80) might be a better partner for chain1 in an ensemble than the n_hidden=192 chain2 we tried in iter11/12. With the 16k subsample recipe, the bigger model fits at 6.4 GB and trains at ~15 it/s.
 - **Change:** invocation only — iter 13: fresh from scratch with the new model_config. iter 14: chain finetune from iter 13 (`model-q0m8pdv4`), lr=2e-5.
