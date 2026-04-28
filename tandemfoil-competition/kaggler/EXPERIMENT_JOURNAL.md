@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18: another re-chain from iter13 (LR 2.5e-6, p_weight 44)
+- **Hypothesis:** add a 4th SWA member with slightly different LR/p_weight to keep expanding the basin sample.
+- **Change:** args only.
+- **Result:** 28 epochs. Best epoch 14 → val/avg_surf_p=44.96. Run kj2lfwnd.
+- **SWA experiments:**
+  - **SWA(13,15,17,18): 44.913** (new best 4-way)
+  - Ensemble(13,15,17,18): 44.915
+  - SWA(13,17,18): 44.919
+  - SWA(13,18): 44.939
+  - SWA(13,15,17): 44.917 (previous best)
+- **Verdict:** kept — submitted SWA(13,15,17,18) at apr27-5/askeladd/11e1709.
+- **Notes:** Adding more parallel re-chains continues to help marginally (~-0.004pt per new member). SWA scales well with diverse models in the same basin. Iter19 plan: chain from the SWA itself or try yet another LR/p_weight combo.
+
 ### 2026-04-28 — iter17: chain from SWA(13,15) → 3-way SWA wins
 - **Hypothesis:** Train *from the SWA checkpoint* would be a way to refine the average back into the basin and create a 3rd point near the centre. Use iter15-style hyperparams (LR 1.5e-6, p_weight 42).
 - **Change:** `--warm_start /tmp/swa1315.pt` (SWA model loads cleanly via the standard state-dict path). `save_last_k=15`.
