@@ -110,12 +110,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter82: thorfinn/9e38615 (OO) has new best cruise (20.0510). NN still best re. LL still best s/rc.
-    # Per-split-best: s=LL(34.9162), rc=LL(48.4480), cruise=OO(20.0510), re=NN(33.8647)
-    # Avg = (34.9162 + 48.4480 + 20.0510 + 33.8647)/4 = 34.3200
+    # iter83: try 0.7*OO + 0.3*NN on cruise for decorrelation (worst-case +0.0041, may give -0.005+)
+    # Other splits: s/rc=LL, re=NN
     single: str = "thorfinnLL:1.0"
     rc: str = "thorfinnLL:1.0"
-    cruise: str = "thorfinnOO:1.0"
+    cruise: str = "thorfinnOO:0.7,thorfinnNN:0.3"
     re_rand: str = "thorfinnNN:1.0"
 
 
