@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17: another warm-restart cycle (single=8, tandem=5)
+
+- **Hypothesis:** continue the warm-restart pattern. Bump boosts again (single 6→8, tandem 4→5) and warm-restart lr=2e-5.
+- **Change:** WARMSTART=x00vprmc, lr=2e-5, single_boost=8, tandem_boost=5.
+- **Result:** 14 epochs in 31 min. 40.81 → epoch 13 = **40.19** (best, -0.62). Predictions at `383ce76/`. Run `vfkimqs9`.
+- **Verdict:** kept. Iter16 (f66010c) ALSO SCORED: **test=35.01 → still #2 but gap to askeladd narrowed to 2.94**. Per-test breakdown for iter16: single=33.7, geom_rc=51.4, geom_cruise=20.3, re_rand=34.6.
+- **Notes:** sustained chain: 35.01 (iter16) ← 36.09 (iter14) ← 36.55 (iter13) ← 37.81 (iter11) ← 38.87 (iter7) ← 39.49 (iter6) ← 42.11 (baseline). Roughly -0.7 per scored iter. Need 3-4 more chain iters to overtake askeladd at 32.07. Iter18: chain step lr=5e-6 from vfkimqs9.
+
 ### 2026-04-27 — iter16: chain step from iter15 (lr=5e-6)
 
 - **Hypothesis:** Chain step at lr=5e-6 cosine should consolidate iter15's gains.
