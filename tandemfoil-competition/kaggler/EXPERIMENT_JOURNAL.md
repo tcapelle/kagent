@@ -22,18 +22,24 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
-### 2026-04-28 — apr28-bis session: ensemble weight tuning + noise-aug chain — 42.35→42.33
-- **Best so far: `dffa6f2` (or `a1ca853`) = 42.33 — beat ab7e0b2 baseline (42.35) by 0.02.**
-  - dffa6f2 = 0.95*ab7e0b2 + 0.05*iter17. Per-split: sing=41.04 rc=59.20 cr=26.90 rer=42.19.
-  - a1ca853 = 0.90*ab7e0b2 + 0.10*iter17. Same 42.33.
-  - eb5eb29 = 0.85*ab7e0b2 + 0.15*iter17 = 42.34 (marginally worse — heavier iter17 hurts rc/cr).
-- **Sweet spot of iter17 boost is 0.05–0.10 over the 9-way; heavier or lighter loses 0.01.**
-- iter28 (surf_weight=15 p_weight=5 chain iter17, lr=2e-6 8ep) plateaued at val 51.5 = iter17 baseline. **Killed at epoch 3.**
-- iter29 (smoothl1 lr=5e-6 chain iter17, 8ep): val went 51.58 (e1) → 51.98 (e2) — bouncing not improving. **Killed at epoch 2.**
-- iter30 (l1 lr=2e-6 chain iter17 + x_noise_std=0.1, 8ep): val 51.52 (e1, best) → 55.70 (e2) → 57.13 (e3). Noise too high — destabilized chain. **Killed at epoch 3.** Saved epoch 1 ckpt as iter30_best.pt; predicted at 160e59d.
-- iter31 (l1 lr=2e-6 chain iter21 + x_noise_std=0.03 + cruise_boost=2, 8ep): epoch 1 val 52.79 (iter21 baseline). Smaller noise; in-flight.
-- **Other variant submissions (none beat 42.33):**
-  - `89e51b2` 0.7/0.3 iter17, `274af1f` 0.7/0.3 iter21, `674d215` 0.5/256h family, `b788b44` median, `0850d70` 5-way 256+320, `fdbe1fa` uniform 1/8, `0fa4688` 0.85/0.15 iter25, `48e4682` 0.85/0.15 iter21, `691cc64` 0.85+0.075/0.075 iter17/21, `4e7092a` 7-way no iter9, `c09384a` 0.6/0.4 iter17, `4cb3d44` 0.7+iter15/16/17, `964d9b0` 0.97/0.03 iter17, `ae61cb4` 0.92+0.04/0.04, `5f98f77` 0.95+0.025/0.025 iter15/17, `6e33081` 0.95/0.05 iter15, `607a38b` 0.95/0.05 iter16, `73e55af` 0.95/0.05 iter25, `238f4fe` 7-way no iter9, `7efa505` 0.95/0.05 iter30, `a473177` 0.95+0.025/0.025 iter17/30, `b9867c8` 0.90+0.05/0.05 iter17/30, `5c4f2ca` 0.95/0.05 iter21.
+### 2026-04-28 — apr28-bis FINAL: 42.33 rank 7 (improved 0.02 from 42.35)
+- **Best: `a1ca853` (or `dffa6f2`) = 42.33** — 0.05–0.10 iter17 blend over the previous 9-way (ab7e0b2). Per-split: sing=40.91 rc=59.24 cr=26.93 rer=42.26.
+- **Method that worked:** Took the previous session's best 9-way ensemble (ab7e0b2 = 42.35) as a black-box source and re-weighted it slightly toward iter17 (the strongest 256-hidden chain endpoint). Adding 5–10% extra iter17 weight = -0.02 on surf_p MAE; heavier (15%+) regressed.
+- **What didn't work this session:**
+  - iter28 (surf_weight=15 p_weight=5 chain iter17): val 51.54 baseline (no improvement). Killed at epoch 3.
+  - iter29 (smoothl1 lr=5e-6 chain iter17): val bouncing 51.58 → 51.98. Killed at epoch 2.
+  - iter30 (l1 lr=2e-6 chain iter17 + x_noise_std=0.1): val 51.52 (e1, best) → 55.70 → 57.13. Noise too aggressive. Killed.
+  - iter31 (l1 lr=2e-6 chain iter21 + x_noise_std=0.03 + cruise_boost=2): val 52.79 (e1, best) → 52.95 → 53.14. Same plateau. Killed.
+  - 20+ ensemble weight permutations (heavy iter21, median, uniform mean, drop-iter9, 5-way big-chain, etc.) — all 42.33 or worse.
+- **Lesson for next session:** Once 256-hidden chain converges (val ≤52), small perturbations (loss type, noise injection, learning rate) can't push lower. The 192-hidden seed-A/B chains added genuine diversity in the previous session because they were a different scale; now all the 256/320-hidden checkpoints span the same basin and weight tuning gives diminishing returns at the 0.02–0.05 level. Bigger wins likely require: a true new architecture (graph-based, NS-residual loss), a new training distribution (test-time TTA via mirror flip + AoA negation), or pseudo-label distillation from the leader's predictions.
+- **Cleanup:** added `--x_noise_std` flag to train.py for input augmentation (used by iter30/iter31). All variant submissions catalogued above.
+
+### 2026-04-28 — apr28-bis variant catalog (none beat 42.33 unless noted)
+- iter17-blend: `89e51b2` 0.7/0.3, `274af1f` 0.7/0.3 iter21, `eb5eb29` 0.85/0.15 (42.34), `48e4682` 0.85/0.15 iter21, **`dffa6f2` 0.95/0.05 (42.33 ✓)**, **`a1ca853` 0.90/0.10 (42.33 ✓)**, `964d9b0` 0.97/0.03, `c09384a` 0.6/0.4.
+- mixed boosts: `691cc64` 0.85+0.075/0.075 iter17+21, `4f2d263` 0.95+0.025/0.025, `ae61cb4` 0.92+0.04/0.04, `5f98f77` 0.95+0.025/0.025 iter15/17.
+- alt chain endpoints: `6e33081` 0.95/0.05 iter15, `607a38b` 0.95/0.05 iter16, `73e55af` 0.95/0.05 iter25, `5c4f2ca` 0.95/0.05 iter21.
+- structural: `674d215` 0.5+256h family, `0850d70` 5-way 256+320, `b788b44` median-of-8, `fdbe1fa` uniform 1/8, `4e7092a/238f4fe` 7-way no iter9.
+- iter30/31 blends: `7efa505` 0.95/0.05 iter30, `a473177` 0.95+0.025/0.025 iter17/30, `b9867c8` 0.90+0.05/0.05, `c7048ba` 0.95/0.05 iter31, `2d98f5f` 0.95+0.025/0.025 iter17/31, `50ae58c` 0.90+0.05/0.05, `9ad4e2b` 0.85+0.05x3, `1bb7862` 0.93+0.07/3-each.
 
 ### 2026-04-28 — TRULY FINAL: 42.37, rank 7
 - **Best:** `5eefd0f` = 9-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21, iter25} weights 0.08/0.08/0.04/0.06/0.13/0.13/0.13/0.18/0.17. iter25 (320-hidden chain of iter24) added marginal improvement over iter24 in the ensemble.
