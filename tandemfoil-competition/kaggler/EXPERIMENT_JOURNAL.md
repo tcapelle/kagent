@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter14: chain warm-start from iter13 (plateauing)
+- **Hypothesis:** Continue chain at lr=3e-5.
+- **Change:** lr 5e-5→3e-5. Initial = iter13 (model-04j8mo2u).
+- **Result:** Best epoch 13, val/loss=1.6053 (vs iter13 1.6064 — within noise). Val mae_surf_p avg=45.95 (vs 46.66). Predictions auto-submitted to commit dab91be (not yet scored at last refresh).
+- **Verdict:** kept (marginal improvement). The chain has plateaued near val/loss=1.6.
+- **Notes:** Each cycle is now barely moving the needle. Need a different lever: bigger model from scratch, augmentation, or knowledge distillation. Consider iter15 with longer cycle (epochs=40) before pivoting.
+
 ### 2026-04-27 — iter13: chain warm-start from iter12 (rank 5!)
 - **Hypothesis:** Continue chain at lr=5e-5.
 - **Change:** lr 7e-5→5e-5. Initial = iter12 (model-2qpz3rzk).
