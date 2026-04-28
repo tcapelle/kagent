@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter22: chain iter15 with p_weight=8 (askeladd-style late-stage upweight) → val_surf_p=51.16, ensemble val=48.88
+- **Hypothesis:** iter21 showed high p_weight from scratch is too aggressive, but on a mature chain checkpoint it should focus the late-stage refinement on pressure (the only scored metric). Apply p_weight=8 (medium between my 3 and askeladd's 12-16) to iter15 chain at lr=1e-6.
+- **Change:** Warm-start iter15 (`model-n3rus7ko`), bs=2, full mesh, `lr=1e-6 p_weight=8 epochs=11`. Run `0t9gz1g7`.
+- **Result:** epoch 11 best, val/loss=0.7899, surf_p=**51.16** — new best single (was iter15 at 51.23). Ensemble val=**48.88** (-0.02). Top weights now: iter9=0.25, iter15=0.21, iter22=0.18, iter18=0.17, iter11=0.10. Submitted at `bc68b6c`.
+- **Verdict:** kept; high p_weight chain works on mature checkpoints. Plan iter23 = chain iter18 (the other strong chain) with p_weight=8 too.
+
 ### 2026-04-28 — iter21: p_weight=12 from scratch (askeladd insight) → val_surf_p=61.23
 - **Hypothesis:** Askeladd's session log mentions p_weight=12-16. Heavy upweight on the only scored channel. Try p_weight=12 from scratch with otherwise-unchanged iter1 recipe.
 - **Change:** `--p_weight 12.0` (4x my baseline). Run `cb77wl3c`.
