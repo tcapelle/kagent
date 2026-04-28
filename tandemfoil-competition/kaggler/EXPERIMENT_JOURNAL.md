@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter26: rebalance loss (sb 15→6, spw 14→10, volw 0.3→0.4)
+- **Hypothesis:** iter23-25 with sb=15+spw=14 may have over-fit on racecar_single. Rebalance: drop sb to 6, surf_p_w to 10, raise vol_w to 0.4. Expect val_geom_camber_rc to recover (was 4.07).
+- **Change:** `--single_boost 6.0 --surf_p_weight 10 --vol_p_weight 0.4 --vol_uv_weight 0.4 --lr 2e-6` (small LR perturb).
+- **Result:** 7 epochs, best val/avg_surf_p=50.65 at epoch 7 (-0.50 vs iter25). Trajectory: 52.53 → 53.56 → 51.64 → 51.52 → 50.75 → 50.86 → 50.65. Predictions at `askeladd/9cc6c53`. W&B: askeladd/iter26-rebalance-sb6-spw10. **Below 51!**
+- **Verdict:** kept (-0.50). val_geom_camber_rc loss 4.07 → 2.98 (back to where it was at iter22). val_single_in_dist 2.35 → 1.74 (also improved). All four splits got better.
+- **Notes:** Big lesson: sb=15 was *over-emphasising* single_in_dist — pulling capacity away from the other splits in a way that hurt the avg metric even though val_single_in_dist was still nominally improving. The iter23 perturb was a local trick that backfired in the long run; rebalancing recovered. iter27: continue this recipe at lr=1e-6.
+
 ### 2026-04-28 — iter25: chain at sb=15 + lr=1e-6
 - **Hypothesis:** Continue.
 - **Change:** None.
