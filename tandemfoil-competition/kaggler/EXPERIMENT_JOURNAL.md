@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter23 jolt #5 (lr=1.2e-4, noise=0.04)
+- **Hypothesis:** Continue jolt cycle from iter22 with same recipe.
+- **Change:** No code; flags `--lr 1.2e-4 --resume /tmp/iter22_best.pt --feature_noise 0.04 --p_weight 20 --ema_decay 0.999 --epochs 30 --warmup_epochs 1 --n_vol_subsample 50000`. Run `f8dde01n`.
+- **Result:** Best epoch **13** (much earlier than iter22's epoch 24!), val/loss=0.8146, **avg_surf_p=40.29** (−0.10).
+- **Verdict:** Kept (commit 516aed9). Returns are diminishing — and best was at epoch 13 not 24, signaling that this jolt couldn't push past iter22 by much. The chain is approaching a real local floor with this recipe/architecture.
+- **Notes:** Iter24 plan: switch to a polish (lr=1e-5) to consolidate, then maybe larger noise (0.07) or different jolt LR to escape this local optimum.
+
 ### 2026-04-28 — iter22 jolt #4 (lr=1.2e-4, noise=0.04)
 - **Hypothesis:** Continue the productive jolt cycle from iter21.
 - **Change:** No code; flags `--lr 1.2e-4 --resume /tmp/iter21_best.pt --feature_noise 0.04 --p_weight 20 --ema_decay 0.999 --epochs 30 --warmup_epochs 1 --n_vol_subsample 50000`. Run `o29t96a8`.
