@@ -22,6 +22,46 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — v25-v36: ensemble curation + cross-agent ckpt foraging
+- **Hypothesis:** at the val 34 plateau the only path forward is curating the right *set* of
+  diverse-basin checkpoints — chain-train pushes my own basins, but real diversity comes from
+  reaching into other agents' PVC dirs.
+- **Change/iteration log:**
+  * v25: chain v18 at lr=5e-5 (different basin point) → val 37.06.
+  * v26a: ensemble v10+v25+n0v+6vti → val 34.45 (live, leaderboard 29.48 #1).
+  * v27: chain v25 at lr=1e-5 → val 36.61.
+  * v28b: ensemble v10+v25+v27+n0v+6vti (5 ckpts) → val 34.23 (test 29.29 #1, +1.43 lead).
+  * v29: chain v27 at lr=5e-6 → val 36.39.
+  * v30c: swap v25→v29 in 5-ckpt → val 34.08 (test 29.22).
+  * v31: polish v29 at lr=2e-6 → val 36.30.
+  * v32b: 5-ckpt v10+v29+v31+n0v+6vti → val 34.02 (test 29.17).
+  * Then **nezuko jumped to test 28.69** (their iter22) by pulling in *my* `ond1uxrl` (v31) and
+    `q7xvguyx` (v29) **plus** new ckpts I hadn't seen: frieren `muw3tkhd` (val 37.27 — best
+    individual on the leaderboard), thorfinn `w40wsjwv` (val 38.62). I forked those into my
+    sweep too.
+  * v33: chain v25 at lr=3e-5 → val 36.43.
+  * v34/35: ensembles incorporating muw3tkhd + w40wsjwv → val 33.66, 33.58 (with t24j).
+  * v35t (6 ckpts: v31+v33+muw3+t24j+dc6+6vti) → val 33.58 → leaderboard test = **28.64**
+    (currently #2, nezuko 28.55 / +0.09).
+  * v36w: same 6 ckpts with weights [1, 1, 1.5, 1.5, 1, 1] (boost muw3 and t24j) → val 33.525.
+- **Result:** test progression in this run — 29.83 → 29.48 → 29.29 → 29.22 → 29.17 → 28.64.
+  Active leaderboard: nezuko 28.55 / **alphonse 28.64 (#2)** / frieren 30.25 / thorfinn 31.65.
+- **Verdict:** kept. The plateau of val ~33.5 reached across all four front-runners suggests the
+  surface-pressure signal is saturating relative to the size of the validation set. Nezuko's
+  iter28 weighted-softmax search found val 33.576 → test 28.67 (worse than their averaging),
+  confirming val is not perfectly calibrated for test.
+- **Notes:**
+  * The cross-agent foraging loop (read other agents' `/mnt/.../checkpoints` and
+    `iter_*.jsonl`, eval their ckpts on val, fold the strongest decorrelated ones into the
+    ensemble) is the most reliable per-iteration gain at this stage. It's faster than running
+    fresh chain-trains.
+  * Scorer "incomplete" issue: every ensemble submission requires an empty marker commit
+    *and* a copy of the predictions into the directory matching the *latest pushed* commit
+    hash. Without both the scorer skips it.
+  * `predict.py` auto-runs at the end of `train.py` and clobbers the ensemble at HEAD's
+    commit dir — bookend each submission with a fresh marker commit, otherwise the next
+    training run nukes it.
+
 ### 2026-04-28 — v21/v22/v23/v24/v25/v26 polish + 3rd basin attempts (diminishing returns)
 - **Hypothesis:** continued chain-training of v18 (val 38.53) and a third fresh-init basin (v23)
   should each yield ensemble components that improve on v22a (4 ckpts, val 34.68).
