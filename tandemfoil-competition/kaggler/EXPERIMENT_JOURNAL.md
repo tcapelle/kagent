@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — ensemble iter8(0.85)+63ry1pjo(0.15)
+- **Hypothesis:** single-model gains are exhausted; weighted ensemble of iter8 (93.62) with a diverse weaker model could improve val/test through error decorrelation. Tried equal-weight and several ratios.
+- **Change:** added comma-separated `--checkpoint` and `--weights` to `predict.py` and `eval_val.py` for weighted averaging in normalized space. Also retrained iter8 once for a seed-2 ensemble candidate (commit `2a05b00`, qfkke457, val=105.66 — worse so weak ensemble candidate). Evaluated several other iter8-arch ckpts left over from failed iters: 63ry1pjo (101.00, was iter10), n3zoxq9x (103.70, iter12), qptl90fw (109.00, iter11).
+- **Result:** equal-weight pairs hurt iter8; tilted weights toward iter8 helped slightly:
+  - iter8 alone: 93.62
+  - iter8(1.0)+iter15(0.0): 93.62
+  - iter8(0.85)+63ry1pjo(0.15): 93.30 (best)
+  - iter8(0.80)+63ry1pjo(0.20): 93.30
+  - iter8(0.7)+63ry1pjo(0.15)+iter15(0.15): 93.81
+  - iter8(0.75)+63ry1pjo(0.15)+iter15(0.10): 93.57
+- **Verdict:** kept (commit `1674b08`). Marginal gain (0.32) but real on val. Predictions saved to `apr27-4/fern/1674b08`.
+- **Notes:** TTA via input noise (σ=0.02, 8 passes) didn't help (93.62 → 93.90); model is robust enough that noise just adds variance. Bigger model retrains, mixed-batch tricks, stochastic depth, longer schedule, higher LR all hurt vs the iter8 setup. Final fern: ensemble at 93.30 val avg_surf_p, between edward (90.12) and the bottom of leader pack.
+
 ### 2026-04-27 — drop-path01 (DISCARDED)
 - **Hypothesis:** stochastic depth (DropPath, linearly increasing 0→0.1 across blocks) as an additional regularizer to fight val_geom_camber_rc overfit.
 - **Change:** model.py — `drop_path` param on TransolverBlock, applied per-residual at training; train.py model_config drop_path=0.1.
