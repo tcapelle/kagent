@@ -48,6 +48,8 @@ class Config:
     agent: str | None = None
     batch_size: int = 4
     bf16: bool = True
+    tta_passes: int = 1
+    tta_noise_std: float = 0.0
 
 
 cfg = sp.parse(Config)
@@ -95,8 +97,16 @@ for split in TEST_SPLITS:
             for j, x in enumerate(xs):
                 x_pad[j, :x.shape[0]] = x.to(device)
 
+            x_norm = (x_pad - x_mean) / x_std
             with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=cfg.bf16):
-                pred_norm = model({"x": (x_pad - x_mean) / x_std})["preds"]
+                if cfg.tta_passes > 1 and cfg.tta_noise_std > 0:
+                    accum = 0.0
+                    for _ in range(cfg.tta_passes):
+                        x_aug = x_norm + torch.randn_like(x_norm) * cfg.tta_noise_std
+                        accum = accum + model({"x": x_aug})["preds"].float()
+                    pred_norm = accum / cfg.tta_passes
+                else:
+                    pred_norm = model({"x": x_norm})["preds"]
             pred = pred_norm.float() * y_std + y_mean
 
             for j, x in enumerate(xs):
