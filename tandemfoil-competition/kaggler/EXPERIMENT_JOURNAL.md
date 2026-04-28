@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter25: chain bigger model with p_weight=8 → val_surf_p=57.70 (still 0 ensemble weight)
+- **Hypothesis:** Apply high-p chain to the bigger 256/6/8/96/mlp4 backbone too. Maybe combined with iter20's chain it'll add complementary errors.
+- **Change:** Warm-start iter20 (`model-ww9506mn`), `lr=5e-6 p_weight=8 epochs=6`. Also fixed predict.py to use bf16 autocast (consistency with training). Run `5h2z94rc`.
+- **Result:** epoch 6 best, val/loss=0.8878, surf_p=**57.70**. Optimizer assigned 0 weight. Bigger model with chain still doesn't break into the ensemble.
+- **Verdict:** kept; ensemble val unchanged at 48.85.
+- **Notes:** The bigger arch is fundamentally less competitive at the val level than my mature small chains. Ensemble has saturated around 48.85 for last 5+ iters. Path forward is unclear — chain is fully exhausted.
+
 ### 2026-04-28 — iter24: deepest chain on iter22 (lr=5e-7, p_weight=10) → val_surf_p=51.13, ensemble val=48.85
 - **Hypothesis:** Squeeze a tiny gain from the best chain by going lr=5e-7 with p_weight=10.
 - **Change:** Warm-start iter22 (`model-0t9gz1g7`), p_weight=10. Run `2hapqwcc`.
