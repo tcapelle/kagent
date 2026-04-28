@@ -138,3 +138,6 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** Best `avg_surf_p = 45.44` at epoch 8. **1.1% over v16 (45.94→45.44), 87% over baseline.** Per-split p MAE: single_in_dist=49, geom_camber_rc=56, geom_camber_cruise=37, re_rand=40. W&B `alphonse/v17-warm-lr7e5` (`zlag2ysu`).
 - **Verdict:** Kept (small gain, oscillating early). Plateau confirmed.
 - **Notes:** Leaderboard now rank 5 (fern caught up). Next: try ensemble of v15+v16+v17 at predict time.
+
+### 2026-04-28 — ENSEMBLE: v15+v16+v17 (commit 2a43132)
+- **Note:** Ran predict.py with 3 chain checkpoints averaged in normalized space and saved to commit `2a43132`. Pure infer-time experiment, no new training.
