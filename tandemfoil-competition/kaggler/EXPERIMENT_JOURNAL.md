@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter26: extreme p_weight=15 chain on iter24 → val_surf_p=51.05, ensemble val=48.85
+- **Hypothesis:** Push p_weight even higher (askeladd-territory) on the deepest chain.
+- **Change:** Warm-start iter24 (`model-2hapqwcc`), `lr=1e-6 p_weight=15 epochs=11`. Run `7dmlgkos`.
+- **Result:** epoch 11, val/loss=0.8143, surf_p=**51.05** — new best single (was iter24 51.13). Ensemble val=**48.85** (-0.003). Optimizer assigned 0.094 weight to iter26. Submitted at `8f3e0b9`.
+- **Verdict:** kept; small gain. Ensemble appears fully saturated.
+
 ### 2026-04-28 — iter25: chain bigger model with p_weight=8 → val_surf_p=57.70 (still 0 ensemble weight)
 - **Hypothesis:** Apply high-p chain to the bigger 256/6/8/96/mlp4 backbone too. Maybe combined with iter20's chain it'll add complementary errors.
 - **Change:** Warm-start iter20 (`model-ww9506mn`), `lr=5e-6 p_weight=8 epochs=6`. Also fixed predict.py to use bf16 autocast (consistency with training). Run `5h2z94rc`.
