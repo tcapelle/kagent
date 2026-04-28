@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20: chain step + balanced boosts (6, 4)
+
+- **Hypothesis:** Iter19 hurt re_rand by over-boosting; restore balanced boosts (6, 4) and chain at lr=5e-6.
+- **Change:** WARMSTART=szhzaawn, lr=5e-6, single_boost=6, tandem_boost=4.
+- **Result:** 14 epochs in 31 min. 39.19 → epoch 10 = **38.92** (best, -0.27). Predictions at `10cbc59/`. Run `ajeb0647`.
+- **Verdict:** kept. **MASSIVE WIN — iter20 SCORED 33.12 on test → still #2 but gap to askeladd is just 1.05!** Per-test breakdown: single=30.62 (askeladd 29.93, diff -0.69), geom_rc=49.49 (askeladd 45.02, diff -4.47), geom_cruise=19.03 (askeladd 19.69, **better by +0.66**), re_rand=33.34 (askeladd 33.65, **better by +0.31**). Beating askeladd on 2 of 4 splits!
+- **Notes:** geom_rc is now my dominant gap. Need tandem-heavy boost. Iter21 should pump tandem_boost to 8 while keeping single_boost lower (2-3) so we don't over-burn single sampling.
+
 ### 2026-04-28 — iter19: warm-restart with bigger boosts (10, 6)
 
 - **Hypothesis:** Pattern is working. Continue: warm-restart lr=2e-5 + boost single=10, tandem=6.
