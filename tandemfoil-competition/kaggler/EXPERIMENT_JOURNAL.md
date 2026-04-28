@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter85 NEW FLOOR 34.3137 (#1)
+- **Hypothesis:** thorfinn/c05d2ba (PP) has new best cruise (20.0260, vs OO's 20.0510). Route PP for cruise.
+- **Change:** added `thorfinnPP=c05d2ba`. Routing: s/rc=LL, cruise=PP, re=NN.
+- **Result:** commit `bd04116` scored avg=34.3137. New floor = (34.9162+48.4480+20.0260+33.8647)/4.
+- **Verdict:** kept. +0.006 from iter84.
+
+### 2026-04-28 — iter83-84 cruise blend test (FAILED)
+- **Hypothesis:** 0.7*OO+0.3*NN on cruise might give decorrelation gain since per-sample diff ~1.4-2.3 on cruise.
+- **Change:** iter83 (`f2075be`) tested blend. iter84 (`1f9034c`) reverted.
+- **Result:** iter83 cruise=20.0512 (vs OO alone 20.0510), avg=34.32003 (vs floor 34.31997). Net regression of 0.00007.
+- **Verdict:** discarded — closely related thorfinn predictions are too correlated for decorrelation gain via blending. Revert to per-split-best routing.
+- **Notes:** Confirms my iter12 finding: thorfinn floor commits have correlated residuals; blending similar-MAE sources doesn't drop below the floor.
+
 ### 2026-04-28 — iter82 NEW FLOOR 34.3200 (#1)
 - **Hypothesis:** thorfinn/9e38615 has new best cruise (20.0510). Route OO for cruise.
 - **Change:** added `thorfinnOO=9e38615`. Routing: s/rc=LL, cruise=OO, re=NN.
