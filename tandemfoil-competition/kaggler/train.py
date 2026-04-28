@@ -215,6 +215,8 @@ class Config:
     huber_beta: float = 0.05
     ema_decay: float = 0.9995
     rc_single_boost: float = 8.0
+    use_val_in_train: bool = True  # add val splits to training data (test-distribution match)
+    val_holdout_pct: float = 0.20  # fraction of val held out for monitoring
     epochs: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -257,6 +259,31 @@ def main():
         for i in _rc_single_idx:
             sample_weights[i] *= cfg.rc_single_boost
         print(f"Boosted {len(_rc_single_idx)} racecar_single samples by x{cfg.rc_single_boost}")
+
+    # Mix val files into training data — val splits share a distribution with the
+    # corresponding test splits, so adding them helps the test score.
+    extra_train_files: list[Path] = []
+    if cfg.use_val_in_train and not cfg.debug:
+        n_holdout = max(1, int(round(cfg.val_holdout_pct * 100)))  # per-split holdout
+        for vname, vds in val_splits.items():
+            files = sorted(vds.files)
+            holdout = files[:n_holdout]
+            promote = files[n_holdout:]
+            vds.files = holdout
+            extra_train_files.extend(promote)
+        # Concatenate the promoted val files into the train dataset and sampler weights.
+        train_ds.files = list(train_ds.files) + extra_train_files
+        # Give the promoted val samples a uniform weight equal to the median train weight
+        # so they appear at the same rate as a typical train sample.
+        med_w = sample_weights.median().item()
+        sample_weights = torch.cat([
+            sample_weights,
+            torch.full((len(extra_train_files),), med_w, dtype=torch.float64),
+        ])
+        print(
+            f"Promoted {len(extra_train_files)} val files into train; "
+            f"val now {sum(len(v.files) for v in val_splits.values())} samples"
+        )
 
     loader_kwargs = dict(collate_fn=pad_collate, num_workers=4, pin_memory=True,
                          persistent_workers=True, prefetch_factor=2)
