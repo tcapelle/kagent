@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter19: warm-restart with bigger boosts (10, 6)
+
+- **Hypothesis:** Pattern is working. Continue: warm-restart lr=2e-5 + boost single=10, tandem=6.
+- **Change:** WARMSTART=nst3sd5u, lr=2e-5, single_boost=10, tandem_boost=6.
+- **Result:** 14 epochs in 31 min. 39.88 → epoch 13 = **39.19** (best, -0.69). Predictions at `1d89c7c/`. Run `szhzaawn`.
+- **Verdict:** kept. Expected test ~33.4.
+- **Notes:** Per-split val improvements concentrated in single (1.74→1.64) and geom_rc (1.15→1.12). re_rand actually got slightly worse (+0.03) — boosts may be over-emphasizing single/tandem at the cost of cruise. Iter20 chain step should restore balance.
+
 ### 2026-04-28 — iter18: chain step from iter17 (lr=5e-6)
 
 - **Hypothesis:** chain step at lr=5e-6 cosine to consolidate iter17's gains.
