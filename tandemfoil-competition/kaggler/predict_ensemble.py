@@ -90,10 +90,10 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter45: 12% (34.6453) slightly worse than 10% (34.6427). 10% is optimum for cruise/re.
-    # Now also try iter15-warm 1-2% on single (to add decorrelation there too).
-    single: str = "thorfinnL:0.295,thorfinnM:0.295,thorfinnK:0.195,thorfinnI:0.195,local_iter15_warm:0.02"
-    rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
+    # iter46: iter45 (2% single iter15-warm) gave HUGE gain on single (35.21→35.11). Push to 5%.
+    # Also push iter15-warm on rc to 3-5% (since single is super sensitive, rc might be too).
+    single: str = "thorfinnL:0.285,thorfinnM:0.285,thorfinnK:0.19,thorfinnI:0.19,local_iter15_warm:0.05"
+    rc: str = "thorfinnR:0.475,thorfinnT:0.475,local_iter15_warm:0.05"
     cruise: str = "thorfinnR:0.90,local_iter15_warm:0.10"
     re_rand: str = "thorfinnU:0.90,local_iter15_warm:0.10"
 
