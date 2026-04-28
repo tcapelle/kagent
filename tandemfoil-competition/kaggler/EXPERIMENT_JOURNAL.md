@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20: settle at sb=12 + lr=1e-6
+- **Hypothesis:** iter19 succeeded at sb=12+lr=2e-6 but the extra LR pushes the model around. Drop LR to 1e-6 to consolidate.
+- **Change:** `--lr 1e-6` (lr halved). sb=12 unchanged.
+- **Result:** 7 epochs, best val/avg_surf_p=52.36 at epoch 7 (-0.27 vs iter19). Trajectory: 53.38 → 53.41 → 52.88 → 52.85 → 52.67 → 52.43 → 52.36. Predictions at `askeladd/b3a7883`. W&B: askeladd/iter20-chain-sb12-lr1e6.
+- **Verdict:** kept (-0.27).
+- **Notes:** val_single_in_dist 2.16 → 2.13. iter21: same recipe, see if more headroom.
+
 ### 2026-04-28 — iter19: perturb out of plateau (sb=12 + lr=2e-6)
 - **Hypothesis:** iter18 plateaued at 53.10. Higher LR + more single_boost should push the model out of the local min toward a better one.
 - **Change:** `--single_boost 12.0 --lr 2e-6`. Doubled LR (vs iter18's 1e-6), bumped sb 8 → 12.
