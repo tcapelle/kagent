@@ -90,10 +90,9 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter46: iter45 (2% single iter15-warm) gave HUGE gain on single (35.21→35.11). Push to 5%.
-    # Also push iter15-warm on rc to 3-5% (since single is super sensitive, rc might be too).
-    single: str = "thorfinnL:0.285,thorfinnM:0.285,thorfinnK:0.19,thorfinnI:0.19,local_iter15_warm:0.05"
-    rc: str = "thorfinnR:0.475,thorfinnT:0.475,local_iter15_warm:0.05"
+    # iter47: iter46 (5% single iter15-warm) hit 35.0312 single! Push single to 8%, revert rc to 2%.
+    single: str = "thorfinnL:0.276,thorfinnM:0.276,thorfinnK:0.184,thorfinnI:0.184,local_iter15_warm:0.08"
+    rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
     cruise: str = "thorfinnR:0.90,local_iter15_warm:0.10"
     re_rand: str = "thorfinnU:0.90,local_iter15_warm:0.10"
 
