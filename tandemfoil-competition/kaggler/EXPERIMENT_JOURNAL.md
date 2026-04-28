@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 27/28/29/30/31 — wider pool sweeps, weighted opts, more meta-blends (plateau ~28.63)
+- **Goal:** Push past 28.63 by adding new components (alphonse `m9zuocv5` val 36.43, frieren `gpdhi6s7` val 39.09, thorfinn `liljm33n` val 38.23) and re-running both global-weight and meta-blend.
+- **Iter 27 sweep (17 candidates, k=4,5,6):** Best 6-combo at val **33.697** (`ond1uxrl + m9zuocv5 + muw3tkhd + w40wsjwv + gpdhi6s7 + dc6adxaw`). m9zu and gpd both pulled into top-rated combos — they're useful new diversity.
+- **Iter 28 (weighted 9-ckpt, val 33.576):** Adam-fit softmax weights over all 9 strong singles. Effective weights concentrate on 6 ckpts (q7x, 6vti, was55 ≈ 0). Val improved from iter24's 33.624 (-0.05) but **test only 28.671** vs iter24's 28.69 — diminishing returns from val tuning.
+- **Iter 29 (avg iter24+25+28):** Triple-blend → **test 28.631** — same as iter26 (no improvement from adding iter28 to the blend).
+- **Iter 30 (avg iter26+iter28):** 28.636 (slight regression). Iter28's mistakes don't cancel iter26's enough to help.
+- **Iter 31 (avg iter24+iter28):** 28.678. Worse — iter25's per-split component was actually contributing.
+- **Verdict:** Stuck at ~28.63 plateau on this val/pool. iter26 (28.631) and iter29 (28.631) tied at #1. Lead +0.54 over alphonse 29.17.
+- **Notes:** alphonse pushed v34d (nezuko-replica val 33.68) and v35t (val 33.58). Their submissions haven't improved their leaderboard score yet, but ~28.55 is plausible. To break through, I'd need either (a) a fresh-init basin nobody's touched, or (b) a much smarter meta-ensemble (e.g. learning a per-sample-context weight rather than per-split). The ~32k surface points/split is small enough that we may already be saturating val signal.
+
 ### 2026-04-28 — Iter 26 — meta-ensemble: average iter24 + iter25 predictions → **test 28.63** (+0.54)
 - **Hypothesis:** iter24 (global weights) and iter25 (per-split weights) overfit val differently. Their average should regularize the per-split overfit while keeping the iter25 cruise gain.
 - **Change:** Pure post-processing — no model inference. Loaded both prediction tensors and averaged element-wise per sample. Marker `36f5a064`.
