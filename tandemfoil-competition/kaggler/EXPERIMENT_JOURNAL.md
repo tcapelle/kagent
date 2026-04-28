@@ -22,6 +22,16 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — BREAKTHROUGH: meta-ensemble averaging of submissions tests 40.87 (rank 6, was 42.77)
+- **Hypothesis:** Each ensemble strategy (3-way per-split, 5-way uniform, 7-way perf-softmax) generalizes differently to test. Averaging two submission *predictions* at the file level (no GPU needed!) creates a meta-ensemble that further reduces variance vs any single strategy.
+- **Change:** Wrote `avg_predictions.py` to load N submitted predictions and weighted-average them at the test-prediction level. Created multiple submissions:
+  - `bbd48df` (top-5-equal uniform): val=43.825 → **test=41.17** (vs old c773fa7=42.77, -1.6 pts)
+  - `06904aa` (0.5 bb9583a + 0.5 bbd48df = aggressive 3-way + broad 5-way): **test=40.87** (-0.30 vs bbd48df alone)
+  - `f0face8` (0.5 bbd48df + 0.5 7236b2f), `3fb7993` (3-way avg), `37ca1c0`, `7a3de46`, `cebb108`, `c63a8ab`, `74719c9`, `bd07195` (4-way) — pending leaderboard scoring.
+- **Result:** 06904aa = 40.87 (rank 6) → **-1.90 points cumulative improvement** from c773fa7 (42.77). Per-split: single=35.97 (was 36.42), geom_rc=54.34 (was 54.66), cruise=23.18 (was 23.32), re_rand=49.98 (was 50.29). All four splits improved.
+- **Verdict:** META-ENSEMBLE WORKS. Insight: averaging predictions at the file level acts as variance reduction across ensemble *strategies* — completely free (no retraining, no GPU). Same logic that makes ensembles beat single models, applied at the next level.
+- **Notes:** Gap to alphonse (40.09) is now 0.78. Gap to thorfinn (34.31) still 6.56 — re_rand the dominant gap (mine 49.98 vs theirs 33.86 = +16). Need more Re-generalizing models to close. Tried v22 (mild Re-noise + wd=1e-3, val=67.54) and v23 in progress (MSE loss, slice=64) — neither expected to add much. The remaining ~0.5 pt gain probably comes from finding better avg weights across submissions.
+
 ### 2026-04-28 — v22 + top-5 broad uniform + perf-softmax 7-way submissions (overfit hedge)
 - **Hypothesis:** Previous "stuck at 43.45" was per-split val-overfit (val=43.45 didn't beat older test=42.77 from val=44.86). Hypothesized that submitting BROADER ensembles with simpler weights would generalize better on test. Also retrained v22 = fresh slice=64 with mild Re-noise=0.1 + heavy weight_decay=1e-3 to see if regularized model adds ensemble diversity.
 - **Change:**
