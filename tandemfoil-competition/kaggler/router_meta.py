@@ -95,6 +95,7 @@ SRC = {
     "tanjiro7":   ("tanjiro", "89d6892"),  # 37.33 latest tanjiro
     "tanjiro8":   ("tanjiro", "5219896"),  # 36.31 NEW tanjiro
     "tanjiro9":   ("tanjiro", "5c057b0"),  # 35.33 newer tanjiro
+    "tanjiro10":  ("tanjiro", "be67553"),  # 34.42 NEW tanjiro
     "alphonse8":  ("alphonse", "12bdbc8"),  # 37.09 newer alphonse
     "frieren_5e": ("frieren",  "5eefd0f"),  # 42.37 newer frieren
     "alphonse7":  ("alphonse", "4635caf"),  # 37.68 NEW alphonse
