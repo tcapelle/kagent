@@ -37,6 +37,7 @@ class Config:
     agent: str | None = None
     batch_size: int = 4
     weights: list[float] | None = None  # parallel to checkpoints; defaults to uniform
+    weights_file: str | None = None  # JSON: {split_name: [w1, w2, ...]} for per-split weights
 
 
 cfg = sp.parse(Config)
@@ -54,13 +55,27 @@ for ckpt_path_s in cfg.checkpoints:
     print(f"Loaded {ckpt_path}")
 print(f"Ensemble size: {len(models)}")
 
-if cfg.weights is None:
-    weights_t = torch.full((len(models),), 1.0 / len(models), device=device)
-else:
+per_split_weights = None
+if cfg.weights_file:
+    with open(cfg.weights_file) as f:
+        raw = json.load(f)
+    # Support keys named with or without the "test_" prefix; map to TEST_SPLITS keys.
+    per_split_weights = {}
+    for split in TEST_SPLITS:
+        key = split if split in raw else split.replace("test_", "val_")
+        ws = raw[key]
+        assert len(ws) == len(models), f"weights[{key}] must align with checkpoints"
+        t = torch.tensor(ws, dtype=torch.float32, device=device)
+        per_split_weights[split] = t / t.sum()
+    print(f"Per-split weights loaded from {cfg.weights_file}")
+elif cfg.weights is not None:
     assert len(cfg.weights) == len(models), "weights must align with checkpoints"
     weights_t = torch.tensor(cfg.weights, dtype=torch.float32, device=device)
     weights_t = weights_t / weights_t.sum()
-print(f"Weights: {weights_t.tolist()}")
+    print(f"Weights: {weights_t.tolist()}")
+else:
+    weights_t = torch.full((len(models),), 1.0 / len(models), device=device)
+    print(f"Weights: uniform")
 
 with open(splits_dir / "stats.json") as f:
     stats_data = json.load(f)
@@ -85,6 +100,11 @@ for split in WRITE_ORDER:
     test_files = sorted(test_dir.glob("*.pt"))
     print(f"{split}: {len(test_files)} samples")
 
+    if per_split_weights is not None:
+        w_split = per_split_weights[split]
+    else:
+        w_split = weights_t
+
     predictions = []
     with torch.no_grad():
         for i in tqdm(range(0, len(test_files), cfg.batch_size), desc=split, leave=False):
@@ -103,7 +123,7 @@ for split in WRITE_ORDER:
             for m in models:
                 preds_norm.append(m({"x": x_norm})["preds"])
             stacked = torch.stack(preds_norm, dim=0)  # [K, B, N, 3]
-            avg_norm = (weights_t[:, None, None, None] * stacked).sum(dim=0)
+            avg_norm = (w_split[:, None, None, None] * stacked).sum(dim=0)
             pred = avg_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
