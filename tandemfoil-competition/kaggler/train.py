@@ -207,13 +207,13 @@ MAX_TIMEOUT = 30.0  # minutes
 
 @dataclass
 class Config:
-    lr: float = 4e-6
+    lr: float = 3e-6
     weight_decay: float = 1e-4
     batch_size: int = 4
     surf_weight: float = 25.0
-    surf_p_weight: float = 4.0
-    huber_beta: float = 0.1  # very close to pure L1 (MAE) — direct metric alignment
-    ema_decay: float = 0.999
+    surf_p_weight: float = 5.0
+    huber_beta: float = 0.05
+    ema_decay: float = 0.9995
     rc_single_boost: float = 8.0
     epochs: int = 8
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
