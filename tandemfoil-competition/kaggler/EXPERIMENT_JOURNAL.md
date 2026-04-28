@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18: full mesh + batch=2 chain
+- **Hypothesis:** Eliminate train/test mesh-size mismatch by training on full meshes (no subsample).
+- **Change:** train_max_volume 80k→0, batch 4→2, lr 1.5e-5→1e-5, epochs 16→14. Initial = iter17 (model-zvhh3d5w).
+- **Result:** Trained 9 epochs in 32.7 min (220s/epoch). Best at epoch 1, val/loss=1.4767. Val mae_surf_p avg=42.53. Predictions auto-submitted to commit e2d1721 (not yet scored).
+- **Verdict:** TBD — best val/loss yet, but only one good epoch (the training drifted afterwards). Score pending.
+- **Notes:** Lr=1e-5 may still be too aggressive after a long warm-start chain. Iter19: lower lr further or stay at iter17/16 setup.
+
 ### 2026-04-28 — iter17: chain at vol=80k
 - **Hypothesis:** Continue increasing train subsample for tighter train/test match.
 - **Change:** train_max_volume 50k→80k, lr 2e-5→1.5e-5, epochs 22→16. Initial = iter16 (model-3fsnww54).
