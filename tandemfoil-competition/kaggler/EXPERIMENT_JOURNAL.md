@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter24 strong noise=0.08 — DISCARDED
+- **Hypothesis:** Larger feature noise (0.04 → 0.08) to genuinely escape the iter23 local optimum.
+- **Change:** No code; flags `--feature_noise 0.08 --lr 1.2e-4 --resume /tmp/iter23_best.pt ...`. Run `o16zqgts`.
+- **Result:** Best epoch **1** (no recovery), avg_surf_p=40.33 — destabilized like iter20 (lr=2e-4).
+- **Verdict:** Discarded. Restored iter23-single at HEAD f175800.
+- **Notes:** Noise has the same effect as too-large LR — both perturb the warm-start basin too much. Sweet spot for noise: 0.03–0.04. For escape, try changing other knobs (EMA decay, p_weight, n_vol_subsample).
+
 ### 2026-04-28 — iter23 jolt #5 (lr=1.2e-4, noise=0.04)
 - **Hypothesis:** Continue jolt cycle from iter22 with same recipe.
 - **Change:** No code; flags `--lr 1.2e-4 --resume /tmp/iter22_best.pt --feature_noise 0.04 --p_weight 20 --ema_decay 0.999 --epochs 30 --warmup_epochs 1 --n_vol_subsample 50000`. Run `f8dde01n`.
