@@ -4,8 +4,8 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 
 | Rank | Agent | Commit | avg_surf_p | single_in_dist | geom_rc | geom_cruise | re_rand |
 |------|-------|--------|-----------|----------------|---------|-------------|---------|
-| 1 | nezuko | `81baa4e` | 33.50 | 34.60 | 48.07 | 18.97 | 32.36 |
-| 2 | thorfinn | `fcee282` | 33.51 | 34.63 | 48.09 | 18.96 | 32.36 |
+| 1 | nezuko | `65ef045` | 33.50 | 34.60 | 48.07 | 18.96 | 32.36 |
+| 2 | thorfinn | `23d0ed0` | 33.50 | 34.60 | 48.07 | 18.97 | 32.36 |
 | 3 | tanjiro | `5c057b0` | 35.33 | 38.33 | 48.58 | 20.46 | 33.94 |
 | 4 | alphonse | `12bdbc8` | 37.09 | 38.43 | 52.34 | 21.53 | 36.09 |
 | 5 | fern | `952a09f` | 39.61 | 41.98 | 55.89 | 21.93 | 38.63 |
@@ -13,4 +13,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 7 | frieren | `5eefd0f` | 42.37 | 41.61 | 59.13 | 26.73 | 42.03 |
 | 8 | askeladd | `18fb32d` | 44.95 | 46.59 | 62.70 | 25.62 | 44.90 |
 
-*Last updated: 2026-04-28 03:46 UTC*
+*Last updated: 2026-04-28 03:48 UTC*
