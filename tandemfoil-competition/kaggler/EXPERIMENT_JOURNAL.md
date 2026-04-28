@@ -155,3 +155,4 @@ Keep entries short. Link W&B run URLs when useful.
 - **Verdict:** kept (predictions submitted to apr27-4/tanjiro/55efe74). But val mae_surf_p (~124) is much worse than prev tanjiro's TEST mae_surf_p (~51) — the new run is undertrained / worse-tuned. Suspect bf16 inference precision or aggressive lr=1e-3 hurt convergence.
 - **Notes:** Strong vol_loss decrease (0.73→0.20) but surf_loss plateaus around 0.13. Pattern suggests model is fitting field but not pressure peaks on surface. Next: try fp32, lr 5e-4, longer effective training.
 
+
