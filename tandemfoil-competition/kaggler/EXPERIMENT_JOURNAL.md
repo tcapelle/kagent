@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21: p_weight=12 from scratch (askeladd insight) → val_surf_p=61.23
+- **Hypothesis:** Askeladd's session log mentions p_weight=12-16. Heavy upweight on the only scored channel. Try p_weight=12 from scratch with otherwise-unchanged iter1 recipe.
+- **Change:** `--p_weight 12.0` (4x my baseline). Run `cb77wl3c`.
+- **Result:** epoch 30, val/loss=0.9729, surf_p=**61.23** — much worse than iter1's 53.46. Optimizer gave 0 weight. p_weight=12 from random init makes the model overshoot pressure and ignore Ux/Uy structure that helps generalize.
+- **Verdict:** kept; lesson — high p_weight only works in late-stage chain, not from scratch. Submitted at `ceb4b1e`.
+
 ### 2026-04-28 — iter20: warm-chain askeladd-arch (bs=2, full mesh, 7 epochs) → val_surf_p=58.22
 - **Hypothesis:** iter19 (256/6/8 mlp=4) was undertrained at 64.78. Apply the proven chain recipe.
 - **Change:** Warm-start iter19, bs=2, train_subsample=0, lr=2e-5, p_weight=3, 7 epochs (limited by 4.5min/epoch with this big arch). Run `ww9506mn`.
