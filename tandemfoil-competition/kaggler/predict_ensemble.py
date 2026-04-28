@@ -93,13 +93,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter59: thorfinn 79f342d has NEW best re=34.2657. Route to it.
-    # Per-split bests: single=V (35.0312), rc=my (48.5674), cruise=my (20.3564), re=X (34.2657).
-    # Floor: (35.0312 + 48.5674 + 20.3564 + 34.2657)/4 = 34.5552
+    # iter60: try 50/50 W+X for re (both at floor 34.27, possible decorrelation gain).
     single: str = "thorfinnV:1.0"
     rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
     cruise: str = "thorfinnV:0.95,local_iter15_warm:0.05"
-    re_rand: str = "thorfinnX:1.0"
+    re_rand: str = "thorfinnW:0.5,thorfinnX:0.5"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
