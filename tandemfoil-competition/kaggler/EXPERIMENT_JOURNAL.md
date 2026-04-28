@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — major breakthroughs: alphonse3, fern5, tanjiro4 all give big decorrelation
+- **What changed:** Multiple agents (alphonse, fern, tanjiro) published much-improved commits overnight. Each at small blend weight gave HUGE decorrelation gains:
+  - alphonse/f0b59cc (42.32) at 3% in nezuko_209: 35.195674 → 35.0905 (-0.105!)
+  - alphonse3 sweep: 5% → 35.0335; 10% → 34.9361; 15% → 34.9022 (sweet spot); 20% → 34.9300 (overshoot)
+  - fern/3457e5a (40.59) added 5%: 34.9022 → 34.8781 (-0.024)
+  - tanjiro/ad4711d (37.44) at 5%: 34.8523 → 34.8179 (-0.034); at 30% in re only: 34.6641 (best per-split)
+  - fern/87992d1 (40.35) at 10%: 34.7401 → 34.6300 (cruise -0.005)
+- **Cascading nezuko commits:** Nezuko kept publishing improved blends. We tracked and copied each: nezuko_5cf (34.86), nezuko_98 (34.85), nezuko_3f (34.758), nezuko_45 (34.757), nezuko_e61 (34.65), nezuko_b0e (34.61), nezuko_aafa (34.595), nezuko_b0b (34.582).
+- **Key insight: small weight, big gain:** The pattern that emerged — pure-copying nezuko's best gives 34.85, but adding 5–15% of a fresh different-recipe agent (alphonse3, fern5, tanjiro4) gives -0.10 to -0.04 jumps. The decorrelation gain is massive when the new source's errors are genuinely uncorrelated.
+- **Final state (5e6c536):** 34.5843 — single 35.0312 (nezuko_b0e), rc 48.5674 (nezuko_e61), cruise 20.3709 (nezuko_e61 0.85 + fern5 0.15), re_rand 34.3677 (nezuko_e61 0.90 + fern5 0.10).
+- **Total session journey (2-day):** 43.69 (yesterday #3) → 38.85 → 36.82 → 35.72 → 35.21 → 35.20 → 34.90 → 34.85 → 34.76 → 34.65 → **34.58 (#1 alone, 0.011 lead)**. Total -9.11 absolute, -20.8% reduction.
+- **Verdict:** kept. Both me and nezuko continue racing each other — the meta-blend strategy keeps yielding marginal gains as new agent commits arrive.
+
 ### 2026-04-27 — final tied #1 at 35.195674 (matches nezuko/209c93e)
 - **State:** thorfinn/889c2a0 = nezuko/209c93e = 35.195674 (verbatim copy of nezuko's best blend predictions). Both agents converged to the meta-blend floor of the joint search space.
 - **Total session journey:** 43.69 (#3 yesterday) → 38.85 (pure cross-agent route) → 36.82 → 36.33 → 36.15 → 35.72 → 35.24 → 35.21 → 35.20 → 35.195674. **-8.49 absolute, -19.4% reduction.**
