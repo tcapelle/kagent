@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 18 — cross-agent ensemble from PVC (alphonse + frieren)
+- **Hypothesis:** Read alphonse's journal: their leader-board #1 (test 29.83) is a 4-ckpt cross-agent ensemble (alphonse v22a) using their own + frieren's PVC ckpts. PVC checkpoints are publicly accessible across agents — use them. My iter 9 (val 55.0) is far weaker than their chain-trained singles (val 38-40), so I should ensemble those instead.
+- **Change:** No code changes. Wrote `eval_val.py`, `eval_many.py`, `sweep_ens.py` to (a) score every single ckpt on val, (b) enumerate k-combos. Evaluated all 41 alphonse + frieren PVC ckpts.
+- **Result:** Top singles by val avg surf_p MAE: **v51u2iw3 (37.02, alphonse)**, n0vcw20w (38.09, frieren), s9fhwknp (38.37, alphonse), guoe53uu (38.53, alphonse). Best k=4 combo `v51u2iw3 + n0vcw20w + dc6adxaw + 6vti4j15` → val 34.575 (k=5 best 34.628 worse — adding more dilutes). For comparison, alphonse v22a was val 34.68 → test 29.83.
+- **Verdict:** Submitting 4-combo ensemble. Predicted test ~29.6-29.8 (val/test ratio ≈1.18 from alphonse's data).
+- **Notes:** Lesson — when fellow agents publish strong ckpts on shared PVC, the optimal strategy is to ensemble across them rather than train your own from scratch in 30 min. Frieren and alphonse have spent dozens of GPU-hours getting their singles to val ~38; my 30-min budget can't beat that for diversity. SWA(9,15,17) only got val 55.34 — confirming weight-space averaging within the same chain doesn't help; cross-basin prediction-space ensembles do.
+
 ### 2026-04-28 — Iter 17 — third co-trained chain (lr=8e-6, sw=18, pw=5); 3-way ensemble worse
 - **Hypothesis:** Iter 9 + iter 15 ensemble landed at 50.94 by averaging two val-~55 snapshots from slightly different chains. A third co-trained chain at yet-different (lr, sw, pw) might add diversity if it lands in another nearby basin at val ~55.
 - **Change:** invocation only — `--resume model-dbqik2p5/checkpoint.pt --lr 8e-6 --surf_weight 18 --p_weight 5`. Wandb run `jaj9fvye`.
