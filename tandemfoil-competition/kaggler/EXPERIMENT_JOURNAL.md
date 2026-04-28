@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter24: polish iter23 (lr=5e-6, pw=20, sw=20)
+- **Hypothesis:** Standard polish.
+- **Change:** Resume iter23; --lr 5e-6 (other unchanged).
+- **Result:** **surf_p 39.75 → 39.35** (~1.0%, best ep8). W&B `bk30a2pi`.
+- **Verdict:** Kept (best). Now 6.6% below frieren's 42.11.
+- **Notes:** iter25 10th warm-restart with pw=22, sw=22 (+10% from iter23).
+
 ### 2026-04-28 — iter23: 9th warm-restart (lr=3e-5, pw=20, sw=20)
 - **Hypothesis:** Continue cycling. Bump pw and sw 18→20.
 - **Change:** Resume iter22; --lr 3e-5 --p_weight 20 --surf_weight 20.
