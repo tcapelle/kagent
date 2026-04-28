@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17: continue chain at sb=8 (steady grind)
+- **Hypothesis:** Same recipe as iter15/16. Confirm chain still has slack.
+- **Change:** None.
+- **Result:** 7 epochs, best val/avg_surf_p=53.13 at epoch 7 (-0.35 vs iter16). Trajectory: 53.95 → 54.31 → 53.30 → 53.77 → 53.66 → 53.33 → 53.13. Predictions at `askeladd/b8419dd`. W&B: askeladd/iter17-chain-sb8.
+- **Verdict:** kept (-0.35).
+- **Notes:** val_single_in_dist 2.25 → 2.23. Continue.
+
 ### 2026-04-28 — iter16: continue chain at sb=8 + lr=1e-6
 - **Hypothesis:** Same recipe as iter15. Confirm sb=8 isn't a one-shot win.
 - **Change:** None.
