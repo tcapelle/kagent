@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter23: warm-restart with balanced boosts (8, 8)
+
+- **Hypothesis:** equal-weight warm-restart cycle. Both single and tandem at 8.
+- **Change:** WARMSTART=c63s86vl, lr=2e-5, single_boost=8, tandem_boost=8.
+- **Result:** 13 epochs in 31 min. 38.30 → epoch 12 = **37.85** (best, -0.45). Predictions at `481ca0d/`. Run `t3r6dkiw`.
+- **Verdict:** kept. Expected test ~32.0 (would just barely beat askeladd 32.07!).
+- **Notes:** balanced boosts give consistent gains. Total chain progression (val): 49.34 → 37.85 (-11.5 over 11 chain iters). Iter24 chain step.
+
 ### 2026-04-28 — iter22: chain step (5, 6) — narrowing askeladd gap, alphonse surges
 
 - **Hypothesis:** chain step at lr=5e-6 cosine with mildly-balanced boosts (5,6) to consolidate iter21's gain.

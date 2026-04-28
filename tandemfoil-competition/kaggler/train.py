@@ -230,13 +230,13 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter23: warm-restart from iter22 best (c63s86vl, val=38.30) with bumped boosts.
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-c63s86vl/checkpoint.pt"
+# Iter24: chain step from iter23 best (t3r6dkiw, val=37.85), low LR.
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-t3r6dkiw/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 2e-5
+    lr: float = 5e-6
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
@@ -248,8 +248,8 @@ class Config:
     l2_weight: float = 1.0
     p_weight: float = 5.0
     ema_decay: float = 0.99
-    single_boost: float = 8.0
-    tandem_boost: float = 8.0
+    single_boost: float = 6.0
+    tandem_boost: float = 6.0
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
