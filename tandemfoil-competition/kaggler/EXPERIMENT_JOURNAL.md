@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21 Re-aware pressure normalization — SECOND BIG WIN
+
+- **Hypothesis:** The dominant remaining error was on `val_re_rand` and `geom_camber_rc` (test 83.85 and 77.93 vs leader 33.65/45.02). Pressure scales roughly with `Re^k` (k between 1 and 2). Dividing pressure targets by `(Re/Re_ref)^k` should remove this systematic Re-dependent variance, leaving the model to predict a Re-invariant pressure that we then multiply back at inference.
+- **Change:**
+  - `train.py`: compute per-sample `Re_factor = exp(re_norm_k * (log_Re - re_ref_log))` from raw `x[..., 13]` *before* input normalization. Divide pressure target by `Re_factor` for loss; multiply prediction by `Re_factor` for physical-space MAE.
+  - `predict.py`: same `Re_factor` post-multiplication on pressure (channel 2).
+  - CLI: `--re_norm_k 1.0 --re_ref_log 14.58 --num_pos_freqs 16 --lr 1e-4 --constant_lr --epochs 9 --save_per_epoch`. Resumed iter20 ckpt; the model needed to relearn its target distribution but converged in 9 epochs.
+- **Result:** Best epoch 9 (EMA) mean=**55.12** (-10.5% vs iter20 61.61). Per-split: single=49.43 (-5.8%), **geom_camber_rc=71.00 (-15.3%)**, geom_cruise=43.02 (-4.6%), **re_rand=57.03 (-12.2%)**. Submission `apr27/fern/d990439`.
+- **Verdict:** kept — biggest single-iteration improvement of the entire run. **All four splits improved**, and the two hardest splits (geom_camber_rc and re_rand) improved the most, exactly as the hypothesis predicted.
+- **Notes:** Trajectory was wobbly early (epochs 2-3 went UP) because the model needed to relearn its output target distribution. By epoch 7 it had clearly latched on and was descending fast. The post-training SWA (last 4) was 56.19 — worse than best, because the trajectory was still descending fast. Iter22 continues the chain at constant lr=5e-5.
+
+### 2026-04-27 — iter17-iter20 Fourier-frequency exploration
+
+- **iter17 (num_pos_freqs 6→10, lr=1e-4 cosine warmup):** 62.56 (-1.95% over iter16 63.80). New high-frequency capacity broke the Fourier-6 plateau. Submission `apr27/fern/e242516`. Test scored 60.03 — fern landed at #8.
+- **iter18 (continue lr=5e-5):** 61.91 (-1%).
+- **iter19 (continue lr=3e-5):** 61.65 (-0.4%).
+- **iter20 (num_pos_freqs 10→16, lr=1e-4):** 61.61 (no real gain). The 10-frequency representation was already saturated for this problem; more frequencies didn't add useful signal.
+- **Lesson:** there's a sweet spot for Fourier frequencies; doubling didn't help. Iterating chain at low lr keeps yielding ~1% per iter for ~3-4 iters then plateaus.
+
 ### 2026-04-27 — iter13 +Fourier features (NeRF-style) — BIG WIN
 
 - **Hypothesis:** The plateau at ~71 looked like a basin the chain couldn't leave with optimization-only changes. NeRF-style positional encoding on `(x, z, saf)` should give the model high-frequency capacity for the turbulent-flow patterns that vary on small spatial scales — and thorfinn's run config showed they used `num_pos_freqs=10` for their top result.
