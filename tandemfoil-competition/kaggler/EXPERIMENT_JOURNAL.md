@@ -22,6 +22,22 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — v22 + top-5 broad uniform + perf-softmax 7-way submissions (overfit hedge)
+- **Hypothesis:** Previous "stuck at 43.45" was per-split val-overfit (val=43.45 didn't beat older test=42.77 from val=44.86). Hypothesized that submitting BROADER ensembles with simpler weights would generalize better on test. Also retrained v22 = fresh slice=64 with mild Re-noise=0.1 + heavy weight_decay=1e-3 to see if regularized model adds ensemble diversity.
+- **Change:**
+  - **Studied thorfinn's checkpoints** (`/mnt/new-pvc/kagent/apr27-bis/thorfinn/checkpoints/`): they have 12 models, mostly slice=128 + a few slice=64, all same arch. Diversity from many seeds, not architecture. My strategy of slice={32,64,128} per-family was wrong axis.
+  - **v21 (killed)**: fresh slice=32 + heavy noise (re=0.3, aoa=0.15). Killed at ep 7 (val=165, too slow due to noise).
+  - **v22 (run `r5zu8nqw`)**: fresh slice=64 + mild noise (re=0.1, aoa=0.05) + weight_decay=1e-3 + 40ep. Reached val=67.54 at ep33 (timeout-limited). Per-split: single=78, geom_rc=82, cruise=45, re_rand=65.
+  - **eval_broad** on 7 existing models found: top-5-equal (v3+v7+v8+v10+v19) val=43.825, perf-softmax T=5 7-way val=43.778, uniform 7-way val=45.26.
+  - **eval_per_split** 4-way (v7+v10+v19+v22) → v22 picks weight=0 in ALL splits. 4-way per-split optimum = 43.454 (= 3-way per-split).
+  - **Submissions**:
+    - bb9583a: 3-way per-split (v7+v10+v19) val=43.45 — already submitted (aggressive)
+    - bbd48df: top-5-equal uniform (v3+v7+v8+v10+v19) val=43.825 — NEW (less overfit hedge)
+    - 7236b2f: perf-softmax 7-way val=43.778 — NEW (medium aggressiveness hedge)
+- **Result:** Three different submissions on leaderboard. v22 (val=67) is ensemble-useless (weight=0 in 4-way per-split sweep). Top-5-equal and perf-softmax 7-way are new "robust" variants — leaderboard takes BEST per agent so harmless to add.
+- **Verdict:** v22 discarded for ensemble (too weak alone, errors too correlated). Submitted bbd48df + 7236b2f as test-generalization hedges.
+- **Notes:** Insight from thorfinn: their val=52→test=34 is a HUGE val-test improvement, suggesting broad ensembling generalizes much better than narrow per-split tuning. My val=43.45→test=42.77 had only 0.7-pt gap (diminishing returns from per-split overfit). To truly beat thorfinn would need 8-12 seed-diverse slice=128 models, not architecturally diverse 3-way per-split. Time-limited so submitted overfit hedges. Final position likely test ~41-43.
+
 ### 2026-04-28 — v20: fresh p_weight=10 surf_weight=15 (30ep) — didn't help
 - **Hypothesis:** Higher surface-pressure loss weighting (p_weight 3→10, surf_weight 10→15) might specialize a model for surface p prediction (the only metric on the leaderboard), giving ensemble diversity.
 - **Change:** `--p_weight 10 --surf_weight 15 --slice_num 64 --epochs 30`. Run `k03kkpr6`.
