@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — 🥉 RANK 6 with 42.73 — overtook edward (42.77)
+- **bd5708c** = 8-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21} weights 0.10/0.10/0.04/0.08/0.16/0.16/0.16/0.20.
+- **iter19+iter20+iter21**: cruise_boost=2 family. iter20 (chain iter19): val 53.27 with **best rc=1.56 and rer=1.15 val_loss**. iter21 (chain iter20 lr=5e-6): val 52.79.
+- Replacing iter20 with iter21 in the 8-way moved score 42.80 → **42.73** (-0.07). Per-split: sing=42.94 rc=59.28 cr=26.63 rer=42.07.
+- Major ranking jump as fern, alphonse improved: top 5 now thorfinn=34.37, nezuko=34.37, tanjiro=37.44, alphonse=40.09, fern=40.35. I'm at #6 with 42.73.
+
 ### 2026-04-27 — End-of-session summary
 - **Best score: 42.95 (`1049d44`)** — 7-way ensemble of {iter4, iter6, iter9, iter13, iter15, iter16, iter17} weights 0.13/0.13/0.04/0.10/0.20/0.20/0.20.
 - **Trajectory:** iter1 baseline (val 81) → iter2 chain breakthrough (val 54) → first ensemble #1 at 45.21 → field caught up → 256-hidden iter14 leap (val 57 from-scratch) → final 7-way 42.95 rank 7.
