@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18: chain sb=8 (plateau)
+- **Hypothesis:** Continue.
+- **Change:** None.
+- **Result:** 7 epochs, best val/avg_surf_p=53.10 at epoch 6 (-0.03 vs iter17). Trajectory: 53.61 → 53.81 → 53.72 → 53.84 → 53.52 → 53.10 → 53.16. Predictions at `askeladd/073b149`. W&B: askeladd/iter18-chain-sb8.
+- **Verdict:** kept (-0.03). Plateau at sb=8/lr=1e-6.
+- **Notes:** Test scores caught up: iter17 (b8419dd) is at test 46.40 currently rank 8. Top at 34.32 — about 12 surf_p gap. iter19: perturb with sb=12 + lr=2e-6 to escape plateau.
+
 ### 2026-04-28 — iter17: continue chain at sb=8 (steady grind)
 - **Hypothesis:** Same recipe as iter15/16. Confirm chain still has slack.
 - **Change:** None.
