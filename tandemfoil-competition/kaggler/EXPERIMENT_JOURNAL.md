@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — narrow-deep-128x10 (kept as ensemble member)
+- **Hypothesis:** small/narrow/deep architecture (n_hidden 192→128, n_layers 8→10, n_head 6→4, slice_num 128 same) with same training recipe should produce diverse errors and improve the ensemble. The new shape: ~half the params, faster epochs.
+- **Change:** model_config: n_hidden=128, n_layers=10, n_head=4. Same loss, regularization, subsampling.
+- **Result:** standalone val=101.01 (worse than iter8 alone, expected). 39 epochs in 30 min (46s/epoch). BUT ensembled with iter8: weights 0.75/0.25 → val 92.88, beating prior 3-model best of 93.13. Plateau around 92.88-92.90 across nearby ratios. Predictions saved at `apr27-4/fern/ebd090c`.
+- **Verdict:** kept (commit `ebd090c`). 0.25 improvement over the 3-model ensemble; cumulative ~0.8% better than iter8 alone (93.62 → 92.88).
+- **Notes:** narrow-deep gives genuine error decorrelation that bigger/different-recipe models couldn't. The pattern: ensemble diversity from architecture difference > ensemble diversity from loss tweaks. Best ensemble is iter8 (193k params) + iter18 (115k params) at 0.75/0.25.
+
 ### 2026-04-28 — noise04 (DISCARDED)
 - **Hypothesis:** input_noise=0.04 (between successful 0.03 and failed 0.05) might give a model that's diverse from iter8 in error pattern, useful as a 4th ensemble member.
 - **Change:** `input_noise=0.04`, ran fresh training.
