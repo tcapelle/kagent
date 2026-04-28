@@ -75,11 +75,36 @@ class Config:
     huber_beta: float = 0.05  # small beta -> nearly pure L1 (metric is L1 MAE);
     # quadratic only in tiny region near zero for gradient stability
     log_pressure: bool = True  # predict signed_log of normalized pressure
+    ema_decay: float = 0.995  # exponential moving average; eval and predict on EMA
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
     agent: str | None = None
     debug: bool = False
+
+
+class EMA:
+    """Exponential moving average of model parameters.
+    Eval on the EMA copy — usually 1-3% smoother val/test errors with no extra train time."""
+
+    def __init__(self, model, decay: float):
+        self.decay = decay
+        self.shadow = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
+    def update(self, model):
+        with torch.no_grad():
+            for k, v in model.state_dict().items():
+                if torch.is_floating_point(v):
+                    self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1 - self.decay)
+                else:
+                    self.shadow[k].copy_(v)
+
+    def apply_to(self, model):
+        self.backup = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        model.load_state_dict(self.shadow)
+
+    def restore(self, model):
+        model.load_state_dict(self.backup)
 
 
 def signed_log(x):
@@ -138,6 +163,7 @@ model = Transolver(**model_config).to(device)
 n_params = sum(p.numel() for p in model.parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+ema = EMA(model, decay=cfg.ema_decay) if cfg.ema_decay > 0 else None
 
 # Per-channel weights (Ux, Uy, p) — emphasize pressure since the leaderboard
 # ranks by surface-pressure MAE.
@@ -222,6 +248,8 @@ for epoch in range(MAX_EPOCHS):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
+        if ema is not None:
+            ema.update(model)
         global_step += 1
         wandb.log({"train/loss": loss.item(), "global_step": global_step})
 
@@ -249,7 +277,9 @@ for epoch in range(MAX_EPOCHS):
         })
         continue
 
-    # --- Validate ---
+    # --- Validate (on EMA copy if available) ---
+    if ema is not None:
+        ema.apply_to(model)
     model.eval()
     val_loss_sum = 0.0
     split_metrics: dict[str, dict] = {}
@@ -346,8 +376,14 @@ for epoch in range(MAX_EPOCHS):
         best_metrics = {"epoch": epoch + 1, "val_loss": mean_val_loss, "surf_p_avg": surf_p_avg}
         for sm in split_metrics.values():
             best_metrics.update({f"best_{k}": v for k, v in sm.items()})
+        # Save EMA weights (already loaded into model for val); they are what we
+        # want to submit at inference time.
         torch.save(model.state_dict(), model_path)
         tag = " *"
+
+    # Restore the trainable (non-EMA) weights so optimization continues normally.
+    if ema is not None:
+        ema.restore(model)
 
     peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
     split_summary = "  ".join(
