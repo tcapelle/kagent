@@ -110,11 +110,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter83: try 0.7*OO + 0.3*NN on cruise for decorrelation (worst-case +0.0041, may give -0.005+)
-    # Other splits: s/rc=LL, re=NN
+    # iter84: revert iter83 blend (decorrelation didn't materialize). Floor route s=LL rc=LL c=OO re=NN.
+    # Avg = 34.3200
     single: str = "thorfinnLL:1.0"
     rc: str = "thorfinnLL:1.0"
-    cruise: str = "thorfinnOO:0.7,thorfinnNN:0.3"
+    cruise: str = "thorfinnOO:1.0"
     re_rand: str = "thorfinnNN:1.0"
 
 
