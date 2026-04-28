@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17: chain lr=1e-6 (continuing post-restart descent)
+- **Hypothesis:** Continue chain at lr=1e-6 (lower than iter16's 2e-6) to refine.
+- **Change:** `--lr 1e-6 --subsample_n 100000 --batch_size 2 --surf_weight 30 --pw 10 --L1`. No code change.
+- **Result:** Best E9, avg_p = **41.89** (from 42.30, -1.0%). single=41.60, rc=57.12, cruise=26.00, re_rand=42.86. W&B `iusk0t3t`.
+- **Verdict:** Kept. Chain is extracting more value post-restart than it ever did before. Total post-restart: 44.02 → 43.18 → 42.30 → 41.89.
+- **Notes:** Leaderboard now: tanjiro=35.33 (#3) vs nezuko/thorfinn tied at 33.95 (#1). Gap closed from 3.23 → 1.38 in two iters. Expected test ~34.9 from iter17 val.
+
+### 2026-04-28 — iter16: chain lr=2e-6 (post-restart consolidation)
+- **Hypothesis:** After iter15's warm-restart broke the plateau at 43.18, return to lower lr to consolidate gains.
+- **Change:** `--lr 2e-6 --subsample_n 100000 --batch_size 2`. Same other config as iter15.
+- **Result:** Best E9, avg_p = **42.30** (from 43.18, -2.0%). Per-split: single=41.95, rc=57.69, cruise=26.29, re_rand=43.28. W&B `jzgbxhdx`.
+- **Verdict:** Kept. Strong gain confirms iter15 wasn't a fluke — the new region of weight space has further descent room.
+
 ### 2026-04-28 — iter15: WARM-RESTART lr=1e-5 (escape plateau!)
 - **Hypothesis:** "Final" plateau at 44.02 was a local minimum, not the architectural ceiling. A warm-restart at much higher lr should kick the model into a new region. Inspired by SGDR / cyclic LR — annealing then re-warming has historically broken plateaus on similar problems.
 - **Change:** `--lr 1e-5` (100× higher than iter13/14) `--warmup_frac 0.1` `--subsample_n 100000 --batch_size 2`. No code change.
