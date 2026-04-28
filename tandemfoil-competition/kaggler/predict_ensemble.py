@@ -76,7 +76,8 @@ SRC = {
     "thorfinnDD": ("thorfinn", "fac3903"),  # avg 34.4751 — re=33.9668
     "thorfinnEE": ("thorfinn", "48f200f"),  # avg 34.4274 — re=33.9417
     "thorfinnFF": ("thorfinn", "41a40a5"),  # avg 34.4229 — re=33.9237
-    "thorfinnGG": ("thorfinn", "aa4e849"),  # avg 34.4214 — NEW best re (33.9177)
+    "thorfinnGG": ("thorfinn", "aa4e849"),  # avg 34.4214 — re=33.9177
+    "thorfinnHH": ("thorfinn", "755b974"),  # avg 34.4002 — NEW best rc (48.4801), cruise (20.2509)!
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -102,11 +103,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter75: aa4e849 has new best re=33.9177. Route to it.
-    # Floor: (34.9520 + 48.5130 + 20.3030 + 33.9177)/4 = 34.4214
+    # iter76: 755b974 has best rc=48.4801, cruise=20.2509. Route per-split-best.
+    # Floor: (34.9520 + 48.4801 + 20.2509 + 33.9177)/4 = 34.4002
     single: str = "thorfinnCC:1.0"
-    rc: str = "thorfinnBB:1.0"
-    cruise: str = "thorfinnCC:1.0"
+    rc: str = "thorfinnHH:1.0"
+    cruise: str = "thorfinnHH:1.0"
     re_rand: str = "thorfinnGG:1.0"
 
 
