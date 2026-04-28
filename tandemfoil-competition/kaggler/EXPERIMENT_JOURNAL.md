@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Run conclusion — final 42.73 (rank 7 at end of run)
+- **Final best:** `bd5708c` = 8-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21} weights 0.10/0.10/0.04/0.08/0.16/0.16/0.16/0.20.
+- Per-split: sing=42.94 rc=59.28 cruise=26.63 re_rand=42.07.
+- Held rank 6 briefly at 42.73 ahead of edward (42.77) but edward improved to 41.17 by run end → final rank 7.
+- iter22 (surf_weight=20 from-scratch): val 62 — too aggressive surf weighting hurts vol learning.
+- 22 iterations total. Architecture progression: 192-hidden chains (iter1-13) → 256-hidden + boosts (iter14-21) gave the biggest leap.
+
 ### 2026-04-28 — 🥉 RANK 6 with 42.73 — overtook edward (42.77)
 - **bd5708c** = 8-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21} weights 0.10/0.10/0.04/0.08/0.16/0.16/0.16/0.20.
 - **iter19+iter20+iter21**: cruise_boost=2 family. iter20 (chain iter19): val 53.27 with **best rc=1.56 and rer=1.15 val_loss**. iter21 (chain iter20 lr=5e-6): val 52.79.
