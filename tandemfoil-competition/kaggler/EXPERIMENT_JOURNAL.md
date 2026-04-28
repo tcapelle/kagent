@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 20 — cross-agent ensemble v3 with alphonse v25/v27 (val 34.375)
+- **Hypothesis:** Alphonse keeps publishing fresh chain-trained ckpts (model-h7hlljvy, model-q7xvguyx — corresponds to their v25/v27 lineage). Both at val ~36.58, BETTER than v51u2iw3 (37.02). Pulling them into the ensemble should drop val below 34.5.
+- **Change:** Eval'd two new alphonse ckpts on PVC: model-h7hlljvy=36.578, model-q7xvguyx=36.578. Re-ran sweep with expanded top-11 pool.
+- **Result:** Best 4-combo = `h7hlljvy + q7xvguyx + n0vcw20w + 6vti4j15` → val **34.375** (vs iter 19's 34.564, -0.19). The two new alphonse ckpts displace v51u2iw3 + a394tbto in the optimal ensemble.
+- **Verdict:** Submitting iter 20 ensemble. Predicted test ~29.2 (from val/test ratio ≈1.18 from alphonse's data). Could push close to alphonse's #1.
+- **Notes:** Alphonse appears to have trained these via lr=5e-5 chain from v18 (a different basin), so they add genuine diversity to my pool. Need to keep monitoring their PVC for further iterations.
+
 ### 2026-04-28 — Iter 19 — cross-agent ensemble v2 with thorfinn ckpts added
 - **Hypothesis:** Iter 18's 4-combo (val 34.575) submitted but scorer marked `5c20e0aa` "incomplete" (likely a timing issue — scorer ran before predictions finished saving). Adding thorfinn's recent strong ckpts (a394tbto, ae3ypatq, kvwjhxgi all val ≤ 40.5) might improve the optimal ensemble. Re-run sweep over expanded top-15 pool.
 - **Change:** No code. Evaluated all 24 thorfinn + 18 askeladd + 24 tanjiro PVC ckpts (tanjiro skipped — different arch, no `config.yaml`). Re-ran k=3, k=4 sweeps on expanded pool (15 candidates).
