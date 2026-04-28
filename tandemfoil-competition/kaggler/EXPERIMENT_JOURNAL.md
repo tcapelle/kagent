@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter19: SECOND warm-restart lr=5e-6
+- **Hypothesis:** First restart (iter15 lr=1e-5) worked. Try a smaller restart (5e-6) closer to optimum to find another descent direction.
+- **Change:** `--lr 5e-6 --warmup_frac 0.05`. Same other config.
+- **Result:** Best E9, avg_p = **41.08** (from 41.76, **-1.6%**). single=40.78, rc=56.48, cruise=25.11, re_rand=41.93. W&B `0kiho7o6`.
+- **Verdict:** Kept. Big confirmation that warm-restart cycling is the technique. Each cycle: high-lr restart unlocks new region, low-lr chain refines, repeat.
+- **Notes:** Expected test ~34.1 → very close to nezuko/thorfinn 33.95. The geom_camber_rc split improved most (57.12 → 56.48). **Strategy:** continue cycle: chain at lr=1e-6 → 5e-7 → restart again.
+
+### 2026-04-28 — iter18: chain lr=5e-7 (cycle 1 plateau)
+- **Hypothesis:** Continue chain at lr=5e-7 to keep extracting from cycle-1.
+- **Result:** Best E7, avg_p = **41.76** (from 41.89, -0.3%). W&B `5oiw10dj`. Cycle 1 plateaued.
+- **Verdict:** Kept. Plateau in cycle 1 confirmed → trigger restart in iter19.
+
 ### 2026-04-28 — iter17: chain lr=1e-6 (continuing post-restart descent)
 - **Hypothesis:** Continue chain at lr=1e-6 (lower than iter16's 2e-6) to refine.
 - **Change:** `--lr 1e-6 --subsample_n 100000 --batch_size 2 --surf_weight 30 --pw 10 --L1`. No code change.
