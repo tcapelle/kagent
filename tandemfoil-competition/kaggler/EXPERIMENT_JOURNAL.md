@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter13/iter14: chain sub200k/sub240k (final plateau)
+- **Hypothesis:** Push subsample even larger to see if gradient quality improvements continue.
+- **Change:** iter13 `--subsample_n 200000 --lr 1e-7`; iter14 `--subsample_n 240000 --lr 1e-7` (max possible — most train samples are <240k anyway).
+- **Result:**
+  - iter13: best E1, avg_p = **44.02** (-0.05% vs 44.04). W&B `udnnslqr`.
+  - iter14: best E1, avg_p = **44.03** (essentially identical). W&B `ykdn010h`. 6 epochs in 28.5 min.
+- **Verdict:** Kept. Both iters peak at E1, indicating the loaded ckpt is already at the optimum the current arch+data can reach. Per-epoch fluctuations are noise (<0.05).
+- **Notes:** Tested 4-way ensemble of iter11-14 = 44.04 (worse than iter13 single). Tested 4-way **model soup** (weight averaging) of iter11-14 = 44.05 (also worse). Same-lineage ckpts are too correlated for either method to help. **Stopping iteration.** Final val=44.02, expected test ~37 (~3 above tied leaders nezuko/thorfinn at 34.58). Architecture (Transolver h=384 L=8 slice=64 ~9M params) has reached its capacity given the 30-min training cap and chain-training schedule.
+
 ### 2026-04-28 — iter12: chain sub150k bs=2 lr=2e-7
 - **Hypothesis:** Bigger subsample paid off in iter11. Push to 150k pts/sample for higher-quality gradients.
 - **Change:** `--lr 2e-7 --warmup_frac 0.0 --surf_p_weight 10.0 --surf_weight 30.0 --loss_beta 0.0 --subsample_n 150000 --batch_size 2`. Same recipe, bigger sample.
