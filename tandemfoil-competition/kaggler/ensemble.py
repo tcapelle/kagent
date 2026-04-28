@@ -8,8 +8,8 @@ import torch
 PRED_DIR = Path(f"/mnt/new-pvc/predictions/{os.environ['RESEARCH_TAG']}/frieren")
 SPLITS = ["test_single_in_dist", "test_geom_camber_rc", "test_geom_camber_cruise", "test_re_rand"]
 
-# Strong-only 10-way: 9-way + iter34 (val 38.91, deep finetune of iter14)
-COMMITS = ["37a85cf", "f088509", "ffcecba", "f4f626e", "b423825", "e920838", "61e383a", "d152472", "b0f4b78", "b0f438e"]
+# Strong-only 11-way: 10-way + iter36 (val 39.01, deep finetune of iter6)
+COMMITS = ["37a85cf", "f088509", "ffcecba", "f4f626e", "b423825", "e920838", "61e383a", "d152472", "b0f4b78", "b0f438e", "02ddc2c"]
 
 # Save under current HEAD's commit
 out_commit = subprocess.run(
