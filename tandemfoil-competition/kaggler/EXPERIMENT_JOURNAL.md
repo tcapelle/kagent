@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21 gentler jolt (lr=1.2e-4, noise=0.03)
+- **Hypothesis:** iter20 (lr=2e-4) destabilized warm-start. Sweet spot for jolt is 1.0–1.5e-4. Try 1.2e-4 with milder noise (0.03 instead of 0.05) from iter19.
+- **Change:** No code; flags `--lr 1.2e-4 --resume /tmp/iter19_best.pt --feature_noise 0.03 --p_weight 20 --ema_decay 0.999 --epochs 30 --warmup_epochs 1 --n_vol_subsample 50000`. Run `3mdzcqrx`.
+- **Result:** Best epoch 24/30, val/loss=0.8158, **avg_surf_p=41.05** (val splits: in_dist=0.83, geom_rc=1.26, geom_cruise=0.25, re_rand=0.93). 
+- **Verdict:** Kept (commit 5d2c68a). −0.34 vs iter19 — big gain confirmed. The jolt-to-iter sequence (-0.33, -0.34, -0.34) is yielding remarkably consistent improvements.
+- **Notes:** geom_camber_rc continues dropping (1.29 → 1.26). The jolt cycle is essentially exploring nearby basins via cosine LR with ~7-8k step warm restarts. Try iter22 = another jolt at similar settings to see if the gains compound or saturate.
+
 ### 2026-04-28 — iter20 third jolt (lr=2e-4, noise=0.05) — DISCARDED
 - **Hypothesis:** Push the jolt LR higher (1.5e-4 → 2e-4) and noise (0.04 → 0.05) for a bigger basin search.
 - **Change:** No code; flags `--lr 2e-4 --resume /tmp/iter19_best.pt --feature_noise 0.05 ...`. Run `wfbhmway`.
