@@ -90,6 +90,7 @@ SRC = {
     "thorfinnRR": ("thorfinn", "8c102c8"),  # avg 34.0550 — NEW FLOOR ALL: s=34.7146 rc=48.2126 c=19.7724 re=33.5204
     "thorfinnSS": ("thorfinn", "03934df"),  # avg 34.0018 — NEW FLOOR ALL: s=34.6975 rc=48.2021 c=19.6568 re=33.4511
     "thorfinnTT": ("thorfinn", "8dd678f"),  # avg 33.9732 — best cruise (19.5724), best re (33.3235)
+    "thorfinnUU": ("thorfinn", "a653e49"),  # avg 33.5790 — NEW FLOOR ALL: s=34.6045 rc=48.0741 c=19.1277 re=32.5096
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -115,12 +116,12 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter89: per-split-best across SS+TT. s=SS rc=SS, cruise=TT, re=TT.
-    # Avg = (34.6975 + 48.2021 + 19.5724 + 33.3235)/4 = 33.9489.
-    single: str = "thorfinnSS:1.0"
-    rc: str = "thorfinnSS:1.0"
-    cruise: str = "thorfinnTT:1.0"
-    re_rand: str = "thorfinnTT:1.0"
+    # iter90: thorfinn/a653e49 (UU) HUGE breakthrough on cruise (-0.45) and re (-0.81).
+    # Per-split-best: ALL=UU. Avg = 33.5790.
+    single: str = "thorfinnUU:1.0"
+    rc: str = "thorfinnUU:1.0"
+    cruise: str = "thorfinnUU:1.0"
+    re_rand: str = "thorfinnUU:1.0"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
