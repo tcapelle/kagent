@@ -216,8 +216,8 @@ class Config:
     ema_decay: float = 0.9995
     rc_single_boost: float = 6.0
     use_val_in_train: bool = True
-    val_holdout_pct: float = 0.20
-    epochs: int = 8
+    val_holdout_pct: float = 0.10  # tinier holdout: more train data
+    epochs: int = 10
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
