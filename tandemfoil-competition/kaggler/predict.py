@@ -111,8 +111,9 @@ for split in TEST_SPLITS:
                 x_pad[j, :x.shape[0]] = x.to(device)
                 mask[j, :x.shape[0]] = True
 
-            pred_norm = model({"x": (x_pad - x_mean) / x_std, "mask": mask})["preds"]
-            pred = pred_norm * y_std + y_mean
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                pred_norm = model({"x": (x_pad - x_mean) / x_std, "mask": mask})["preds"]
+            pred = pred_norm.float() * y_std + y_mean
 
             for j, x in enumerate(xs):
                 predictions.append(pred[j, :x.shape[0]].cpu())
