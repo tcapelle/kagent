@@ -68,8 +68,9 @@ class Config:
     batch_size: int = 8
     surf_weight: float = 20.0
     p_weight: float = 4.0
-    epochs: int = 50
+    epochs: int = 60
     train_n_volume: int = 32000
+    val_every: int = 2  # validate every N epochs (saves time -> more train epochs)
     bf16: bool = True
     huber_beta: float = 0.05  # small beta -> nearly pure L1 (metric is L1 MAE);
     # quadratic only in tiny region near zero for gradient stability
@@ -231,6 +232,22 @@ for epoch in range(MAX_EPOCHS):
     scheduler.step()
     epoch_vol /= n_batches
     epoch_surf /= n_batches
+
+    # Skip validation on most epochs to fit more training in 30 min.
+    do_val = ((epoch + 1) % cfg.val_every == 0) or (epoch == 0) or (epoch == MAX_EPOCHS - 1)
+    if not do_val:
+        peak_gb = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0
+        print(
+            f"Epoch {epoch+1:3d} ({time.time()-t0:.0f}s) [{peak_gb:.1f}GB]  "
+            f"train[v={epoch_vol:.3f} s={epoch_surf:.3f}]  (val skipped)"
+        )
+        wandb.log({
+            "train/vol_loss": epoch_vol,
+            "train/surf_loss": epoch_surf,
+            "lr": scheduler.get_last_lr()[0],
+            "global_step": global_step,
+        })
+        continue
 
     # --- Validate ---
     model.eval()
