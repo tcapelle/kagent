@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17: chain at vol=80k
+- **Hypothesis:** Continue increasing train subsample for tighter train/test match.
+- **Change:** train_max_volume 50k→80k, lr 2e-5→1.5e-5, epochs 22→16. Initial = iter16 (model-3fsnww54).
+- **Result:** Trained 16 epochs in 30.5 min (114s/epoch). Best epoch 11, val/loss=1.5368 (slightly worse than iter16's 1.5162). Val mae_surf_p avg=43.79. **Test 40.57 (commit ff7547b) — rank 4 (best yet)**.
+- **Verdict:** kept (modest test improvement 40.89→40.57). Diminishing return — val/loss got worse but test improved slightly.
+- **Notes:** Iter18 plan: try vol=100k or full mesh; or pivot to a stronger lever.
+
 ### 2026-04-28 — iter16: bigger subsample (50k) for train/test alignment — **RANK 4!**
 - **Hypothesis:** Train/test distribution mismatch (training on 25k vol points but testing on 100k+) is leaving accuracy on the table. Doubling the train subsample to 50k should reduce that gap.
 - **Change:** train_max_volume 25000→50000. lr 3e-5→2e-5. epochs 40→22 (compute budget).
