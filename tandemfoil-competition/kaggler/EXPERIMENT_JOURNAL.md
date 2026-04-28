@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter16: re-chain from iter13 with diverse hyperparams for SWA expansion
+- **Hypothesis:** SWA(iter13, iter15) won (44.93). Adding a 3rd parallel re-chain at *more different* settings (LR 1e-6, p_weight 38) should expand the basin sample.
+- **Change:** args only.
+- **Result:** 28 epochs in 30.9 min. Best epoch 12 → val/avg_surf_p=45.04. Run kg5hs27v.
+- **SWA experiments:**
+  - SWA(13, 15): **44.93** (still best)
+  - SWA(13, 15, 16): 44.95
+  - Ensemble(13, 15, 16): 44.96
+  - iter16 alone: 45.04
+- **Verdict:** discarded — iter16 too far from the iter13/iter15 cluster. SWA needs models in the SAME basin; iter16's lower LR + lower p_weight took it elsewhere.
+- **Notes:** Lesson — for SWA to add value, the parallel re-chains must use very *similar* hyperparams (small LR or p_weight perturbations). Iter17 plan: chain from SWA(13,15) checkpoint itself — train the average further.
+
 ### 2026-04-28 — iter15: re-chain from iter13 (LR 2e-6, p_weight 42); SWA wins!
 - **Hypothesis:** iter14 regressed at p_weight 50 → too aggressive. Step back to iter13's settings (LR 1.5e-6 → 2e-6, p_weight 42 unchanged) to find a slightly different local minimum that we can SWA with iter13. Until now SWA across nearby epochs and across consecutive chain iters didn't help — but two re-chains starting from the same parent at slightly different settings should sit at distinct points in the same basin.
 - **Change:** args only — re-chain from iter13's checkpoint instead of iter14's.
