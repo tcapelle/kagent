@@ -22,6 +22,11 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter31/32: 8-way strong + iter29 (test 30.62), deep finetune of iter17 → val 37.27 best single
+- **Iter31:** 8-way strong + iter29 (val 40.49) at `03c5b33` → **test 30.62**.
+- **Iter32:** deep finetune iter17 (warm_start from val 37.99 best) with lr=5e-6, p_w=5, surf_w=15. Best epoch 12: val=**37.27** — new single-model best (run id `muw3tkhd`).
+- Strategy: deep finetune of best models extracts more value than yet another base. Will add iter32 to the strong ensemble.
+
 ### 2026-04-28 — iter29/30: strong-only 7-way ensemble + iter28 finetune
 - **Iter29:** finetune iter28 → val=40.49 (run id `zp4qm94e`), borderline strong.
 - **Iter30:** strong-only 7-way ensemble (drop iter20 val 43.34 + iter26 val 44.86) at `ad000fe` → **test 30.72** (improvement from 30.84).
