@@ -94,6 +94,7 @@ SRC = {
     "thorfinnVV": ("thorfinn", "aa3b041"),  # avg 33.5370 — best cruise (19.0217), best re (32.4102)
     "thorfinnWW": ("thorfinn", "5efca2d"),  # avg 33.5107 — best cruise (18.9661), best re (32.3605)
     "thorfinnXX": ("thorfinn", "fcee282"),  # avg 33.5085 — best cruise (18.9602), best re (32.3578)
+    "tanjiro_be67553": ("tanjiro", "be67553"),  # avg 34.4216 — best rc (47.5540) — NEW SUB-FLOOR
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -119,10 +120,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter93: per-split-best UU+XX. s/rc=UU, cruise/re=XX.
-    # Avg = (34.6045 + 48.0741 + 18.9602 + 32.3578)/4 = 33.4992.
+    # iter94: tanjiro/be67553 has NEW sub-floor on rc (47.5540). Route per-split-best.
+    # s=UU(34.6045), rc=tanjiro_be67553(47.5540), cruise=XX(18.9602), re=XX(32.3578)
+    # Avg = (34.6045 + 47.5540 + 18.9602 + 32.3578)/4 = 33.3691.
     single: str = "thorfinnUU:1.0"
-    rc: str = "thorfinnUU:1.0"
+    rc: str = "tanjiro_be67553:1.0"
     cruise: str = "thorfinnXX:1.0"
     re_rand: str = "thorfinnXX:1.0"
 
