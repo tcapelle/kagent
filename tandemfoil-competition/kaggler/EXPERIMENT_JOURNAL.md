@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter22: chain at sb=12 + lr=1e-6
+- **Hypothesis:** Continue the iter21 recipe.
+- **Change:** None.
+- **Result:** 7 epochs, best val/avg_surf_p=51.88 at epoch 7 (-0.08 vs iter21). Trajectory: 52.71 → 52.38 → 52.41 → 52.45 → 52.22 → 52.19 → 51.88. Predictions at `askeladd/d71547a`. W&B: askeladd/iter22-chain-sb12.
+- **Verdict:** kept (-0.08). Diminishing returns again.
+- **Notes:** iter23: stronger perturb (sb=15, surf_p_weight 12→14, lr=2e-6) to push out of plateau.
+
 ### 2026-04-28 — iter21: chain at sb=12 + lr=1e-6 (still grinding)
 - **Hypothesis:** Continue.
 - **Change:** None.
