@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20/21/22: chain5 finetune, 7-way ensemble, 6th base
+- **Iter20:** finetune iter19 → val=43.33 (run id `2nvznlkm`).
+- **Iter21:** 7-way ensemble at `2e40b9b`.
+- **Iter22:** 6th base val=63.51 (run id `1ls2mmbf`). Auto-submit overwrote `2e40b9b`, restored.
+- alphonse pulled to 29.83. Need ~1.2 jump to lead. Continuing chain accumulation.
+
 ### 2026-04-27 — iter17/18/19: chain4 finetune (val 37.99 new single best), 6-way ensemble (#1 30.99), 5th base
 - **Iter17:** finetune iter16 → val/avg_mae_surf_p = **37.99** (new single best). Run id `n0vcw20w`.
 - **Iter18:** 6-way ensemble at `5cd24a2`. **Test 30.99 → #1!** Beat alphonse 31.24.
