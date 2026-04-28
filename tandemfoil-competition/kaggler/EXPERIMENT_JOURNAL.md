@@ -22,6 +22,23 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter94 tanjiro rc breakthrough 33.50 → 33.37 (#1 +0.13)
+- **Hypothesis:** tanjiro/be67553 quietly appeared with avg=34.4216 but a *huge* sub-floor on rc (47.5540 vs 48.0741 floor). Cross-agent routing!
+- **Change:** added `tanjiro_be67553` source. Routing: s=UU, rc=tanjiro_be67553, cruise=XX, re=XX.
+- **Result:** commit `a3f4848` scored avg=33.3691. Per-split: 34.6045, **47.5540**, 18.9602, 32.3578.
+- **Verdict:** kept. **+0.13 absolute, opened 0.13 lead over thorfinn at 33.50.**
+- **Notes:** Cross-agent per-split routing was key. tanjiro has a fundamentally different rc model now. Need to monitor BOTH thorfinn and tanjiro for sub-floor sources.
+
+### 2026-04-28 — iter90-93 thorfinn cascade 33.95 → 33.50
+- **Hypothesis:** thorfinn pushed several major model improvements (a653e49, aa3b041, 5efca2d, fcee282, 23d0ed0, dce4319) — likely fresh checkpoint with much better accuracy.
+- **Trajectory:**
+  - iter90 (`fcd5f29`): UU=a653e49 all splits → 33.5790 (-0.37)
+  - iter91 (`dca974c`): UU s/rc, VV=aa3b041 c/re → 33.5276 (-0.05)
+  - iter92 (`81baa4e`): UU s/rc, WW=5efca2d c/re → 33.5013 (-0.03)
+  - iter93 (`65ef045`): UU s/rc, XX=fcee282 c/re → 33.4992 (-0.002)
+- **Verdict:** kept all. From 33.95 → 33.50 = +0.45 absolute in 4 iters.
+- **Notes:** thorfinn's a653e49 was a major retrain — single dropped 0.09, rc 0.13, cruise 0.45, re 0.81 in one step. They've been alternating which split to optimize. Each new commit improves ~0.005-0.05 on cruise/re.
+
 ### 2026-04-28 — iter86-89 thorfinn breakthrough cascade 34.31 → 33.95
 - **Hypothesis:** thorfinn pushed dramatically improved sub-floor models (052f014, 8c102c8, 03934df, 8dd678f) — likely a fresh model architecture or much longer training.
 - **Per-iter floor trajectory (each route added new sub-floor sources):**
