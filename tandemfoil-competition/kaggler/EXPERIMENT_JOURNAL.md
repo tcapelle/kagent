@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter22 jolt #4 (lr=1.2e-4, noise=0.04)
+- **Hypothesis:** Continue the productive jolt cycle from iter21.
+- **Change:** No code; flags `--lr 1.2e-4 --resume /tmp/iter21_best.pt --feature_noise 0.04 --p_weight 20 --ema_decay 0.999 --epochs 30 --warmup_epochs 1 --n_vol_subsample 50000`. Run `o29t96a8`.
+- **Result:** Best epoch 24/30, val/loss=0.8029, **avg_surf_p=40.39** (val splits: in_dist=0.85, geom_rc=1.21, geom_cruise=0.25, re_rand=0.91).
+- **Verdict:** Kept (commit b30d4b4). −0.66 vs iter21 — *biggest single-iter gain in the chain*. The cycle is not just continuing to work, it's accelerating: cumulative drop from iter17 (41.75) to iter22 (40.39) over 4 working jolts is −1.36, vs −0.34 for the first jolt alone.
+- **Notes:** geom_camber_rc keeps cracking (1.26 → 1.21). Strong signal that there's more headroom — try iter23 with the same recipe.
+
 ### 2026-04-28 — iter21 gentler jolt (lr=1.2e-4, noise=0.03)
 - **Hypothesis:** iter20 (lr=2e-4) destabilized warm-start. Sweet spot for jolt is 1.0–1.5e-4. Try 1.2e-4 with milder noise (0.03 instead of 0.05) from iter19.
 - **Change:** No code; flags `--lr 1.2e-4 --resume /tmp/iter19_best.pt --feature_noise 0.03 --p_weight 20 --ema_decay 0.999 --epochs 30 --warmup_epochs 1 --n_vol_subsample 50000`. Run `3mdzcqrx`.
