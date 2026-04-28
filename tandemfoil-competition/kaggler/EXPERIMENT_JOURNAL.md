@@ -22,6 +22,25 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17: Fourier 16 freqs (max_freq=64)
+- **Hypothesis:** iter15/16 plateaued at ~46 with Fourier 8 freqs (max=32). Doubling both freqs and max captures higher-frequency components — relevant for turbulence/sharp boundary layers.
+- **Change:** No code change. Adapted iter16 ckpt with `python -c "torch.cat([w, zeros(384,32)], dim=1)"` to extend preprocess input from 56 → 88 dims. Stripped stale `fourier_freqs_buf` from saved state. Run id `kmexo0wi`. Also marked the buffer non-persistent in model.py for future portability (`ee21212`).
+- **Result:** Best val/avg_surf_p=**45.77** at epoch 8/8 (-0.21 from iter16, still descending). Train surf 0.39 → 0.36.
+- **Verdict:** Kept (ckpt commit `a6500da`). Fourier features genuinely helping — not just chain noise.
+- **Notes:** Will continue chaining iter18 with same arch. iter15/16 had plateaued because Fourier 8 saturated at low freq. Higher max_freq lets the model capture turbulent eddies.
+
+### 2026-04-28 — iter15/16: Fourier 8 chain
+- iter15 (lr=1e-6): val 45.99, -0.24 from iter14. Run id `h251mthq`.
+- iter16 (lr=5e-7): val 45.98, -0.01 (plateau at this freq budget). Run id `137kx3un`.
+- Decision after iter16: try more Fourier capacity (iter17).
+
+### 2026-04-28 — iter14: Fourier 8 freqs warm-start (BREAKTHROUGH)
+- **Hypothesis:** Nezuko's flags include `fourier_*` and `n_fourier`. Fourier feature encoding of position is a well-known PINN trick that gives high-frequency capacity without requiring a deeper preprocess MLP.
+- **Change:** model.py: `Transolver.__init__` accepts `fourier_freqs` and `fourier_max_freq`. Forward concatenates `[sin(2π·f·pos), cos(2π·f·pos)]` to the input for log-spaced freqs in `[1, fourier_max_freq]`. Adapter script `adapt_fourier.py` pads existing checkpoints' preprocess weight with zeros for the new feature columns so warm-starting from iter13 starts identical to iter13 and learns to use Fourier from there.
+- **Change:** train.py: `fourier_freqs/fourier_max_freq` flags piped to model_config. Also `load_state_dict(strict=False)` to allow missing buffer keys.
+- **Result:** Best val/avg_surf_p=46.23 at epoch 7/8 (-0.36 from iter13). First substantial gain in 4 chains.
+- **Verdict:** Kept (ckpt commit `87992d1`). Code commits `3d4ac66` + `d1e2f57`.
+
 ### 2026-04-27 — iter13: EMA chain at lr=5e-7
 - **Hypothesis:** Continue EMA chain at lower LR — small but stable refinements.
 - **Change:** No code change. CLI `--warm_start models/model-13kcrwn3 --lr 5e-7 --ema_decay 0.99 --camber_noise 0.05`. Run id `p2atdl76`.
