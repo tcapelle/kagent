@@ -100,6 +100,7 @@ class Config:
     ema_decay: float = 0.0  # 0 = disabled. Common values: 0.99, 0.995, 0.999.
     fourier_freqs: int = 0  # 0 = disabled. Number of log-spaced freqs for position encoding.
     fourier_max_freq: float = 32.0
+    fourier_input_dims: int = 2  # 2 = positions only; 4 = positions + saf (arc-length).
     n_hidden: int = 192
     n_layers: int = 6
     n_head: int = 6
@@ -154,6 +155,7 @@ model_config = dict(
     dropout=cfg.dropout,
     fourier_freqs=cfg.fourier_freqs,
     fourier_max_freq=cfg.fourier_max_freq,
+    fourier_input_dims=cfg.fourier_input_dims,
     output_fields=["Ux", "Uy", "p"],
     output_dims=[1, 1, 1],
 )

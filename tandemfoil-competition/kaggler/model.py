@@ -130,21 +130,25 @@ class Transolver(nn.Module):
                  output_fields: list[str] | None = None,
                  output_dims: list[int] | None = None,
                  fourier_freqs: int = 0,
-                 fourier_max_freq: float = 32.0):
+                 fourier_max_freq: float = 32.0,
+                 fourier_input_dims: int = 2):
         super().__init__()
         self.output_fields = output_fields or []
         self.output_dims = output_dims or []
         self.fourier_freqs = fourier_freqs
+        self.fourier_input_dims = fourier_input_dims
 
-        # Fourier features encode the first 2 dims (position) at multiple
+        # Fourier features encode the first `fourier_input_dims` of x at multiple
         # logarithmically spaced frequencies — gives the model high-frequency
         # capacity for turbulent components without baking it into the MLP.
+        # Default fourier_input_dims=2 → just positions.
+        # fourier_input_dims=4 → positions + signed arc-length (saf).
         if fourier_freqs > 0:
             freqs = torch.exp(torch.linspace(0, math.log(fourier_max_freq), fourier_freqs))
             # persistent=False keeps the buffer out of state_dict so checkpoints
             # remain portable across different `fourier_freqs` settings.
             self.register_buffer("fourier_freqs_buf", freqs, persistent=False)
-            extra_dim = 2 * 2 * fourier_freqs  # 2 spatial dims * 2 (sin,cos) * freqs
+            extra_dim = fourier_input_dims * 2 * fourier_freqs  # dims * 2 (sin,cos) * freqs
         else:
             extra_dim = 0
 
@@ -176,10 +180,10 @@ class Transolver(nn.Module):
     def forward(self, data, **kwargs):
         x = data["x"]
         if self.fourier_freqs > 0:
-            # x[..., :2] are normalized positions (after train.py's standardization)
-            pos = x[..., :2].unsqueeze(-1) * self.fourier_freqs_buf  # [B,N,2,F]
-            ff = torch.cat([pos.sin(), pos.cos()], dim=-1)  # [B,N,2,2F]
-            ff = ff.flatten(-2, -1)  # [B,N,4F]
+            d = self.fourier_input_dims
+            pos = x[..., :d].unsqueeze(-1) * self.fourier_freqs_buf  # [B,N,d,F]
+            ff = torch.cat([pos.sin(), pos.cos()], dim=-1)  # [B,N,d,2F]
+            ff = ff.flatten(-2, -1)  # [B,N, d*2F]
             x = torch.cat([x, ff], dim=-1)
         fx = self.preprocess(x) + self.placeholder[None, None, :]
         for block in self.blocks:
