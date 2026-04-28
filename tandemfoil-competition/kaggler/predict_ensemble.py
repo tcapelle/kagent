@@ -84,6 +84,7 @@ SRC = {
     "thorfinnLL": ("thorfinn", "6072694"),  # avg 34.3310 — NEW SUB-FLOOR ALL SPLITS: s=34.9162 rc=48.4480 cruise=20.0901 re=33.8697
     "thorfinnMM": ("thorfinn", "9dc493c"),  # avg 34.3764 — best cruise (20.0668)
     "thorfinnNN": ("thorfinn", "c799824"),  # avg 34.3493 — best cruise (20.0646), best re (33.8647)
+    "thorfinnOO": ("thorfinn", "9e38615"),  # avg 34.3471 — best cruise (20.0510)
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -109,12 +110,12 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter81: thorfinn/c799824 (NN) has best cruise (20.0646) + best re (33.8647). LL still best on s/rc.
-    # Per-split-best: s=LL(34.9162), rc=LL(48.4480), cruise=NN(20.0646), re=NN(33.8647)
-    # Avg = (34.9162 + 48.4480 + 20.0646 + 33.8647)/4 = 34.3234
+    # iter82: thorfinn/9e38615 (OO) has new best cruise (20.0510). NN still best re. LL still best s/rc.
+    # Per-split-best: s=LL(34.9162), rc=LL(48.4480), cruise=OO(20.0510), re=NN(33.8647)
+    # Avg = (34.9162 + 48.4480 + 20.0510 + 33.8647)/4 = 34.3200
     single: str = "thorfinnLL:1.0"
     rc: str = "thorfinnLL:1.0"
-    cruise: str = "thorfinnNN:1.0"
+    cruise: str = "thorfinnOO:1.0"
     re_rand: str = "thorfinnNN:1.0"
 
 
