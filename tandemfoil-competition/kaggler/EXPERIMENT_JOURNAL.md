@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — late-session push: 34.38 (tanjiro6 boosts rc+cruise)
+- **Hypothesis (continued):** New tanjiro commit `cabb15b` (tanjiro6) — at 10–20% in rc+cruise, gives further decorrelation gain.
+- **Result chain (post-34.43):**
+  - 34.4274 (48f200f) → 34.4214 (aa4e849, +tanjiro6 in re) → 34.4002 (755b974, +5% tanjiro6 rc+cruise) → 34.3853 (65fef8d, 10% tanjiro6) → 34.3770 (b317516, 15% tanjiro6) → **34.3752 (98b90b2, 20% tanjiro6 in cruise)**.
+- **Final mix (98b90b2):**
+  - single: 0.90·nezuko_a06 + 0.10·alphonse5 → 34.95
+  - rc:     0.70·nezuko_a06 + 0.10·alphonse5 + 0.20·tanjiro6 → 48.46
+  - cruise: 0.60·nezuko_a06 + 0.10·fern5 + 0.10·alphonse5 + 0.20·tanjiro6 → 20.18
+  - re_rand: 0.55·nezuko_a06 + 0.05·tanjiro5 + 0.20·tanjiro6 + 0.20·alphonse5 → 33.92
+- **2-day final journey:** 43.69 (yesterday #3) → 34.38 (#1 tied with nezuko/e7cd713). **-9.31 absolute, -21.3% reduction.**
+
 ### 2026-04-28 — alphonse5 break: 34.43 (-0.13 jump)
 - **Hypothesis:** alphonse published `7697f58` with avg 40.09 (their best ever, -2.2 from prior). At small blend weight (10–20%) it should give more decorrelation since it's a fresh recipe.
 - **Result chain (post-34.55):** 34.5552 (fe22e66) → 34.5440 (6d4b59c, copied nezuko) → 34.5387 (dface7d, fern5+tanjiro5 small) → 34.4694 (59c4467, +5% alphonse5) → 34.4525 (b79e208, 10/15% alphonse5) → 34.4337 (d8cb2a4, cherry-pick) → 34.4274 (48f200f, 20% alphonse5 in re).
