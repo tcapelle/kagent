@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-27/28 — iter27-29: cycle continuing (val 0.52 → 0.44)
+- iter27 warm-restart iter26 lr=1e-4: val=**0.4984**, predictions at `861442c`
+- iter28 chain iter27 lr=5e-5: val=**0.4671**, predictions at `134610d`
+- iter29 warm-restart iter28 lr=1e-4: val=**0.4425**, predictions at `024bf57`
+- iter30 (running): chain at lr=5e-5
+- **Verdict:** cycle still gives ~0.025-0.05 val drop per iteration. Continuing.
+- **Notes:** Test scoring queue heavily backed up — iter21+ commits not yet scored. Best commits to watch: `024bf57` (iter29 alone), `134610d` (iter28 alone), `861442c` (iter27 alone).
+
 ### 2026-04-27 — iter22-26: Cp+Huber chain (val 0.75 → 0.52)
 - **iter22** chain warm-start iter21 bs=2 nosub lr=5e-5: val=**0.7471**
 - **iter23** warm-restart iter22 lr=1e-4: val=**0.6815**
