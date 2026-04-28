@@ -70,6 +70,7 @@ SRC = {
     "nezuko_b0e": ("nezuko",  "b0e0889"),  # 34.61! (single 35.03, rc 48.61, cr 20.41, re 34.38)
     "nezuko_aafa": ("nezuko", "aafa24b"),  # 34.595
     "nezuko_b0b": ("nezuko",  "b0bbb68"),  # 34.582
+    "nezuko_934": ("nezuko",  "93428ec"),  # 34.578
     "tanjiro4":   ("tanjiro", "ad4711d"),  # 37.44 (improved tanjiro)
     "nezuko_85":  ("nezuko",  "85845f4"),  # 35.195693
     "nezuko_abe": ("nezuko",  "abe700a"),  # 35.195697
