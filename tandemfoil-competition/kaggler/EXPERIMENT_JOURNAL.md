@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter12: chain sub150k bs=2 lr=2e-7
+- **Hypothesis:** Bigger subsample paid off in iter11. Push to 150k pts/sample for higher-quality gradients.
+- **Change:** `--lr 2e-7 --warmup_frac 0.0 --surf_p_weight 10.0 --surf_weight 30.0 --loss_beta 0.0 --subsample_n 150000 --batch_size 2`. Same recipe, bigger sample.
+- **Result:** Best E5/8, avg_p = **44.04** (from 44.17, -0.3%). single=44.21, rc=59.31, cruise=28.93, re_rand=43.71. W&B `h1pgem3p`. Ran 32 min (+2 min over budget; only 7 epochs total).
+- **Verdict:** Kept. Confirms gradient-quality direction. Diminishing returns from 100→150k subsample (-0.3% vs -1.2% in iter11) suggests close to ceiling for current arch.
+- **Notes:** Each step now uses a near-full mesh (most train samples are 75–135k, so 150k=full for those). The lift from iter10→iter12 was 0.65 (val) — leaderboard #3 went 38.45 → 37.44. Top is 34.58 (nezuko/thorfinn tied to 4 decimals — suspicious). **Next:** push subsample to 200k (covers all but max-N raceCar tandems) and lower lr further.
+
+### 2026-04-27 — iter11: BREAKTHROUGH bigger subsample (sub100k bs=2 sw=30)
+- **Hypothesis:** Plateau at 44.69 may be due to noisy gradients from small subsamples (60k). Try 100k pts/sample with bs=2 (memory permits) for better gradient direction.
+- **Change:** `--lr 5e-7 --warmup_frac 0.0 --surf_p_weight 10.0 --surf_weight 30.0 --loss_beta 0.0 --subsample_n 100000 --batch_size 2`.
+- **Result:** Best E6/9, avg_p = **44.17** (from 44.69, -1.2%). single=44.55, rc=59.66, cruise=28.84, re_rand=43.61. W&B `e11qe47x`. 9 epochs in 30.9 min.
+- **Verdict:** Kept. **Broke the plateau** — first iter with >0.2 pt gain since iter6. Bigger per-sample subsample (more spatially-coherent context per gradient step) was the unlock.
+- **Notes:** With 100k pts and bs=2, each batch is 200k pts vs prior 240k. So total per-step compute is similar to bs=4 sub60k, but each *sample's* mesh is more completely seen → less variance in slice-token formation. Per-epoch time 3.4 min (slower than bs=4) but quality much higher.
+
 ### 2026-04-27 — iter10: chain sw=50 lr=2e-7 (plateau confirm)
 - **Hypothesis:** Push surface_weight further (20→50) so surface pressure dominates ~80% of loss; lr=2e-7 for tiny steps near optimum.
 - **Change:** `--lr 2e-7 --warmup_frac 0.0 --surf_p_weight 10.0 --surf_weight 50.0 --loss_beta 0.0`.
