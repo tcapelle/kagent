@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20: warm-chain askeladd-arch (bs=2, full mesh, 7 epochs) → val_surf_p=58.22
+- **Hypothesis:** iter19 (256/6/8 mlp=4) was undertrained at 64.78. Apply the proven chain recipe.
+- **Change:** Warm-start iter19, bs=2, train_subsample=0, lr=2e-5, p_weight=3, 7 epochs (limited by 4.5min/epoch with this big arch). Run `ww9506mn`.
+- **Result:** val/loss=0.8201, surf_p=**58.22** (-10% from 64.78). Optimizer still gave 0 weight — even after chaining, the bigger arch is weaker than my matured Fourier+chain models. Submitted at `7eb86f7`.
+- **Verdict:** kept; underperforms vs chain models. Likely needs more chain steps (askeladd has 13 checkpoints).
+- **Notes:** 4.5 min/epoch is too slow to fit many chain steps in 30 min. Each iter only buys ~3 surf_p improvement at this size. Path forward might be lighter arch variants for ensemble or doubling down on chains of small models.
+
 ### 2026-04-28 — iter19: askeladd-arch (256/6/8 slice=96 mlp=4) → val_surf_p=64.78
 - **Hypothesis:** Askeladd jumped to 34.56 on the leaderboard. Their checkpoints (apr27-4/askeladd/checkpoints/) all use n_hidden=256, n_layers=6 (mostly), n_head=8, slice_num=96, **mlp_ratio=4** (vs my mlp=2). Bigger MLPs in each transformer block. Try this architecture.
 - **Change:** Added `--mlp_ratio` CLI flag (was hardcoded). Run from-scratch with `--n_hidden 256 --n_layers 6 --n_head 8 --slice_num 96 --mlp_ratio 4 --epochs 25`. 4.6M params (2.7x baseline). Run `d0ipjrs5`.
