@@ -71,7 +71,9 @@ SRC = {
     "thorfinnY": ("thorfinn", "b45e237"),  # avg 34.5649 — best rc (48.5602), best re (34.2281)
     "thorfinnZ": ("thorfinn", "ae24f97"),  # avg 34.5654 — best cruise (20.3532)
     "thorfinnAA": ("thorfinn", "dface7d"),  # avg 34.5387 — best re (34.1863)
-    "thorfinnBB": ("thorfinn", "59c4467"),  # avg 34.47 — BEST EVERYTHING (s 34.97, rc 48.51, c 20.33, re 34.07)
+    "thorfinnBB": ("thorfinn", "59c4467"),  # avg 34.4694 — best rc (48.5130)
+    "thorfinnCC": ("thorfinn", "b79e208"),  # avg 34.4525 — best single (34.9520), best cruise (20.3030)
+    "thorfinnDD": ("thorfinn", "fac3903"),  # avg 34.4751 — best re (33.9668!)
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -97,12 +99,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter68: BB + iter15-warm small weight on each split for additional decorrelation gain.
-    # If BB doesn't have iter15-warm baked in, this should help.
-    single: str = "thorfinnBB:0.97,local_iter15_warm:0.03"
-    rc: str = "thorfinnBB:0.98,local_iter15_warm:0.02"
-    cruise: str = "thorfinnBB:0.95,local_iter15_warm:0.05"
-    re_rand: str = "thorfinnBB:0.93,local_iter15_warm:0.07"
+    # iter69: per-split-best across BB/CC/DD. Floor: (34.9520 + 48.5130 + 20.3030 + 33.9668)/4 = 34.4337
+    single: str = "thorfinnCC:1.0"
+    rc: str = "thorfinnBB:1.0"
+    cruise: str = "thorfinnCC:1.0"
+    re_rand: str = "thorfinnDD:1.0"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
