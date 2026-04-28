@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — wide-shallow-256x4 (BIG WIN, kept)
+- **Hypothesis:** complementary architecture to iter18's narrow-deep — wide-shallow with n_hidden=256, n_layers=4, n_head=8 (head_dim=32). Same recipe otherwise. Should give different errors AND fast epochs (only 4 layers).
+- **Change:** model_config: n_hidden=256, n_layers=4, n_head=8.
+- **Result:** standalone val=92.62 (best single model so far!) in 47 epochs (39s/epoch — fast). 2-model ensemble with iter8 (0.55/0.45 weights) gives **89.97 val** — first time below 90, beating edward (90.12). Predictions saved to `apr27-4/fern/5c33571`.
+- **Verdict:** kept (commit `ad27f1e` for ckpt). Wide-shallow generalized better than the deep iter8 — probably the depth was overshooting the data signal we have. The ensemble synergy is genuine: each model's errors are complementary.
+- **Notes:** 3-model variants (adding iter18/iter10/iter16) all hurt the 2-model best. The 256x4 + 192x8 pair is the sweet spot. Per-split: val_single_in_dist=69.37 (much improved from iter8's 76.37); val_geom_camber_rc=143.91 (better than iter8's 139 — wait, slightly worse on the hard track but huge gain elsewhere).
+
 ### 2026-04-28 — narrow-deep-128x10 (kept as ensemble member)
 - **Hypothesis:** small/narrow/deep architecture (n_hidden 192→128, n_layers 8→10, n_head 6→4, slice_num 128 same) with same training recipe should produce diverse errors and improve the ensemble. The new shape: ~half the params, faster epochs.
 - **Change:** model_config: n_hidden=128, n_layers=10, n_head=4. Same loss, regularization, subsampling.
