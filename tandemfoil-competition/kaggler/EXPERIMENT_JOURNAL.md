@@ -22,6 +22,40 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter26: ensemble iter25*2+iter23+iter21*2+iter18*2 (38.61)
+
+- **Hypothesis:** add iter25 (the new best single, surf_p_w=24 basin) to
+  the ensemble. Higher pressure-weight is a meaningfully different
+  optimization basin than the surf_p_w=16 chain.
+- **Change:** No new training. `--checkpoints iter25,iter23,iter21,iter18
+  --weights 2,1,2,2`.
+- **Result (bs=1 val):** **38.61** | single=33.77, geom_rc=57.10,
+  geom_cruise=23.65, re_rand=39.92.
+- **Verdict:** kept — 0.1 gain over iter24 (38.72). Diminishing returns
+  but every fraction counts.
+- **Notes:** iter25 alone is 39.96 — basically tied with the ensemble
+  iter25+iter23+iter21+iter18 (38.62). The ensemble gains from iter25
+  joining are about 0.1 points only. Future ensembles need fundamentally
+  different models (different architecture, different recipe entirely).
+
+### 2026-04-28 — iter25: resume iter23 with surf_p_weight 16→24 (test=33.72 NEW RANK 1)
+
+- **Hypothesis:** push surface pressure weighting beyond 16. Chain has
+  used 4→12→16; 24 might still help, and at minimum produces a
+  meaningfully different basin for ensembling.
+- **Change:** `train.py:43` — `surf_p_weight 16 → 24`. Resume from
+  iter23.
+- **Result:** 14 epochs, best val_bs4 = **64.42** at epoch 11. Real bs=1
+  val: **39.96**. Splits: single=37.50, geom_rc=58.55, geom_cruise=23.11
+  (best ever), re_rand=40.67. Run `qj56vdwf`. Auto-submitted to commit
+  `6b42d98` → **scored test=33.72**, beating my previous best 34.56 by
+  0.84 — extends RANK 1 lead to ~4 points over nezuko (37.75).
+- **Verdict:** kept — surf_p_w=24 is the new sweet spot. Cruise split
+  (23.11) is the lowest of any single model.
+- **Notes:** Higher pressure weight pushed cruise lower than ever (was
+  24.48 in iter21). Future iters could try sp_w=32 to see if the curve
+  keeps going down, but it's likely close to saturation.
+
 ### 2026-04-28 — iter24: ensemble iter23*2+iter21*2+iter19+iter18*2 (38.72)
 
 - **Hypothesis:** add iter23 to the ensemble for diversity. iter23 alone is
