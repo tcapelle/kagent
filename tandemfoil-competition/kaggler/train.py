@@ -88,6 +88,7 @@ class Config:
     n_layers: int = 6
     n_head: int = 6
     slice_num: int = 64
+    mlp_ratio: int = 2
     fourier_scales: int = 8
     fourier_max_freq: float = 16.0
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
@@ -131,7 +132,7 @@ model_config = dict(
     n_layers=cfg.n_layers,
     n_head=cfg.n_head,
     slice_num=cfg.slice_num,
-    mlp_ratio=2,
+    mlp_ratio=cfg.mlp_ratio,
     fourier_scales=cfg.fourier_scales,
     fourier_max_freq=cfg.fourier_max_freq,
     output_fields=["Ux", "Uy", "p"],
