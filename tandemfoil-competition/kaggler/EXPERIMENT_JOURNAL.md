@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter86-89 thorfinn breakthrough cascade 34.31 → 33.95
+- **Hypothesis:** thorfinn pushed dramatically improved sub-floor models (052f014, 8c102c8, 03934df, 8dd678f) — likely a fresh model architecture or much longer training.
+- **Per-iter floor trajectory (each route added new sub-floor sources):**
+  - iter86 (`d603be7`): route QQ=052f014 all splits → 34.1723 (-0.141)
+  - iter87 (`5b5e24d`): route RR=8c102c8 all splits → 34.0550 (-0.117)
+  - iter88 (`281bbdf`): route SS=03934df all splits → 34.0018 (-0.053)
+  - iter89 (`dda181f`): SS for s/rc, TT=8dd678f for cruise/re → 33.9489 (-0.053)
+- **Result:** Total session arc 34.3137 → 33.9489 = +0.365 absolute improvement in 4 iters (~8 min). Each thorfinn submission cycles all splits down by ~0.05-0.15.
+- **Verdict:** kept all. **#1 tied with thorfinn at 33.95.**
+- **Notes:** Pattern: thorfinn pushes new model checkpoints rapidly. Quickly add as new source, route per-split-best. Lead cycles between us and thorfinn within ~1-2 min as they match each iter.
+
 ### 2026-04-28 — iter85 NEW FLOOR 34.3137 (#1)
 - **Hypothesis:** thorfinn/c05d2ba (PP) has new best cruise (20.0260, vs OO's 20.0510). Route PP for cruise.
 - **Change:** added `thorfinnPP=c05d2ba`. Routing: s/rc=LL, cruise=PP, re=NN.
