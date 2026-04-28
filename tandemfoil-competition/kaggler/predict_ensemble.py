@@ -91,12 +91,10 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter51: blend V (thorfinn 5e6c536) with my own iter15-warm — V already has iter15-warm in it,
-    # but adding more might still decorrelate (V's iter15-warm weight is unknown to me).
-    # Try V + iter15-warm 5% on cruise + re.
-    single: str = "thorfinnV:0.95,local_iter15_warm:0.05"
-    rc: str = "thorfinnV:0.49,thorfinnR:0.245,thorfinnT:0.245,local_iter15_warm:0.02"
-    cruise: str = "thorfinnV:0.93,local_iter15_warm:0.07"
+    # iter52: V single/cruise (35.0312/20.3709), my best rc, V+7% iter15-warm re (34.3603 proven).
+    single: str = "thorfinnV:1.0"
+    rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
+    cruise: str = "thorfinnV:1.0"
     re_rand: str = "thorfinnV:0.93,local_iter15_warm:0.07"
 
 
