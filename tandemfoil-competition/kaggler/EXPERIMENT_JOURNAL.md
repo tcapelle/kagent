@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter19: 7th warm-restart (lr=3e-5, pw=18, sw=18) — BEAT FRIEREN 42.11
+- **Hypothesis:** 7th warm-restart cycle. Bigger kick (lr=3e-5 vs 2.5e-5) and bump sw 15→18. Goal: drop below 42.11.
+- **Change:** Resume iter18; --lr 3e-5 --p_weight 18 --surf_weight 18.
+- **Result:** **surf_p 42.39 → 41.61** (~1.8% gain). Per-split: rc=4.91, single=3.42, cruise=1.91, re_rand=3.75. Still descending. W&B `6jsip57v`.
+- **Verdict:** Kept (best). 🎯 **Beat frieren's apr27 leader score (42.11)** for the first time in this session — by 1.2%.
+- **Notes:** Total improvement since iter5 (51.82): 19.7% absolute. Going to polish + 8th warm-restart to push deeper.
+
 ### 2026-04-28 — iter18: polish iter17 (lr=4e-6, pw=18, sw=15)
 - **Hypothesis:** Standard polish.
 - **Change:** Resume iter17; --lr 4e-6 (other unchanged).
