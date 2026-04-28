@@ -28,6 +28,8 @@ Keep entries short. Link W&B run URLs when useful.
 - Submitted variants:
   - `89e51b2` = 0.7*ab7e0b2 + 0.3*iter17 — heavy iter17 — testing if upweighting strongest single helps over weighted 9-way.
   - `274af1f` = 0.7*ab7e0b2 + 0.3*iter21 — heavy iter21 (cruise specialist).
+  - `674d215` = 0.5*ab7e0b2 + iter15/16/17/21 weights — heavy 256h family.
+  - Trying median ensemble of 8 source models (iter4/6/9/15/16/17/21/25, no iter13).
 
 ### 2026-04-28 — TRULY FINAL: 42.37, rank 7
 - **Best:** `5eefd0f` = 9-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21, iter25} weights 0.08/0.08/0.04/0.06/0.13/0.13/0.13/0.18/0.17. iter25 (320-hidden chain of iter24) added marginal improvement over iter24 in the ensemble.
