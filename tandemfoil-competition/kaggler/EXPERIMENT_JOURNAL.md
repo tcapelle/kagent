@@ -22,6 +22,32 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter32: ensemble iter31*2+iter29*2+iter25+iter21+iter18 (38.12)
+
+- **Hypothesis:** iter31 (sp_w=48) adds another high-pressure-weight basin
+  to the ensemble. Heavily weight the two highest-sp_w models (iter31 and
+  iter29) since they dominate single-model performance.
+- **Change:** No new training. `--checkpoints iter31,iter29,iter25,iter21,
+  iter18 --weights 2,2,1,1,1`.
+- **Result (bs=1 val):** **38.12** | single=32.94, geom_rc=56.20,
+  geom_cruise=23.27, re_rand=40.06. 0.11 gain over iter30.
+- **Verdict:** kept — single below 33 for the first time.
+
+### 2026-04-28 — iter31: resume iter29 with surf_p_weight 32→48
+
+- **Hypothesis:** continue the surf_p_weight scaling that has been
+  monotonically helpful.
+- **Change:** `train.py:43` — `surf_p_weight 32 → 48`. Resume iter29.
+- **Result:** 24 epochs, best val_bs4 = **63.71** at epoch 12 (lowest
+  bs4 ever). Real bs=1 val: **39.58** alone — slightly worse than
+  iter29 alone (39.38). Splits: single=34.70, geom_rc=58.28,
+  geom_cruise=23.94, re_rand=41.40. Run `n2gel0rx`.
+- **Verdict:** kept ckpt for ensemble. sp_w=48 alone is at the
+  threshold where pressing harder hurts the velocity outputs (and thus
+  surface predictions overall) but adds diversity to ensemble.
+- **Notes:** Looks like the sp_w sweep is saturating. sp_w=32 was the
+  inflection — beyond it the alone score plateaus or regresses.
+
 ### 2026-04-28 — iter30: ensemble iter29*2+iter25+iter21+iter18 (38.23)
 
 - **Hypothesis:** iter29 (sp_w=32) gave the best alone (39.38, beating
