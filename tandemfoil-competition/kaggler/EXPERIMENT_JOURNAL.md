@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 26 — meta-ensemble: average iter24 + iter25 predictions → **test 28.63** (+0.54)
+- **Hypothesis:** iter24 (global weights) and iter25 (per-split weights) overfit val differently. Their average should regularize the per-split overfit while keeping the iter25 cruise gain.
+- **Change:** Pure post-processing — no model inference. Loaded both prediction tensors and averaged element-wise per sample. Marker `36f5a064`.
+- **Result:** Test = **28.63 (#1)**, alphonse 29.17 (lead +0.54).
+  * Per-split: single=30.33, geom_rc=42.20, cruise=15.16, re_rand=26.83.
+  * Better than both iter24 (28.69) and iter25 (28.67) on every split — meta-ensembling cleanly compounds.
+- **Verdict:** Submitted. The trick: **two ensembles produced from the same pool with different weight strategies are decorrelated enough that averaging them helps**. Effectively 16 forward passes (8 ckpts × 2 weight sets) condensed into one prediction.
+- **Notes:** Roughly free improvement — no GPU cost (we already had both prediction sets cached). Could iterate further by averaging 3+ different weight strategies (e.g., uniform 6-combo, global weighted 8-ckpt, per-split 8-ckpt).
+
 ### 2026-04-28 — Iter 25 — per-split weighted 8-ckpt → **test 28.67** (lead +0.50, marginal)
 - **Hypothesis:** Different val splits have different domain (single-foil vs tandem cruise vs Re-rand). Optimal blend likely differs by split. Train 4 weight vectors (one per split) instead of one global vector → expect val improvement of 0.2-0.3.
 - **Change:** Added `weighted_per_split.py` (Adam, 3000 iters, 8 ckpts × 4 splits). Extended `predict_ensemble.py` with `--weights_file` JSON. Marker `37b0225e`. Pool grew to 8 by adding h7hlljvy and was55y8r (the 7th-8th best singles).
