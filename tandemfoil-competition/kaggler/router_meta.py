@@ -65,6 +65,7 @@ SRC = {
     "nezuko12": ("nezuko",   "629ec60"),  # 35.20
     "snap_1f9": ("thorfinn", "1f9db55"),  # MY 35.198 frozen blend
     "snap_ca32": ("thorfinn", "ca32e09"),  # MY 35.197 frozen blend
+    "snap_98b": ("thorfinn", "98b90b2"),  # MY 34.375 frozen blend
     "nezuko_top": ("nezuko",  "f23f935"),  # nezuko 35.196 (current ahead)
     "nezuko_209": ("nezuko",  "209c93e"),  # NEW! 35.195674
     "nezuko_bbb": ("nezuko",  "bbb33f7"),  # 34.90! latest top
