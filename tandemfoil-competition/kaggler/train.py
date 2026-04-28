@@ -49,7 +49,7 @@ class Config:
     seed: int = 0  # 0 disables explicit seeding (matches iter 8's default behavior)
     grad_clip: float = 1.0
     warmup_epochs: int = 1
-    epochs: int = 80
+    epochs: int = 130
     use_amp: bool = True
     vol_subsample: int = 20000  # max volume nodes per sample at training time
     cp_normalize: bool = True  # divide pressure target by exp(2*(log_re - LOG_RE_REF))
