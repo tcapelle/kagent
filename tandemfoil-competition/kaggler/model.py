@@ -141,7 +141,9 @@ class Transolver(nn.Module):
         # capacity for turbulent components without baking it into the MLP.
         if fourier_freqs > 0:
             freqs = torch.exp(torch.linspace(0, math.log(fourier_max_freq), fourier_freqs))
-            self.register_buffer("fourier_freqs_buf", freqs)
+            # persistent=False keeps the buffer out of state_dict so checkpoints
+            # remain portable across different `fourier_freqs` settings.
+            self.register_buffer("fourier_freqs_buf", freqs, persistent=False)
             extra_dim = 2 * 2 * fourier_freqs  # 2 spatial dims * 2 (sin,cos) * freqs
         else:
             extra_dim = 0
