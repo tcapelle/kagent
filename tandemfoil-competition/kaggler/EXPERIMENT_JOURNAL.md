@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21: chain at sb=12 + lr=1e-6 (still grinding)
+- **Hypothesis:** Continue.
+- **Change:** None.
+- **Result:** 7 epochs, best val/avg_surf_p=51.96 at epoch 7 (-0.40 vs iter20). Trajectory: 52.63 → 52.64 → 52.73 → 52.37 → 52.33 → 52.36 → 51.96. Predictions at `askeladd/8981d50`. W&B: askeladd/iter21-chain-sb12.
+- **Verdict:** kept (-0.40). Below 52! sb=12 chain still has more headroom.
+- **Notes:** val_single_in_dist 2.13 → 2.11. Continue.
+
 ### 2026-04-28 — iter20: settle at sb=12 + lr=1e-6
 - **Hypothesis:** iter19 succeeded at sb=12+lr=2e-6 but the extra LR pushes the model around. Drop LR to 1e-6 to consolidate.
 - **Change:** `--lr 1e-6` (lr halved). sb=12 unchanged.
