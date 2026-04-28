@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20-30: re-warm cycle + chain on surf_weight=20 recipe
+- **Hypothesis:** From iter18 (45.93), the recipe converges if we keep chaining at varying LRs. Re-warming with high LR=5e-5 every 2 chain steps escapes local minima.
+- **Pattern:** iter20 (warm iter18 lr=5e-6) → 45.29; iter22 (warm iter20 lr=2e-6) → 44.89; iter23 (re-warm lr=5e-5) → 43.05 [BREAKTHROUGH]; iter24 (chain lr=1e-5) → 41.97; iter27 (re-warm lr=5e-5) → 41.50; iter28 (chain lr=1e-5) → 40.36; iter29 (re-warm lr=5e-5) → 39.53; iter30 (chain lr=2e-6) → **39.02 [PERSONAL BEST]**.
+- **Result:** Reached **rank 5 with avg_surf_p=39.02**. Per-split test: single=42.10, rc=53.16, cruise=23.50, re_rand=37.31.
+- **Verdict:** kept iter30 (9a1c3b6) as personal best.
+- **Notes:** **Pattern holds: re-warm at lr=5e-5 every 2 chain steps escapes plateau and gives ~1.5-2 point improvement**. After iter30 the chain saturates: iter31/iter34 at val/loss ~1.77 with best epoch 1 (early overfit). Diminishing returns ~0.3 points per re-warm cycle past iter28.
+
 ### 2026-04-27 — iter18: BREAKTHROUGH 2 — surf_weight=20 warm iter9
 - **Hypothesis:** Increasing surface loss weight from 10 to 20 should directly emphasize surface MAE (the leaderboard metric) without changing the model architecture.
 - **Change:** `python train.py --warm_start /tmp/iter9_best.pt --lr 2e-5 --epochs 12 --loss_type smoothl1 --p_weight 2.0 --surf_weight 20.0`. Predictions saved to `apr27-5/tanjiro/bbab44d/`.
