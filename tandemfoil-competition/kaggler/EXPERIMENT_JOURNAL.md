@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 25 — per-split weighted 8-ckpt → **test 28.67** (lead +0.50, marginal)
+- **Hypothesis:** Different val splits have different domain (single-foil vs tandem cruise vs Re-rand). Optimal blend likely differs by split. Train 4 weight vectors (one per split) instead of one global vector → expect val improvement of 0.2-0.3.
+- **Change:** Added `weighted_per_split.py` (Adam, 3000 iters, 8 ckpts × 4 splits). Extended `predict_ensemble.py` with `--weights_file` JSON. Marker `37b0225e`. Pool grew to 8 by adding h7hlljvy and was55y8r (the 7th-8th best singles).
+- **Result:**
+  * Val per-split MAE: 33.369 (vs iter24 global-weighted 33.624, -0.255).
+  * Per-split weights exhibit different "favorites":
+    - single_in_dist favors q7xvguyx (0.276) — different from other splits which emphasize ond1uxrl.
+    - cruise gives 0.47 to ond1uxrl, 0.39 to w40wsjwv — only 4 effective weights.
+    - rc and re_rand favor muw3 + ond1.
+  * Submitted at `37b0225e` → leaderboard test = **28.67 (#1)**, alphonse 29.17 (+0.50).
+  * Per-split test: single=30.40, geom_rc=42.37, cruise=14.99, re_rand=26.94.
+- **Verdict:** Submitted, leading. Per-split weighting yielded -0.255 val but only -0.018 test (28.692 → 28.674) — most of the val gain didn't transfer (overfit to val with 32 free params on ~25k surface points/split).
+- **Notes:** cruise dropped from 15.51 → 14.99 (test) — biggest per-split win. Other splits roughly stable. Diminishing returns on weight-tuning. Need another diverse strong ckpt to break through 28.5 — could come from a fresh-init basin or a different architecture.
+
 ### 2026-04-28 — Iter 24 — weighted 6-combo (val-optimized weights) → **test 28.69** (lead +0.48)
 - **Hypothesis:** Uniform averaging is sub-optimal when components have unequal val quality. Adam-fit a softmax-weight vector against the (vol+surf surf-only) val MAE for the iter23 6-combo. Expect 0.05-0.15 reduction.
 - **Change:** Added `weighted_ens.py` (Adam, 2000 iters, softmax weights) and extended `predict_ensemble.py` with a `--weights` arg. Marker `fc7405ad`.
