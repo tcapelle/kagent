@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter23: stronger perturb (sb=15, surf_p_w=14, lr=2e-6)
+- **Hypothesis:** iter22 plateaued. Push harder: sb 12→15, surf_p_weight 12→14, double LR to 2e-6 (perturb). The surf_p_weight bump may give the model more headroom on pressure.
+- **Change:** `--single_boost 15.0 --surf_p_weight 14 --lr 2e-6`.
+- **Result:** 7 epochs, best val/avg_surf_p=51.45 at epoch 7 (-0.43 vs iter22). Trajectory: 53.22 → 53.02 → 52.53 → 52.07 → 52.33 → 51.75 → 51.45. Predictions at `askeladd/18fb32d`. W&B: askeladd/iter23-perturb-sb15-spw14.
+- **Verdict:** kept (-0.43). Notable side effect: val_geom_camber_rc loss went UP (3.53 → 4.07) — losses are dominated by surface_p_weight=14 now, but the *avg_surf_p* metric still improved because single_in_dist absorbed more capacity.
+- **Notes:** iter24: drop LR back to 1e-6 to consolidate, watch geom_camber_rc.
+
 ### 2026-04-28 — iter22: chain at sb=12 + lr=1e-6
 - **Hypothesis:** Continue the iter21 recipe.
 - **Change:** None.
