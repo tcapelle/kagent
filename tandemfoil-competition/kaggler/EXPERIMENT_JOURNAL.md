@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Final: stuck at val 43.47, v18 (chain v17 mlp_ratio=4) didn't help either
+- **Hypothesis:** Refining v17 (mlp_ratio=4, undertrained at 65) via chain at lr=1e-4 might bring it competitive enough to add ensemble value.
+- **Change:** `--warm_start v17 --slice_num 64 --mlp_ratio 4 --lr 1e-4 --epochs 18`. Run `1azyuwkj`.
+- **Result:** v18 val=56.47 (down from v17=65.22). 4-way per-split (v7+v10+v14+v18) still picks v18=0 in all splits → no improvement, ensemble val stays 43.47.
+- **Verdict:** Discarded. Final submission at 1360725 = per-split (v7+v10+v14) val=43.47.
+- **Notes:** Hard plateau at 43.47 since v14. The slice=64 family (v7, v15-v18) is too tightly correlated. Only v10 (slice=128) and v14 (slice=32 chain v13 chain v12) provide useful diversity. To break the plateau would need genuinely new architecture (slice=192/256, or different model family entirely) trained to convergence — not feasible within remaining time budget. Final position likely rank 4-5 with test ~41-42.
+
 ### 2026-04-27 — v15-v17: arch diversity attempts that didn't help (stuck at 43.47)
 - **Hypothesis:** More architecturally diverse models (n_head=8, mlp_ratio=4) should add ensemble value beyond v7/v10/v14.
 - **Change:**
