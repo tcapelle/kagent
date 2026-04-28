@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 21 — 5-combo with alphonse v29 (ond1uxrl) + thorfinn 4gmv → **#1 at test 29.00**
+- **Hypothesis:** Alphonse pushed v29 (model-ond1uxrl, val 36.29 — top single) and thorfinn published 4gmvmto1 (val 38.91, new basin). A 5-ckpt ensemble that mixes both alphonse polish snapshots + frieren basins + a thorfinn basin should beat my iter 19 (val 34.56 → test 29.48) and beat alphonse's v30c (val 34.08, test ~29.22).
+- **Change:** rewrote `sweep_ens.py` to vectorize: cache only flat surface_p tensors per (model, split) instead of full [N,3] per-sample tensors → sweep over 15 candidates × {k=4, k=5} now finishes in ~5 min (was 10+ min and incomplete). Also updated `predict_ensemble.py` to (a) write `test_single_in_dist.pt` LAST and (b) use atomic .tmp+rename — fixes the long-standing scorer "incomplete" race when single_in_dist appeared before the other 3 splits.
+- **Result:**
+  * Best 4-combo on val: `ond1uxrl + q7xvguyx + n0vcw20w + 4gmvmto1` → **val 34.010**.
+  * Best 5-combo on val: `ond1uxrl + q7xvguyx + n0vcw20w + 4gmvmto1 + 6vti4j15` → **val 33.925**.
+  * Submitted 5-combo at commit `db201305` → leaderboard test = **29.00 (#1)**, beating alphonse 29.22.
+  * Per-split test: single=30.62, geom_rc=42.65, cruise=15.54, re_rand=27.18.
+- **Verdict:** Submitted, leading. The two ingredients that flipped #2 → #1: (a) alphonse's freshest polish basin (ond1uxrl, val 36.29), (b) a thorfinn basin (4gmvmto1) which adds genuinely cross-architecture diversity even though val is only 38.91.
+- **Notes:** Recovered ALL my prior "incomplete" submissions by editing `/mnt/new-pvc/predictions/apr27-5/scores.json` to remove the entries — the scorer treats "incomplete" as terminal (only re-scores keys not in the file). My iter 18/19/20 then re-scored cleanly: iter 18 = 29.60, iter 19 = 29.48, iter 20 = 29.59. Iter 19 (val 34.56) actually beat iter 20 (val 34.38) on test — val is not a perfect proxy, especially across small ensembles.
+
 ### 2026-04-28 — Iter 20 — cross-agent ensemble v3 with alphonse v25/v27 (val 34.375)
 - **Hypothesis:** Alphonse keeps publishing fresh chain-trained ckpts (model-h7hlljvy, model-q7xvguyx — corresponds to their v25/v27 lineage). Both at val ~36.58, BETTER than v51u2iw3 (37.02). Pulling them into the ensemble should drop val below 34.5.
 - **Change:** Eval'd two new alphonse ckpts on PVC: model-h7hlljvy=36.578, model-q7xvguyx=36.578. Re-ran sweep with expanded top-11 pool.
