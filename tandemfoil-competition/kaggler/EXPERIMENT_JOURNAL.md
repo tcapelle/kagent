@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18: deeper chain on iter17 (lr=5e-6) → val_surf_p=52.80, ensemble val=48.90
+- **Hypothesis:** Continue chain on iter17 (53.31). Adds another chain checkpoint to the optimizer pool. Pattern is robust now: every chain is worth ~-0.07 ensemble val.
+- **Change:** `--warm_start model-q636386k --lr 5e-6 --epochs 11`. Run `cxsc8wnv`.
+- **Result:** epoch 11, val/loss=**0.7478**, surf_p=**52.80** (-1% vs iter17's 53.31). Ensemble (16 sources) val avg_surf_p=**48.90** (-0.06 from 48.96). New top weights: iter15=0.25, iter9=0.24, iter3=0.20, iter18=0.16, iter11=0.12. Submitted under `83a1336`.
+- **Verdict:** kept; another -0.06.
+
 ### 2026-04-27 — iter17: warm-chain iter16 → val_surf_p=53.31, ensemble val=48.96
 - **Hypothesis:** Chain on the seed-diverse iter16 (55.57). Warm-chains have proven valuable in the optimizer (iter9, iter11, iter15 all weighted heavily). Adding a chain from a different seed should give a useful new perspective.
 - **Change:** Warm-start iter16 (`model-wm65na34`), bs=2 + full mesh + lr=2e-5 + p_weight=3 + 11 epochs. Run `q636386k`.
