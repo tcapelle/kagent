@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter26/27/28: chain7 finetune (val 44.86 weak), 9-way ensemble *regression*, 8th base
+- **Iter26:** finetune iter25 → val=44.86 (worst finetune so far).
+- **Iter27:** 9-way ensemble at `8f12996` → **test 31.19** — *worse* than 8-way's 30.84! Adding the weak iter26 (val>40) hurt the ensemble.
+- **Iter28:** 8th base val=72.50.
+- **Key insight:** ensemble gain depends on each member's val score. Drop members with val>~42, since they add noise. Stop including iter20 (43.34) and iter26 (44.86). Keep iter4/6/9/11/14/17/23 + iter29 (if val<40).
+- alphonse 29.48 stable. We're stuck at 30.84 best.
+
 ### 2026-04-28 — iter23/24/25: chain6 finetune, 8-way ensemble (test 30.84), 7th base
 - **Iter23:** finetune iter22 → val=39.93 (run id `fmjp5i5q`).
 - **Iter24:** 8-way ensemble at `657963e` → **test 30.84** (improvement from 30.99). Per-split: single=33.27, rc=43.49, cruise=17.89, re=28.71.
