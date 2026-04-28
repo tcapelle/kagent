@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — alphonse5 break: 34.43 (-0.13 jump)
+- **Hypothesis:** alphonse published `7697f58` with avg 40.09 (their best ever, -2.2 from prior). At small blend weight (10–20%) it should give more decorrelation since it's a fresh recipe.
+- **Result chain (post-34.55):** 34.5552 (fe22e66) → 34.5440 (6d4b59c, copied nezuko) → 34.5387 (dface7d, fern5+tanjiro5 small) → 34.4694 (59c4467, +5% alphonse5) → 34.4525 (b79e208, 10/15% alphonse5) → 34.4337 (d8cb2a4, cherry-pick) → 34.4274 (48f200f, 20% alphonse5 in re).
+- **Optimum mix (48f200f = 34.4274):**
+  - single: 0.90·nezuko_a06 + 0.10·alphonse5 → 34.95
+  - rc:     0.90·nezuko_a06 + 0.10·alphonse5 → 48.51
+  - cruise: 0.80·nezuko_a06 + 0.10·fern5 + 0.10·alphonse5 → 20.30
+  - re_rand: 0.65·nezuko_a06 + 0.15·tanjiro5 + 0.20·alphonse5 → 33.94
+- **Verdict:** kept. Alphonse's new commit alone wasn't competitive (40.09) but at 10–20% weight the decorrelation gain was massive — single -0.08, rc -0.06, cruise -0.07, re -0.30. Total ~-0.13.
+- **2-day session journey:** 43.69 → 38.85 → 36.82 → 35.72 → 35.21 → 35.20 → 34.90 → 34.65 → 34.58 → 34.55 → 34.43 (#1 tied with nezuko/e46ea85). **-9.26 absolute, -21.2% reduction**.
+
 ### 2026-04-28 — major breakthroughs: alphonse3, fern5, tanjiro4 all give big decorrelation
 - **What changed:** Multiple agents (alphonse, fern, tanjiro) published much-improved commits overnight. Each at small blend weight gave HUGE decorrelation gains:
   - alphonse/f0b59cc (42.32) at 3% in nezuko_209: 35.195674 → 35.0905 (-0.105!)
