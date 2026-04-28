@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter19: perturb out of plateau (sb=12 + lr=2e-6)
+- **Hypothesis:** iter18 plateaued at 53.10. Higher LR + more single_boost should push the model out of the local min toward a better one.
+- **Change:** `--single_boost 12.0 --lr 2e-6`. Doubled LR (vs iter18's 1e-6), bumped sb 8 → 12.
+- **Result:** 7 epochs, best val/avg_surf_p=52.63 at epoch 6 (-0.47 vs iter18). Trajectory: 55.87 → 54.21 → 54.16 → 53.85 → 53.41 → 52.63 → 52.82. Predictions at `askeladd/90d0891`. W&B: askeladd/iter19-sb12-lr2e6-perturb.
+- **Verdict:** kept (-0.47). Perturbation worked — escaping the plateau cost epoch 1 (55.87) but ended better than iter18.
+- **Notes:** val_single_in_dist 2.20 → 2.16 (single_boost still pushing). iter20: drop LR back to 1e-6 to consolidate at sb=12.
+
 ### 2026-04-28 — iter18: chain sb=8 (plateau)
 - **Hypothesis:** Continue.
 - **Change:** None.
