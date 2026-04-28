@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20 third jolt (lr=2e-4, noise=0.05) — DISCARDED
+- **Hypothesis:** Push the jolt LR higher (1.5e-4 → 2e-4) and noise (0.04 → 0.05) for a bigger basin search.
+- **Change:** No code; flags `--lr 2e-4 --resume /tmp/iter19_best.pt --feature_noise 0.05 ...`. Run `wfbhmway`.
+- **Result:** Best epoch **1** (immediately after warm-start) at avg_surf_p=41.40 — i.e., the jolt destabilized training and the model never recovered to beat its iter19 starting point.
+- **Verdict:** Discarded. lr=2e-4 is too aggressive for warm-start. Sweet spot is 1.0–1.5e-4. Restored iter19-single (val=41.39) at HEAD 0528e83.
+- **Notes:** Lesson on jolt sizing: each subsequent jolt may need *smaller* LR, not larger, since the basin is getting tighter. Try iter21 = jolt 1.2e-4 with noise 0.03 from iter19.
+
 ### 2026-04-28 — iter19 second jolt (lr=1.5e-4 + noise=0.04)
 - **Hypothesis:** iter17 jolt worked (-0.33). iter18 polish gave only -0.02. So the cycle is jolt → modest polish → another jolt. Try a slightly stronger jolt (lr 1.5e-4 instead of 1e-4, noise 0.04 instead of 0.03) from iter18.
 - **Change:** No code change; flags `--lr 1.5e-4 --resume /tmp/iter18_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 20.0 --feature_noise 0.04 --n_vol_subsample 50000`.
