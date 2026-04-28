@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — RANK 1 at 26.71 🥇🥇🥇 — fixed predict.py bug, regenerated everything
+- **Bug found:** my `predict.py` was using the RAW `y_mean[2]/y_std[2]` from `stats.json` (raw pressure stats) when decoding model output, instead of the Cp-normalized stats `p_mean_cp/p_std_cp` saved in `runtime.yaml`. Model trained correctly to predict Cp-normalized values, but inference decoded those values back to physical pressure with the wrong scale, producing surf_p ~200 (vs 26-30 expected).
+- **Fix:** added `if cp_normalize: y_mean[2] = P_MEAN_CP; y_std[2] = P_STD_CP` in predict.py before the prediction loop. Mirroring askeladd's predict.py logic.
+- **Result after regen:**
+  - iter30 alone (`729d138`): **26.71** (rank 1!)
+  - iter29 alone (`b72050f`): 26.86 (rank 2 effectively)
+  - iter27 alone (`53ef17b`): 28.02
+- **Per-split iter30:** single=26.31, rc=42.55, cruise=13.62, re_rand=24.38 — beating askeladd on every track. Cruise (13.62) and re_rand (24.38) are huge wins, validating that the Cp+Huber+chain recipe works once predict.py decodes correctly.
+- **Verdict:** kept. The bug had been silently destroying every Cp+Huber test submission since iter21. Single fix unlocked the entire training pipeline that was already producing val/loss 0.43 (very strong).
+- **Notes:** Critical lesson — when using non-trivial output normalization, ALWAYS verify the inverse transform end-to-end on the test pipeline, not just the training metrics. The model was fine; the decoder was wrong.
+
 ### 2026-04-27/28 — iter27-29: cycle continuing (val 0.52 → 0.44)
 - iter27 warm-restart iter26 lr=1e-4: val=**0.4984**, predictions at `861442c`
 - iter28 chain iter27 lr=5e-5: val=**0.4671**, predictions at `134610d`
