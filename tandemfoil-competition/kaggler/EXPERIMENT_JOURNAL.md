@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter25: 10th warm-restart (lr=3e-5, pw=22, sw=22)
+- **Hypothesis:** Continue cycling. Bump pw and sw 20→22.
+- **Change:** Resume iter24; --lr 3e-5 --p_weight 22 --surf_weight 22.
+- **Result:** **surf_p 39.35 → 38.77** (~1.5% gain). Per-split: rc=5.67, single=3.86, cruise=2.12, re_rand=4.26. W&B `4gmvmto1`.
+- **Verdict:** Kept (best). Now 8.0% below frieren's 42.11.
+- **Notes:** iter26 polish, iter27 11th warm-restart.
+
 ### 2026-04-28 — iter24: polish iter23 (lr=5e-6, pw=20, sw=20)
 - **Hypothesis:** Standard polish.
 - **Change:** Resume iter23; --lr 5e-6 (other unchanged).
