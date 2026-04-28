@@ -219,6 +219,7 @@ class Config:
     val_holdout_pct: float = 0.10  # tinier holdout: more train data
     epochs: int = 10
     save_last: bool = True  # save the final epoch's EMA state (overrides best-val selection)
+    vol_weight: float = 0.3  # de-emphasize volume loss; the leaderboard ranks surface only
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
     wandb_name: str | None = None
@@ -388,7 +389,7 @@ def main():
             # Huber on surface, gentle extra weight on pressure (the leaderboard metric).
             ch_w = torch.tensor([1.0, 1.0, cfg.surf_p_weight], device=device).view(1, 1, 3)
             surf_loss = (huber_err * ch_w * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-            loss = vol_loss + cfg.surf_weight * surf_loss
+            loss = cfg.vol_weight * vol_loss + cfg.surf_weight * surf_loss
 
             optimizer.zero_grad()
             loss.backward()
