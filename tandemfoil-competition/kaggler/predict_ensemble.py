@@ -88,6 +88,7 @@ SRC = {
     "thorfinnPP": ("thorfinn", "c05d2ba"),  # avg 34.3228 — NEW best cruise (20.0260)
     "thorfinnQQ": ("thorfinn", "052f014"),  # avg 34.1723 — NEW FLOOR ALL: s=34.7895 rc=48.2954 c=19.9018 re=33.7027
     "thorfinnRR": ("thorfinn", "8c102c8"),  # avg 34.0550 — NEW FLOOR ALL: s=34.7146 rc=48.2126 c=19.7724 re=33.5204
+    "thorfinnSS": ("thorfinn", "03934df"),  # avg 34.0018 — NEW FLOOR ALL: s=34.6975 rc=48.2021 c=19.6568 re=33.4511
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
     # My own iter15 / iter16 raw checkpoint predictions (test only) — added at low weight for diversity.
@@ -113,12 +114,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter87: thorfinn/8c102c8 (RR) ANOTHER HUGE breakthrough new floors on ALL splits.
-    # Per-split-best: ALL=RR. Avg = 34.0550.
-    single: str = "thorfinnRR:1.0"
-    rc: str = "thorfinnRR:1.0"
-    cruise: str = "thorfinnRR:1.0"
-    re_rand: str = "thorfinnRR:1.0"
+    # iter88: thorfinn/03934df (SS) NEW FLOOR all splits. Avg = 34.0018.
+    single: str = "thorfinnSS:1.0"
+    rc: str = "thorfinnSS:1.0"
+    cruise: str = "thorfinnSS:1.0"
+    re_rand: str = "thorfinnSS:1.0"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
