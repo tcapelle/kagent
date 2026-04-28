@@ -57,12 +57,16 @@ print(f"Loaded model from {cfg.checkpoint}")
 runtime_path = ckpt_path.parent / "runtime.yaml"
 cp_normalize = False
 LOG_RE_REF = 0.0
+P_MEAN_CP = None
+P_STD_CP = None
 if runtime_path.exists():
     with open(runtime_path) as f:
         rt = yaml.safe_load(f)
     cp_normalize = bool(rt.get("cp_normalize", False))
     LOG_RE_REF = float(rt.get("log_re_ref", 0.0))
-    print(f"  cp_normalize={cp_normalize}, LOG_RE_REF={LOG_RE_REF}")
+    P_MEAN_CP = float(rt.get("p_mean_cp", 0.0))
+    P_STD_CP = float(rt.get("p_std_cp", 1.0))
+    print(f"  cp_normalize={cp_normalize}, LOG_RE_REF={LOG_RE_REF}, p_mean_cp={P_MEAN_CP}, p_std_cp={P_STD_CP}")
 
 # Load stats
 with open(splits_dir / "stats.json") as f:
@@ -71,6 +75,10 @@ x_mean = torch.tensor(stats_data["x_mean"], dtype=torch.float32, device=device)
 x_std = torch.tensor(stats_data["x_std"], dtype=torch.float32, device=device)
 y_mean = torch.tensor(stats_data["y_mean"], dtype=torch.float32, device=device)
 y_std = torch.tensor(stats_data["y_std"], dtype=torch.float32, device=device)
+# If model was trained with Cp normalization, override pressure stats with Cp values
+if cp_normalize and P_MEAN_CP is not None:
+    y_mean[2] = P_MEAN_CP
+    y_std[2] = P_STD_CP
 
 # Save predictions keyed by agent + commit hash
 agent_name = cfg.agent or "unknown"
