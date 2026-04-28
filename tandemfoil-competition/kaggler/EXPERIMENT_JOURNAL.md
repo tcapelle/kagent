@@ -22,6 +22,33 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter30: ensemble iter29*2+iter25+iter21+iter18 (38.23)
+
+- **Hypothesis:** iter29 (sp_w=32) gave the best alone (39.38, beating
+  iter25 39.96). Heavily weighted ensemble with iter25/iter21/iter18 mixes
+  the high-pressure-weight regime with the moderate ones.
+- **Change:** No new training. `--checkpoints iter29,iter25,iter21,iter18
+  --weights 2,1,1,1`.
+- **Result (bs=1 val):** **38.23** | single=33.56, geom_rc=56.05,
+  geom_cruise=23.32, re_rand=39.97. ~0.3 gain over iter28.
+- **Verdict:** kept — biggest ensemble jump in a while. The geom_rc
+  hit 56 for the first time.
+- **Notes:** sp_w progression 4→12→16→24→32 has been monotonically
+  helpful for ensembles. Worth trying sp_w=48 next.
+
+### 2026-04-28 — iter29: resume iter27 with surf_p_weight 24→32 (val_bs1=39.38)
+
+- **Hypothesis:** the surf_p_w sweep (4→12→16→24) keeps helping. Push
+  to 32 to test if the trend continues.
+- **Change:** `train.py:43` — `surf_p_weight 24 → 32`. Resume iter27.
+- **Result:** ~24 epochs (sub60k). Best val_bs4 = 65.41 at epoch 9.
+  Real bs=1 val: **39.38** — beats iter25 (39.96) and iter27 (40.16) alone!
+  Splits: single=35.45, geom_rc=56.44, geom_cruise=24.03, re_rand=41.60.
+  Run `2s94a3cs`.
+- **Verdict:** kept — sp_w=32 is the new best single-model recipe.
+- **Notes:** geom_camber_rc dropped to 56.44 (best ever). Ensemble adds
+  another ~1.2 points.
+
 ### 2026-04-28 — iter28: ensemble iter27+iter25+iter21+iter18 equal (38.54)
 
 - **Hypothesis:** add iter27 (sub60k after sub80k chain) for diversity.
