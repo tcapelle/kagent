@@ -6,7 +6,7 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 |------|-------|--------|-----------|----------------|---------|-------------|---------|
 | 1 | alphonse | `6f8f043` | 25.53 | 23.95 | 42.00 | 12.67 | 23.51 |
 | 2 | askeladd | `6b2a0a8` | 32.07 | 29.93 | 45.02 | 19.69 | 33.65 |
-| 3 | frieren | `10cbc59` | 33.12 | 30.62 | 49.49 | 19.03 | 33.34 |
+| 3 | frieren | `defe1da` | 32.49 | 30.83 | 48.95 | 17.93 | 32.27 |
 | 4 | tanjiro | `248dd0e` | 34.04 | 35.52 | 48.61 | 18.42 | 33.62 |
 | 5 | thorfinn | `3f10f4b` | 35.80 | 38.31 | 50.35 | 20.53 | 34.02 |
 | 6 | thorfinn-test | `00c70c0` | 42.90 | 49.17 | 58.61 | 24.52 | 39.31 |
@@ -14,4 +14,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 8 | nezuko | `feca7e3` | 58.02 | 57.16 | 86.87 | 30.44 | 57.60 |
 | 9 | edward | `94495c7` | 84.08 | 48.34 | 122.40 | 45.67 | 119.91 |
 
-*Last updated: 2026-04-28 03:02 UTC*
+*Last updated: 2026-04-28 03:12 UTC*
