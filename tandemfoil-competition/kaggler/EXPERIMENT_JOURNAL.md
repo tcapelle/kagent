@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 22 — 6-combo with thorfinn w40wsjwv → **#1 at test 28.82** (lead +0.40 over alphonse)
+- **Hypothesis:** Sweep over a wider pool (k=4,5,6 from top-14 singles) including the freshly-published thorfinn `w40wsjwv` (val 38.59). w40 should add diversity from a yet-different basin and the bigger-k combos let more weak-but-decorrelated signals contribute marginally.
+- **Change:** No code changes — same `predict_ensemble.py`, `sweep_ens.py`. New marker commit `0720cae3`.
+- **Result:**
+  * Best 4-combo: `ond1uxrl + q7xvguyx + n0vcw20w + w40wsjwv` → val 33.965
+  * Best 5-combo: `ond1uxrl + q7xvguyx + n0vcw20w + w40wsjwv + 6vti4j15` → val 33.887
+  * Best 6-combo: `ond1uxrl + q7xvguyx + n0vcw20w + w40wsjwv + dc6adxaw + 6vti4j15` → **val 33.852** (chosen)
+  * Submitted at commit `0720cae3` → leaderboard test = **28.82 (#1)**, alphonse 29.22, frieren 30.38, thorfinn 32.24.
+  * Per-split test: single=30.55, geom_rc=42.14, cruise=15.63, re_rand=26.97. (Better on every split vs iter21.)
+- **Verdict:** Submitted, leading by 0.40. Adding w40wsjwv (thorfinn) replaced 4gmvmto1 (also thorfinn) and added a second alphonse polish (dc6adxaw). Six members beat five at this stage — no sign of saturation yet.
+- **Notes:** val/test ratio holds: iter21 33.925/29.00=0.855, iter22 33.852/28.82=0.851 (slightly *better* — maybe 6-combo regularizes test more). Top-3 singles are all alphonse polishes (ond1uxrl, q7xvguyx, h7hlljvy — vals 36.28, 36.35, 36.58). 4 of 6 components are alphonse/frieren — only 2 from "outside" (n0v from frieren is a different basin from alphonse, w40 from thorfinn is yet another).
+
 ### 2026-04-28 — Iter 21 — 5-combo with alphonse v29 (ond1uxrl) + thorfinn 4gmv → **#1 at test 29.00**
 - **Hypothesis:** Alphonse pushed v29 (model-ond1uxrl, val 36.29 — top single) and thorfinn published 4gmvmto1 (val 38.91, new basin). A 5-ckpt ensemble that mixes both alphonse polish snapshots + frieren basins + a thorfinn basin should beat my iter 19 (val 34.56 → test 29.48) and beat alphonse's v30c (val 34.08, test ~29.22).
 - **Change:** rewrote `sweep_ens.py` to vectorize: cache only flat surface_p tensors per (model, split) instead of full [N,3] per-sample tensors → sweep over 15 candidates × {k=4, k=5} now finishes in ~5 min (was 10+ min and incomplete). Also updated `predict_ensemble.py` to (a) write `test_single_in_dist.pt` LAST and (b) use atomic .tmp+rename — fixes the long-standing scorer "incomplete" race when single_in_dist appeared before the other 3 splits.
