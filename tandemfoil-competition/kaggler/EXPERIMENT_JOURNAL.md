@@ -22,6 +22,11 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — apr28-bis: TTA via input-noise predict (also plateaued)
+- Added `--tta_passes` and `--tta_noise_std` to `predict.py`. Ran K=4 forward passes with std=0.03 Gaussian noise on normalized inputs, averaged to produce iter17_TTA (`dff8b76`) and iter21_TTA (`c40b098` after rebump).
+- Submitted blends: `79d594a` 0.95/0.05 iter17_TTA, `1a465ed` 0.95/0.05 iter21_TTA, `95bd8dd` 0.92+0.04/0.04 both, `c40b098` 0.90+0.05/0.05 iter17+TTA.
+- None beat 42.33. The TTA variant doesn't add meaningful diversity over plain iter17/iter21 because the underlying model is smooth — averaging input-noised passes converges to the deterministic prediction E[f(x+noise)] ≈ f(x) for small noise.
+
 ### 2026-04-28 — apr28-bis FINAL: 42.33 rank 7 (improved 0.02 from 42.35)
 - **Best: `a1ca853` (or `dffa6f2`) = 42.33** — 0.05–0.10 iter17 blend over the previous 9-way (ab7e0b2). Per-split: sing=40.91 rc=59.24 cr=26.93 rer=42.26.
 - **Method that worked:** Took the previous session's best 9-way ensemble (ab7e0b2 = 42.35) as a black-box source and re-weighted it slightly toward iter17 (the strongest 256-hidden chain endpoint). Adding 5–10% extra iter17 weight = -0.02 on surf_p MAE; heavier (15%+) regressed.
