@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter14: chain LR 1e-6 + p_weight 50, save_last_k=15 (regression)
+- **Hypothesis:** continue chain ramp; expect ~0.05pt gain.
+- **Change:** args only; `save_last_k=15` so SWA gets more snapshots earlier in the plateau.
+- **Result:** 28 epochs in 31 min. Best epoch 4 → val/avg_surf_p=45.07. Run duqas30d. p_weight=50 may be too aggressive.
+- **Verdict:** **discarded** (regression vs iter13 44.97). Resubmitted iter13 predictions at commit 6e46da1 to avoid leaderboard regression.
+- **Notes:** SWA over 13 snapshots (e16–e28): 45.17. SWA(iter13_best, iter14_best): 45.01. Ensemble(iter13, iter14): 44.99 (~iter13). Best single iter13 still wins. Plateau is firmly ~45 — chain is saturated.
+
 ### 2026-04-27 — iter13: chain LR 1.5e-6 + p_weight 42
 - **Hypothesis:** continue chain ramp; expect ~0.05-0.1pt gain.
 - **Change:** args only.
