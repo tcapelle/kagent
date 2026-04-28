@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — 3-model ensemble iter8/iter10/iter16 -> 93.13
+- **Hypothesis:** even though iter16 (`surfw30-pw5`) standalone scored 98.62 (worse than iter8), it might be a useful diverse third model in a weighted ensemble — its different loss recipe should yield different errors than iter8 + 63ry1pjo.
+- **Change:** evaluated weighted 3-model ensembles. Best: iter8(uqh1ky00) + 63ry1pjo (iter10) + iter16(69oedz30) at weights ~0.74/0.13/0.13. Regenerated test predictions to `apr27-4/fern/df5ac5d` using these weights.
+- **Result:** val avg_surf_p = 93.13 (vs 93.30 for 2-model ensemble, 93.62 for iter8 alone). 4-model variants adding qfkke457 hurt (93.45+).
+- **Verdict:** kept ensemble predictions (no code change to commit beyond predict.py weighted-support which was already in HEAD). 0.5% cumulative gain over iter8 single.
+- **Notes:** the weak iter10/iter16 models help despite being worse standalone — error decorrelation matters more than mean quality, as long as weights tilt heavily toward the best (iter8). The ensemble plateau-is around 93.13 with this set of ckpts.
+
 ### 2026-04-28 — surfw30-pw5 (DISCARDED)
 - **Hypothesis:** leaderboard scores only surface pressure, so heavily upweight that channel: surf_weight 15→30 and p_weight 3→5.
 - **Change:** Config defaults `surf_weight=30, p_weight=5`.
