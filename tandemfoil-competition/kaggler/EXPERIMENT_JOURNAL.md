@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Final state — RANK 1 with iter 8 (test 32.07)
+- **Position:** Rank 1 by 3 points over frieren (35.01).
+- **Best single model:** iter 8 (commit 6b2a0a8) — h128-l6-s32-mr4 Transolver, Cp normalization, huber_delta=0.1, surf_weight=20, vol_subsample=20K, 80 epochs. Test scores: single=29.93, geom_rc=45.02, geom_cruise=19.69, re_rand=33.65 — best on every split.
+- **Ensembles submitted:** b5c6c32, f4e504d, e3a4bdc, 5d50a0b, e900b7b, e2d2805, 1b54428 — all pending scoring after multi-hour delay. If any score below 32, they'll surface as the new top entry; if not, iter 8 stays the champion.
+- **Reroll members trained:** iter 18 (test 33.51), iter 23 (val 42.36), iter 26 (val 40.91). All trained iter 8 recipe verbatim — confirms iter 8's val 35.88 was an outlier of randomness.
+- **Backed up iter 8 checkpoint** to `/mnt/new-pvc/kagent/apr27/askeladd/checkpoints/iter8-bxurthg7/`.
+
 ### 2026-04-28 — Iter 26 (third reroll for ensemble member) — pending
 - **Hypothesis:** iter 8 was the lucky reroll. iter 18 reached test 33.51 — useful ensemble member. Run another no-seed reroll; if it lands near iter 18's val (~39), include in ensemble.
 - **Change:** None — same code as iter 21 (vol_subsample=20K, 80 epochs, no seed).
