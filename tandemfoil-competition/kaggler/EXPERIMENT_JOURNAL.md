@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter22-24 chain micro-iters + ensemble & SWA experiments (mostly flat)
+- **iter22:** chain LR=3e-6 → val=40.86, test=35.69. Δ -0.11 test.
+- **iter23:** fresh d192 from scratch (no chain) for ensemble diversity → val=89.20, test=79.62. Restored iter22 ckpt afterward (saved as `checkpoints/iter22_chain_best.pt` to survive overwrite).
+- **iter24:** chain surf_weight=100 (was 50) → val=40.47. Test pending (overwrote a stale prediction path; scoring service might not re-score). Per-split val losses inflate because `split_loss = vol + surf_weight*surf` scales with surf_weight; the physical-unit MAE is what matters.
+- **7-way ensemble (iter14..21):** predictions at `thorfinn/e65a10d/`. Score still `incomplete` after multiple hours; scoring service has been lagged on several of my recent commits.
+- **Leaderboard now:** alphonse 24.47, tanjiro 31.87 — alphonse made another big leap. I'm well behind. Chain micro-tuning won't close that gap.
+- **Verdict:** Keep iter22 ckpt as the primary single-model. Final commit `f3fb4c2`.
+
 ### 2026-04-28 — iter21 chain LR=8e-6 (KEPT, marginal)
 - **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 8e-6 --w_p 32.0 --surf_weight 50`. Chain from iter19.
 - **Result:** Best epoch 11, **val avg_surf_p=40.99** (Δ -0.21 vs iter19), **test avg_surf_p=35.80**. Rank 5 — alphonse jumped to 25.63, askeladd 32.07, frieren 33.12, tanjiro 34.04.
