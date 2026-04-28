@@ -62,14 +62,14 @@ MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))  # minutes
 
 @dataclass
 class Config:
-    lr: float = 1.5e-5
+    lr: float = 1e-5
     weight_decay: float = 1e-4
-    batch_size: int = 4
+    batch_size: int = 2
     surf_weight: float = 25.0
     p_channel_weight: float = 1.0  # equal channel weighting
-    epochs: int = 16
+    epochs: int = 14
     grad_clip: float = 1.0
-    train_max_volume: int = 80000  # bigger subsample for closer-to-test generalization
+    train_max_volume: int = 0  # full mesh (no subsample)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     init_ckpt: str | None = None  # warm-start from this checkpoint path
     wandb_group: str | None = None
