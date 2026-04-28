@@ -40,6 +40,7 @@ class Config:
     splits_dir: str = str(SPLITS_DIR)
     agent: str | None = None
     batch_size: int = 4
+    weights: str | None = None  # comma-separated ensemble weights (default: equal)
 
 
 cfg = sp.parse(Config)
@@ -47,6 +48,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 splits_dir = Path(cfg.splits_dir)
 
 ckpt_paths = [Path(p.strip()) for p in cfg.checkpoint.split(",") if p.strip()]
+if cfg.weights:
+    weights = [float(w) for w in cfg.weights.split(",")]
+    assert len(weights) == len(ckpt_paths), "weights count must match ckpts"
+    ws = sum(weights)
+    weights = [w / ws for w in weights]
+else:
+    weights = [1.0 / len(ckpt_paths)] * len(ckpt_paths)
 models = []
 for ckpt_path in ckpt_paths:
     config_path = ckpt_path.parent / "config.yaml"
@@ -97,8 +105,9 @@ for split in TEST_SPLITS:
 
             x_norm = (x_pad - x_mean) / x_std
             pred_norm = sum(
-                m({"x": x_norm, "mask": mask})["preds"].float() for m in models
-            ) / len(models)
+                w * m({"x": x_norm, "mask": mask})["preds"].float()
+                for w, m in zip(weights, models)
+            )
             pred = pred_norm * y_std + y_mean
 
             for j, x in enumerate(xs):
