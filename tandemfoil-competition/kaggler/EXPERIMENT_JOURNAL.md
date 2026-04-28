@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter15: re-chain from iter13 (LR 2e-6, p_weight 42); SWA wins!
+- **Hypothesis:** iter14 regressed at p_weight 50 → too aggressive. Step back to iter13's settings (LR 1.5e-6 → 2e-6, p_weight 42 unchanged) to find a slightly different local minimum that we can SWA with iter13. Until now SWA across nearby epochs and across consecutive chain iters didn't help — but two re-chains starting from the same parent at slightly different settings should sit at distinct points in the same basin.
+- **Change:** args only — re-chain from iter13's checkpoint instead of iter14's.
+- **Result:** 28 epochs in 30.9 min. Best epoch 15 → val/avg_surf_p=44.96. Run rscn0f12.
+- **SWA experiments:**
+  - iter13 alone: 44.97
+  - iter15 alone: 44.96
+  - **SWA(iter13, iter15): 44.93** (winner — first SWA improvement!)
+  - prediction-ensemble(iter13, iter15): 44.94
+- **Verdict:** kept SWA(iter13, iter15). Submitted SWA predictions at apr27-5/askeladd/d7cc8ca.
+- **Notes:** **First confirmed SWA win** — the trick is to use *parallel re-chains* from a shared parent (not consecutive chain steps). Iter16 plan: another re-chain from iter13 with different hyperparams (e.g. LR 1e-6, p_weight 35) for more diversity, then SWA all 3.
+
 ### 2026-04-28 — iter14: chain LR 1e-6 + p_weight 50, save_last_k=15 (regression)
 - **Hypothesis:** continue chain ramp; expect ~0.05pt gain.
 - **Change:** args only; `save_last_k=15` so SWA gets more snapshots earlier in the plateau.
