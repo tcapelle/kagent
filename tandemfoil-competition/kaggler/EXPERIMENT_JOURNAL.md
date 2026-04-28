@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 17 — third co-trained chain (lr=8e-6, sw=18, pw=5); 3-way ensemble worse
+- **Hypothesis:** Iter 9 + iter 15 ensemble landed at 50.94 by averaging two val-~55 snapshots from slightly different chains. A third co-trained chain at yet-different (lr, sw, pw) might add diversity if it lands in another nearby basin at val ~55.
+- **Change:** invocation only — `--resume model-dbqik2p5/checkpoint.pt --lr 8e-6 --surf_weight 18 --p_weight 5`. Wandb run `jaj9fvye`.
+- **Result:** 56 epochs, best val/loss at epoch ~30, avg surf_p ≈ 55.6. Test-time 3-way ensemble (iter 9 + iter 15 + iter 17) AVG = 55.77 vs 2-way (iter 9 + iter 15) AVG = 55.39. Worse.
+- **Verdict:** Excluded iter 17 from the final ensemble. Restored 2-way iter 9 + iter 15 predictions to commit dir `a271e021`. Best score remains 50.94 at `16698691`. Restored repo `checkpoints/best.pt` to iter 9 (strongest single).
+- **Notes:** Confirms the ~5% rule from iter 16 — adding a marginally weaker snapshot to a 2-way ensemble only hurts. The iter 9 trajectory has now been chain-finetuned three times with different (lr, sw, pw) recipes (iter 10 lr=5e-6, iter 15 lr=1e-5, iter 17 lr=8e-6) — all land at val ~55-57 but only iter 15 actually improved the ensemble. Need genuinely independent basins (different fresh-from-scratch base) which 30 min budget can't reach val 55.
+
 ### 2026-04-28 — Iter 15 + 16 — co-trained chain ensemble; first ensemble win
 - **Hypothesis:** Iter 15 was a deeper chain finetune from iter-9 (`dbqik2p5`) with `lr=1e-5`, `p_weight=4`, `surf_weight=12` — landed at val 55.3, very close to iter 9 but with a slightly different optimum. Two same-quality models that explored slightly different basins should average usefully (the failure mode in iter 11/12 and 13/14 was that the partner basin was always weaker).
 - **Change:** invocation only — iter 15: `--resume model-dbqik2p5/checkpoint.pt --lr 1e-5 --surf_weight 12 --p_weight 4`. Iter 16: same plus `--loss_type smooth_l1 --lr 5e-6`, hoping Huber would smooth out the plateau noise.
