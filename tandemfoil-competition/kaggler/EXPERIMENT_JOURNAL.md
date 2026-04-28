@@ -22,6 +22,11 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter33/34: 9-way strong (30.38), deep finetune iter14 → val 38.91
+- **Iter33:** 9-way strong + iter32 at `f20b426` → **test 30.38** (improvement from 30.62).
+- **Iter34:** deep finetune iter14 (warm_start val 39.42) → val=38.91 (run id `gpdhi6s7`). Slight improvement, will add to ensemble.
+- nezuko emerged at 28.69, alphonse 29.17, frieren 30.38. Two competitors above us now.
+
 ### 2026-04-28 — iter31/32: 8-way strong + iter29 (test 30.62), deep finetune of iter17 → val 37.27 best single
 - **Iter31:** 8-way strong + iter29 (val 40.49) at `03c5b33` → **test 30.62**.
 - **Iter32:** deep finetune iter17 (warm_start from val 37.99 best) with lr=5e-6, p_w=5, surf_w=15. Best epoch 12: val=**37.27** — new single-model best (run id `muw3tkhd`).
