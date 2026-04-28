@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17: train on train + 80% val (kept)
+- **Hypothesis:** Each val_X split is a random holdout from the same distribution as test_X, so promoting val data into the training set should directly improve test performance. Held out 20% per split for noisy monitoring.
+- **Change:** train.py — added `use_val_in_train` and `val_holdout_pct` cfg, splices `val_splits` into train_ds (320/400 val files promoted), keeps 80 for held-out monitoring. Same loss/boost as iter16.
+- **Result:** Best epoch 8 with **(20-sample-per-split) val avg_surf_p=44.74**. Not directly comparable to prior 100-sample val numbers, but the trajectory is monotonic (44.95 → 44.74 over 8 epochs). Wall time 27.9 min. WandB run vurf294e.
+- **Verdict:** Kept (tentatively — true verdict comes from the leaderboard).
+- **Notes:** Lost the precision of the 400-sample val signal but gained training data. iter16 just got scored at test=38.07; askeladd is now 33.72 (gap 4.35 — they keep finding wins). Iter17 should narrow the gap if the val→test transfer works.
+
+### 2026-04-28 — iter15-16: drive Huber towards L1 (kept both)
+- **iter15:** huber_beta 0.3→0.1, surf_weight 20→25, surf_p_weight 3→4 — val 44.67→**44.23** (-0.44). Test=**38.17 (#2)**. Single split test: 39.80, jumping from 41.65.
+- **iter16:** huber_beta 0.1→0.05, surf_p_weight 4→5, lr→3e-6 — val 44.23→**44.04** (-0.19). Test=**38.07** still #2-3 range.
+- **Verdict:** Both kept; the L1-leaning loss is paying for itself. Improvement-per-iter is decaying, signal that this lever is approaching saturation.
+
 ### 2026-04-28 — iter14: huber_beta=0.3 (more L1) + surf_w=20 + p_w=3 (kept)
 - **Hypothesis:** Leaderboard ranks pure pressure MAE; my Huber loss with beta=1 acts mostly like L2 on small errors after many iters of fine-tuning. Pulling beta down to 0.3 makes most of the surface error region act like L1, gradient-aligned with the metric. Doubling the loss-balance for surface (15→20) and tripling pressure within surface (1.5→3) makes the gradient signal even more pressure-focused.
 - **Change:** train.py — exposed `huber_beta` as a cfg field (defaulted 0.3), bumped `surf_weight` 15→20, `surf_p_weight` 1.5→3, kept `rc_single_boost` at 8 (from 10) since per-split rc was creeping up at 10x.
