@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter23: 9th warm-restart (lr=3e-5, pw=20, sw=20)
+- **Hypothesis:** Continue cycling. Bump pw and sw 18→20.
+- **Change:** Resume iter22; --lr 3e-5 --p_weight 20 --surf_weight 20.
+- **Result:** **surf_p 40.16 → 39.75** (~1.0%, smaller jump). Per-split: rc=5.28, single=3.59, cruise=1.97, re_rand=4.02. W&B `a394tbto`.
+- **Verdict:** Kept (best). Now 5.6% below frieren's 42.11.
+- **Notes:** Cycle gain dropping (1.8% → 1.0%). Approaching the limits of this recipe. iter24 polish, iter25 may try something new (e.g., switching back to pw=18 sw=18 with bigger lr kick, or training a 2nd model for ensemble).
+
 ### 2026-04-28 — iter22: polish iter21 (lr=5e-6, pw=18, sw=18)
 - **Hypothesis:** Standard polish.
 - **Change:** Resume iter21; --lr 5e-6 (other unchanged).
