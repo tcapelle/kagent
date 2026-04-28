@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21: 8th warm-restart (lr=3e-5, pw=18, sw=18)
+- **Hypothesis:** Same recipe as iter19 worked — repeat for 8th cycle.
+- **Change:** Resume iter20; --lr 3e-5 --p_weight 18 --surf_weight 18.
+- **Result:** **surf_p 41.25 → 40.52** (~1.8% gain). Per-split: rc=4.81, single=3.31, cruise=1.85, re_rand=3.68. W&B `kvwjhxgi`.
+- **Verdict:** Kept (best). Now 3.8% below frieren's 42.11.
+- **Notes:** Cycle gain stayed at 1.8% — pattern holds. iter22 polish, iter23 9th warm-restart.
+
 ### 2026-04-28 — iter20: polish iter19 (lr=5e-6, pw=18, sw=18)
 - **Hypothesis:** Standard polish; lr=5e-6 (slightly higher than typical 4e-6 to allow more movement on the bigger update).
 - **Change:** Resume iter19; --lr 5e-6 (other unchanged).
