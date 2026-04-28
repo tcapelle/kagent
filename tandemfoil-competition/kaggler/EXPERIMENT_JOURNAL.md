@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter25: chain at sb=15 + lr=1e-6
+- **Hypothesis:** Continue.
+- **Change:** None.
+- **Result:** 7 epochs, best val/avg_surf_p=51.15 at epoch 6 (-0.08 vs iter24). Trajectory: 51.43 → 51.87 → 51.47 → 51.28 → 51.39 → 51.15 → 51.19. Predictions at `askeladd/10e623c`. W&B: askeladd/iter25-chain-sb15.
+- **Verdict:** kept (-0.08). Diminishing.
+- **Notes:** iter26: try rebalancing — drop sb 15→6 and surf_p_weight 14→10 to reduce overfit on single, give some weight back to volume.
+
 ### 2026-04-28 — iter24: settle at sb=15 + lr=1e-6
 - **Hypothesis:** Drop LR back to 1e-6, keep iter23's sb=15 + surf_p_w=14.
 - **Change:** `--lr 1e-6`. sb=15 unchanged.
