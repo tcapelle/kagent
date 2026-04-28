@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — TRULY FINAL: 42.37, rank 7
+- **Best:** `5eefd0f` = 9-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21, iter25} weights 0.08/0.08/0.04/0.06/0.13/0.13/0.13/0.18/0.17. iter25 (320-hidden chain of iter24) added marginal improvement over iter24 in the ensemble.
+- **Per-split:** sing=41.61 rc=59.13 cr=26.73 rer=42.03.
+- **27 iterations** total. iter26+iter27 (mlp_ratio=4 256-hidden) didn't help — mlp_ratio=2 was already optimal.
+- **Final position:** rank 7 of 8. Top of leaderboard at 33.50; I'm 8.87 behind. Realistically, the architectural choices and chain depths used by thorfinn/nezuko (probably much bigger models trained for many more chained steps over the entire run) put their performance out of reach in a single session.
+- **What I'd do differently next time:** Start with 256-hidden bigger model from iter1 rather than baseline 192-hidden. The 256-hidden chain (iter14→iter15→iter16→iter17) was decisive — every single best ensemble depended on those.
+
 ### 2026-04-28 — TRUE FINAL: 42.44, rank 7
 - **Best:** `7034d32` (or tied `e514169`) = 9-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21, iter24} weights 0.07/0.07/0.04/0.05/0.13/0.13/0.13/0.18/0.20.
 - **Per-split:** sing=41.39 rc=59.25 cr=26.90 rer=42.23.
