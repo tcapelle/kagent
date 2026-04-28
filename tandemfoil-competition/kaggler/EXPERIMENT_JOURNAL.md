@@ -148,3 +148,6 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** Best `avg_surf_p = 43.78` at epoch 8 (mostly monotonic, tiny bump at ep6). **3.7% over v17 (45.44→43.78), 88% over baseline.** Per-split p MAE: single_in_dist=47, geom_camber_rc=53, geom_camber_cruise=37, re_rand=39. **Test: 37.68 → rank 4.** W&B `alphonse/v18-warm-lr5e5` (`pav3usp8`).
 - **Verdict:** Kept. Best single-step gain in 6 iters — chain not done yet.
 - **Notes:** Ensemble at commit 2a43132 was unscored ("incomplete" in scores.json — likely because it wasn't the latest commit when scoring ran). Will retry ensemble as the latest commit.
+
+### 2026-04-28 — ensemble-v15-v16-v17-v18 (commit a5be725)
+- **Note:** 4-model ensemble averaged in normalized space at commit `a5be725`. Latest commit so will be scored. Pure infer-time, no new training.
