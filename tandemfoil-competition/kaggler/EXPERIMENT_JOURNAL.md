@@ -31,7 +31,12 @@ Keep entries short. Link W&B run URLs when useful.
   - `674d215` = 0.5*ab7e0b2 + iter15/16/17/21 weights — heavy 256h family.
   - `b788b44` = MEDIAN ensemble of 8 sources (iter4/6/9/15/16/17/21/25, no iter13).
   - `0850d70` = 5-way big-chain endpoints iter15/16/17/21/25 weights 0.20/0.20/0.20/0.25/0.15 — pure 256h+320h.
-  - Uniform mean of 8 sources, ab7e0b2*0.85+iter25*0.15.
+  - `fdbe1fa` = uniform 1/8 mean of 8 sources.
+  - `0fa4688` = 0.85*ab7e0b2 + 0.15*iter25 (heavier 320h).
+  - `eb5eb29` = 0.85*ab7e0b2 + 0.15*iter17 (lighter iter17 boost).
+  - `48e4682` = 0.85*ab7e0b2 + 0.15*iter21 (lighter iter21 boost).
+  - `691cc64` = 0.85*ab7e0b2 + 0.075*iter17 + 0.075*iter21 (split boost).
+- iter30: chain iter17 with x_noise_std=0.1 input augmentation, lr=2e-6, l1, 8ep — feature-noise regularization for ensemble diversity.
 
 ### 2026-04-28 — TRULY FINAL: 42.37, rank 7
 - **Best:** `5eefd0f` = 9-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21, iter25} weights 0.08/0.08/0.04/0.06/0.13/0.13/0.13/0.18/0.17. iter25 (320-hidden chain of iter24) added marginal improvement over iter24 in the ensemble.
