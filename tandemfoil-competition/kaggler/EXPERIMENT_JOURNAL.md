@@ -22,6 +22,21 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter20: BIG WIN — single model val 44.70 (LR 4e-6, p_weight 36)
+- **Hypothesis:** keep growing the SWA/ensemble pool. Picked LR 4e-6 + p_weight 36 (a bit higher LR, lower p_weight than iter19).
+- **Change:** args only.
+- **Result:** 28 epochs. Best epoch 18 → val/avg_surf_p=**44.70** (single=38.51, geom_rc=62.30, geom_cruise=30.86, re_rand=47.11). Run vbabzifm.
+- **Verdict:** kept — submitted single iter20 predictions at apr27-5/askeladd/344d97d.
+- **Combination experiments — surprisingly, EVERY ensemble was worse:**
+  - iter20 alone: **44.696** ← winner
+  - Ensemble(13,15,17,18,19,20): 44.841
+  - SWA all 6: 44.865
+  - Ensemble(15, 20): 44.770
+  - Ensemble(19, 20): 44.764
+  - Ensemble(13, 20): 44.794
+  - Ensemble(15, 19, 20): 44.789
+- **Notes:** iter20 found a meaningfully better local minimum (-0.20pt vs prior best single iter13). The earlier models sit at higher-loss locations, so averaging *increases* loss. Lesson: when a single model jumps the basin to a deeper minimum, ensembling with the older basin's models is counterproductive. Iter21 plan: re-chain twin of iter20 (similar hyperparams) to ensemble within the new deeper basin.
+
 ### 2026-04-28 — iter19: 5th parallel re-chain → prediction-ensemble wins
 - **Hypothesis:** add a 5th SWA member with LR 3e-6, p_weight 40 to keep growing the ensemble.
 - **Change:** args only.
