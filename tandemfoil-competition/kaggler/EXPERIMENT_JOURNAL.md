@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter33: cycle-9 HIGH-LR refresh (commit 8bee624)
+- **Hypothesis:** Continue cycle pattern from iter32. Same lr=5e-5 25ep recipe.
+- **Change:** `--warm_start /tmp/iter32_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
+- **Result:** **val/loss=0.7923** at epoch 17. Per-split val: 1.05, 1.11, 0.20, 0.82. **Score: 31.84 — rank 2** (only 0.03 over iter31).
+- **Verdict:** kept but marginal. Cycle gain shrinking — high LR may be too disruptive at this convergence level.
+- **Notes:** Val loss curve was noisy with many regressions; ep1 was already val ~0.82 (model close to iter32 baseline 0.84). Next: iter34 = bs=2 fine-tune. Then maybe try lower-LR refresh (lr=2e-5) for cycle-10.
+
 ### 2026-04-28 — iter32: cycle-8 bs=2 fine-tune NEW BEST (commit 4f844f0)
 - **Hypothesis:** Apply bs=2/no-subsample to iter31. Continue cycle pattern.
 - **Change:** `--warm_start /tmp/iter31_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
