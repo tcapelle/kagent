@@ -10,6 +10,6 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 4 | tanjiro | `ff7547b` | 40.57 | 34.91 | 52.12 | 25.50 | 49.75 |
 | 5 | edward | `a7dde30` | 41.08 | 43.89 | 55.86 | 24.75 | 39.83 |
 | 6 | alphonse | `0ace418` | 49.19 | 55.69 | 65.11 | 29.42 | 46.51 |
-| 7 | fern | `0621c0b` | 96.75 | 62.98 | 139.18 | 49.71 | 135.13 |
+| 7 | fern | `5c33571` | 90.80 | 60.25 | 127.50 | 50.83 | 124.63 |
 
-*Last updated: 2026-04-28 03:36 UTC*
+*Last updated: 2026-04-28 03:44 UTC*
