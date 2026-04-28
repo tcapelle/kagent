@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter28: cycle-6 bs=2 fine-tune — broke 1.0 val (commit 248dd0e)
+- **Hypothesis:** Apply bs=2/no-subsample to iter27 (val 1.019). Following the pattern that paired iter25→iter26.
+- **Change:** `--warm_start /tmp/iter27_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** **val/loss=0.9959** at epoch 9 (broke the 1.0 barrier!). Per-split val: 1.64, 1.24, 0.23, 0.88. **Score: 34.04 (rank 4 — alphonse surged to 26.14, askeladd 32.07, frieren 33.12).**
+- **Verdict:** kept. Solid improvement but field jumped — alphonse made a big leap. Keep cycling.
+- **Notes:** Each cycle-pair (high-LR refresh → bs=2) adds ~3% val and ~1-3 score points. Need to keep the pattern.
+
 ### 2026-04-28 — iter27: cycle-6 HIGH-LR refresh 🥈 RANK 2 (commit a40c521)
 - **Hypothesis:** Repeat the iter25 trick (high-LR cycle refresh) from iter26's stronger base. Cycle-6 should keep climbing.
 - **Change:** `--warm_start /tmp/iter26_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
