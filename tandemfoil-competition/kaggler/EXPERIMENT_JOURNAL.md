@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter26: chain step (6, 7) lr=5e-6
+
+- **Hypothesis:** chain step at lr=5e-6 with mildly tandem-leaning boosts.
+- **Change:** WARMSTART=aqn4nqnz, lr=5e-6, single_boost=6, tandem_boost=7.
+- **Result:** 13 epochs in 31 min. 37.19 → epoch 13 = **36.97** (best, -0.22). Predictions at `776eade/`. Run `mofs1h63`.
+- **Verdict:** kept. **iter26 SCORED 31.43 → #3** (tanjiro 31.13, askeladd 32.07). Per-split test: single=29.21, geom_rc=48.23, geom_cruise=16.90, re_rand=31.38. Tanjiro is just 0.30 ahead because of their better geom_rc (45.36 vs my 48.23).
+- **Notes:** chain plateau is real now. iter27 should push HARDER on tandem to unlock geom_rc.
+
 ### 2026-04-28 — iter25: warm-restart with boost (8, 10)
 
 - **Hypothesis:** Continue chain — warm-restart cycle with single=8, tandem=10.

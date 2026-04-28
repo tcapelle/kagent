@@ -230,13 +230,13 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter26: chain step from iter25 best (aqn4nqnz, val=37.19), low LR.
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-aqn4nqnz/checkpoint.pt"
+# Iter27: warm-restart with HEAVY tandem boost — close geom_rc gap to tanjiro.
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-mofs1h63/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 5e-6
+    lr: float = 2e-5
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
@@ -248,8 +248,8 @@ class Config:
     l2_weight: float = 1.0
     p_weight: float = 5.0
     ema_decay: float = 0.99
-    single_boost: float = 6.0
-    tandem_boost: float = 7.0
+    single_boost: float = 4.0
+    tandem_boost: float = 12.0
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
