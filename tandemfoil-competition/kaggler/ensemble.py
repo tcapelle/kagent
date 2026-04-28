@@ -8,8 +8,8 @@ import torch
 PRED_DIR = Path(f"/mnt/new-pvc/predictions/{os.environ['RESEARCH_TAG']}/frieren")
 SPLITS = ["test_single_in_dist", "test_geom_camber_rc", "test_geom_camber_cruise", "test_re_rand"]
 
-# 6-way cross-basin ensemble: chain1 (iter4, iter6), chain2 (iter9, iter11), chain3 (iter14), chain4 (iter17)
-COMMITS = ["37a85cf", "f088509", "ffcecba", "f4f626e", "b423825", "e920838"]
+# 7-way ensemble: 4 finetune chains × ~2 stages each
+COMMITS = ["37a85cf", "f088509", "ffcecba", "f4f626e", "b423825", "e920838", "5f742b2"]
 
 # Save under current HEAD's commit
 out_commit = subprocess.run(
