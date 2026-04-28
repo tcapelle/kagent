@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter25 surface-only training (KEPT, real gain)
+- **Hypothesis:** Leaderboard ranks only on surface pressure MAE; volume gradients are wasted capacity. Drop volume loss entirely (vol_weight=0) so the backbone allocates all gradient signal to surface nodes.
+- **Change:** train.py — added `vol_weight` knob; loss = `vol_weight*vol_loss + surf_weight*surf_loss`.
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 5e-6 --w_p 8.0 --surf_weight 10 --vol_weight 0`. Chain from iter22 ckpt.
+- **Result:** Best epoch 11, **val avg_surf_p=40.21** (Δ -0.65 vs iter22). Per-split also down: single_in_dist 1.47→1.47, geom_camber_rc 2.31→2.29, cruise 0.95→0.94, re_rand 1.74→1.72. Test pending.
+- **Verdict:** Kept (commit `5087278`). Real improvement after several flat iters.
+- **Notes:** Surface-only loss is the right alignment with the metric — should have done it earlier. Iter26 chain again at lower LR (3e-6).
+
 ### 2026-04-28 — iter22-24 chain micro-iters + ensemble & SWA experiments (mostly flat)
 - **iter22:** chain LR=3e-6 → val=40.86, test=35.69. Δ -0.11 test.
 - **iter23:** fresh d192 from scratch (no chain) for ensemble diversity → val=89.20, test=79.62. Restored iter22 ckpt afterward (saved as `checkpoints/iter22_chain_best.pt` to survive overwrite).
