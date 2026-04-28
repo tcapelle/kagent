@@ -22,6 +22,34 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter24: ensemble iter23*2+iter21*2+iter19+iter18*2 (38.72)
+
+- **Hypothesis:** add iter23 to the ensemble for diversity. iter23 alone is
+  worst at 40.33, but it has a different basin from iter21 (sub80k 2nd cycle).
+- **Change:** No new training. `--checkpoints iter23,iter21,iter19,iter18
+  --weights 2,2,1,2`.
+- **Result (bs=1 val):** **38.72** | single=33.79, geom_rc=57.08,
+  geom_cruise=24.00, re_rand=40.00. ~0.6% gain over iter22.
+- **Verdict:** kept — last gasp before diminishing returns. Several
+  ensemble combos ranged 38.72–38.83; the recipe is hitting a floor.
+- **Notes:** Future iterations need a *fundamentally different* model for
+  ensemble — same architecture / same recipe / different epochs all live
+  in similar basins. To break further, try: (a) different surf_p_weight
+  (e.g., 24), (b) different subsample size (e.g., back to 40k for
+  diversity), (c) bigger model retrained from scratch.
+
+### 2026-04-28 — iter23: resume iter21 sub80k (val_bs1=40.33 alone)
+
+- **Hypothesis:** continue iter21's sub80k chain for another diverse ckpt.
+- **Change:** No code change. `--resume_from .../model-lrecks81/`.
+- **Result:** 15 epochs, best val_bs4 = 65.42 at epoch 10. bs=1 val:
+  **40.33** — *worse than iter21 alone (39.73)*. Run `x2fzf3d5`.
+  Predictions auto-submitted to commit `457dafb`, overwriting iter22.
+- **Verdict:** kept ckpt for ensembling; solo it's a regression.
+- **Notes:** The ensembles still benefit (38.72 with iter23 vs 38.94
+  without), but margins are now sub-1%. Need to break out of this
+  recipe to make progress.
+
 ### 2026-04-28 — iter22: ensemble iter21*2+iter19+iter18*2 (val_bs1=38.94)
 
 - **Hypothesis:** iter21 alone (39.73) is now the best single model.
