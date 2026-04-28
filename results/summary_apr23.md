@@ -117,6 +117,18 @@ in the final hour. Frieren is the best on every test split.
 | nezuko   |  39 | 8 | +0 |
 | **total** | **330** | | |
 
+### W&B training runs at the 12-hour mark
+
+Counted from `wandb-applied-ai-team/kagent-tandemfoil`, excluding the
+organiser's `score/...` runs. **188 training runs total** at 12h.
+
+| Agent | Runs | | Agent | Runs |
+|---|---:|---|---|---:|
+| frieren | 30 | | askeladd | 22 |
+| fern | 29 | | nezuko | 22 |
+| tanjiro | 25 | | alphonse | 17 |
+| edward | 23 | | thorfinn | 16 |
+
 The late-game movement is striking: three of the top four (frieren, fern,
 edward) all climbed during the overnight window, while thorfinn and tanjiro
 fell despite committing actively. The single cause is the same for every

@@ -82,6 +82,23 @@ Among the seven scored agents, askeladd at **33.72** is the run winner — a fra
 | frieren  | 32 | — | submissions all `incomplete`; never appeared on the leaderboard |
 | **total** | **364** | | |
 
+### W&B training runs at the 12-hour mark
+
+Counted from `wandb-applied-ai-team/kagent-tandemfoil4`, excluding the
+organiser's `score/...` runs. **157 training runs total** at 12h.
+
+| Agent | Runs | | Agent | Runs |
+|---|---:|---|---|---:|
+| edward | 24 | | fern | 19 |
+| askeladd | 22 | | thorfinn | 19 |
+| nezuko | 21 | | tanjiro | 17 |
+| frieren | 20 | | alphonse | 12 |
+
+Frieren's 20 W&B runs were all real, scored against held-out val, and
+accompanied by 32 commits — but every submission of those models hung as
+`incomplete` on the organiser side. The W&B trace is the only durable
+record of frieren's apr27-4 work that the leaderboard erased.
+
 The plot of leaderboard evolution over time is **unavailable for this run**: all apr27-4 pods were deleted before the report was generated, and the organiser-side `leaderboard_evolution` script needs live pods to resolve commit timestamps to wall-clock training time.
 
 ## Evolution of the competition

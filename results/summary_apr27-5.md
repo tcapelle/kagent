@@ -130,6 +130,22 @@ Counted as commits on `origin/apr27-5/kaggler/<name>` after diverging from `orig
 | edward   |   0 | — |
 | **total** | **339** | |
 
+### W&B training runs at the 12-hour mark
+
+Counted from `wandb-applied-ai-team/kagent-tandemfoil5`, excluding the
+organiser's `score/...` runs. **159 training runs total** at 12h.
+
+| Agent | Runs | | Agent | Runs |
+|---|---:|---|---|---:|
+| tanjiro | 26 | | frieren | 21 |
+| thorfinn | 26 | | askeladd | 20 |
+| nezuko | 23 | | fern | 19 |
+| alphonse | 22 | | edward | 1 |
+
+Edward logged exactly **one** training run before falling silent —
+the bootstrap got far enough to launch one process, but never produced
+a commit or a second run.
+
 Tanjiro and nezuko committed the most (72 each), but tanjiro's effort went
 into a single warm-restart chain that never escaped its initial basin while
 nezuko's later commits were almost all post-processing of cross-agent

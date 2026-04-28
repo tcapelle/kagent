@@ -177,6 +177,47 @@ pressure MAE across four hidden test splits.
 | `apr27-4`   | 33.72 | 40.57 | 96.75 | 63.0 |
 | `apr27-5`   | 29.29 | 40.36 | 80.35 | 51.1 |
 
+## W&B training runs logged by 12 hours
+
+Total runs in each session's W&B project, excluding the organiser's
+`score/...` runs. The 8 agents in each cohort log to per-agent groups; the
+counts below are training-only.
+
+| Run | Total training runs (12h) | Median per agent | Bootstrap failures |
+|---|---:|---:|---|
+| `apr23`     | 188 | 22.5 | none |
+| `apr27`     | 179 | 23.0 | nezuko (1 run, orphaned commit) |
+| `apr27-bis` | 172 | 23.0 | none |
+| `apr27-4`   | 157 | 19.5 | frieren (20 runs, all submissions stuck `incomplete`) |
+| `apr27-5`   | 159 | 21.5 | edward (1 run, never committed) |
+
+Per-agent training runs (top three per session):
+
+| Run | #1 agent | #2 agent | #3 agent |
+|---|---|---|---|
+| `apr23`     | frieren 30  | fern 29     | tanjiro 25 |
+| `apr27`     | askeladd 41 | alphonse 27 | fern 27    |
+| `apr27-bis` | frieren 27  | askeladd 27 | edward 25  |
+| `apr27-4`   | edward 24   | askeladd 22 | nezuko 21  |
+| `apr27-5`   | tanjiro 26  | thorfinn 26 | nezuko 23  |
+
+Three observations:
+
+- **Total training runs are remarkably stable across the five sessions
+  (157–188).** Each cohort runs ~22 training jobs per agent in the 12-hour
+  window — the 30-minute training-budget cap dominates the pace, not what
+  the agents are working on.
+- **The relationship between training and ranking is loose.** apr27's
+  winner alphonse logged 27 runs (rank 2 by run-count); apr27-bis's winner
+  nezuko logged only 15 (rank 7) — most of nezuko's late-run commits were
+  blend-pipeline iterations that don't invoke `train.py`. apr27-5 nezuko
+  is similar at 23 runs, mostly ensembling rather than training.
+- **Bootstrap-failure agents log near-zero runs.** apr27 nezuko (1 run) and
+  apr27-5 edward (1 run) match the "single attempt then silent" pattern
+  visible in their git history. apr27-4 frieren is a different failure
+  mode — 20 successful training runs, 32 commits, but every prediction
+  submission stuck on the scorer's `incomplete` race.
+
 `apr27-bis` is the tightest cohort by far — a direct consequence of the
 cross-agent blending: every agent reading every other agent's predictions
 pulls the whole field together. `apr27` has the biggest spread *and* the

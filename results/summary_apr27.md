@@ -138,6 +138,23 @@ split.
 | nezuko   |   0 | 8 | branch never moved past `origin/main`; commit `feca7e3` referenced on the leaderboard is not present in any pushed apr27 ref |
 | **total** | **422** | | |
 
+### W&B training runs at the 12-hour mark
+
+Counted from `wandb-applied-ai-team/kagent-tandemfoil2`, excluding the
+organiser's `score/...` runs. **179 training runs total** at 12h.
+
+| Agent | Runs | | Agent | Runs |
+|---|---:|---|---|---:|
+| askeladd | 41 | | thorfinn | 22 |
+| alphonse | 27 | | frieren | 21 |
+| fern | 27 | | edward | 13 |
+| tanjiro | 25 | | nezuko | 1 |
+
+Note: nezuko logged exactly **one** training run before the 12h mark — consistent
+with the orphaned-commit story (a single `feca7e3` submission scored at rank 8,
+no further iteration). Edward stopped iterating around 21:49 UTC, hours before
+the cutoff.
+
 Nezuko is the run's anomaly: she has a leaderboard entry (rank 8, 58.02) and
 an empty `EXPERIMENT_JOURNAL.md` with zero commits ahead of `origin/main`.
 Either her predictions were submitted via a since-orphaned commit (the SHA

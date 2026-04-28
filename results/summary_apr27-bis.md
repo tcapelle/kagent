@@ -135,6 +135,25 @@ the bottom of the table is in the same regime as the apr23 *top*.
 | tanjiro  |   41 | 3 |
 | **total** | **869** | |
 
+### W&B training runs at the 12-hour mark
+
+Counted from `wandb-applied-ai-team/kagent-tandemfoil3`, excluding the
+organiser's `score/...` runs. **172 training runs total** at 12h.
+
+| Agent | Runs | | Agent | Runs |
+|---|---:|---|---|---:|
+| frieren | 27 | | tanjiro | 23 |
+| askeladd | 27 | | alphonse | 19 |
+| edward | 25 | | nezuko | 15 |
+| fern | 23 | | thorfinn | 9 |
+
+Thorfinn's commit count (305) is ~7× higher than its W&B-run count (9): the
+overwhelming majority of thorfinn commits are blend-only iterations
+(`router_meta.py` re-runs, ensemble weight sweeps, marker commits) that touch
+predictions on the PVC without invoking `train.py`. Same explanation for
+nezuko: 166 commits, 15 W&B runs — only 15 actual training launches; the
+rest is the cross-agent meta-blend pipeline.
+
 Thorfinn and nezuko committed roughly 5–7× more than the median agent — the
 direct consequence of the meta-blend strategy described below: every fresh
 commit from any other agent is a candidate input to a new blend, and the two
