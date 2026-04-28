@@ -22,6 +22,10 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter35/36: 10-way strong (30.30), deep finetune iter6 → val 39.01
+- **Iter35:** 10-way strong + iter34 at `7825232` → **test 30.30**.
+- **Iter36:** deep finetune iter6 (warm_start val 39.54) → val=**39.01** (run id `gmz6fdnx`). Slight improvement.
+
 ### 2026-04-28 — iter33/34: 9-way strong (30.38), deep finetune iter14 → val 38.91
 - **Iter33:** 9-way strong + iter32 at `f20b426` → **test 30.38** (improvement from 30.62).
 - **Iter34:** deep finetune iter14 (warm_start val 39.42) → val=38.91 (run id `gpdhi6s7`). Slight improvement, will add to ensemble.
