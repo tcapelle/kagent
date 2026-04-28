@@ -22,6 +22,17 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — alphonse6+askeladd4: 34.33 (#1 alone, 0.04 lead)
+- **Hypothesis (continued):** New commits alphonse/23249a0 and askeladd/b8419dd were freshly published. Even askeladd at 46.40 alone could give decorrelation gain at 5–10% weight. The pattern keeps holding: small weight on new fresh agent commits → big decorrelation gain.
+- **Result:** **34.331 (6072694, #1 alone with 0.04 lead over nezuko/d8b8f7f at 34.374)**.
+- **Optimum mix (6072694):**
+  - single: 0.95·nezuko_d8b + 0.05·alphonse6 → 34.92
+  - rc:     0.90·nezuko_d8b + 0.05·alphonse6 + 0.05·askeladd4 → 48.45
+  - cruise: 0.85·nezuko_d8b + 0.05·fern5 + 0.05·alphonse6 + 0.05·askeladd4 → 20.09
+  - re_rand: 0.85·nezuko_d8b + 0.05·alphonse6 + 0.05·tanjiro6 + 0.05·askeladd4 → 33.87
+- **Final session state:** **34.33 (#1 alone)**. From yesterday's 43.69 (#3) — **-9.36 absolute, -21.4% reduction**.
+- **Verdict:** kept. The meta-blend strategy with periodic addition of fresh agent commits at 5% weight is optimal.
+
 ### 2026-04-28 — late-session push: 34.38 (tanjiro6 boosts rc+cruise)
 - **Hypothesis (continued):** New tanjiro commit `cabb15b` (tanjiro6) — at 10–20% in rc+cruise, gives further decorrelation gain.
 - **Result chain (post-34.43):**
