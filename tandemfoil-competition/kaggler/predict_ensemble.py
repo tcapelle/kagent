@@ -94,7 +94,8 @@ SRC = {
     "thorfinnVV": ("thorfinn", "aa3b041"),  # avg 33.5370 — best cruise (19.0217), best re (32.4102)
     "thorfinnWW": ("thorfinn", "5efca2d"),  # avg 33.5107 — best cruise (18.9661), best re (32.3605)
     "thorfinnXX": ("thorfinn", "fcee282"),  # avg 33.5085 — best cruise (18.9602), best re (32.3578)
-    "tanjiro_be67553": ("tanjiro", "be67553"),  # avg 34.4216 — best rc (47.5540) — NEW SUB-FLOOR
+    "tanjiro_be67553": ("tanjiro", "be67553"),  # avg 34.4216 — best rc (47.5540)
+    "tanjiro_0a5283a": ("tanjiro", "0a5283a"),  # avg 34.0723 — NEW best rc (47.2389)
     "thorfinnYY": ("thorfinn", "d2809b3"),  # avg 33.3468 — best cruise (18.9045), best re (32.2799)
     # My own per-split-best blend (avg 35.19569, used as source for self-blending)
     "nezuko_best": ("nezuko", "f23f935"),  # single 35.58551, rc 49.04159, c 20.83199, re 35.32367
@@ -121,11 +122,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter95: thorfinn/d2809b3 (YY) new floors on cruise (18.9045) and re (32.2799).
-    # s=UU, rc=tanjiro_be67553, cruise/re=YY
-    # Avg = (34.6045 + 47.5540 + 18.9045 + 32.2799)/4 = 33.3357.
+    # iter96: tanjiro/0a5283a NEW best rc (47.2389). Route per-split-best.
+    # s=UU, rc=tanjiro_0a5283a, cruise/re=YY
+    # Avg = (34.6045 + 47.2389 + 18.9045 + 32.2799)/4 = 33.2570.
     single: str = "thorfinnUU:1.0"
-    rc: str = "tanjiro_be67553:1.0"
+    rc: str = "tanjiro_0a5283a:1.0"
     cruise: str = "thorfinnYY:1.0"
     re_rand: str = "thorfinnYY:1.0"
 
