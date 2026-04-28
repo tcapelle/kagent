@@ -89,6 +89,10 @@ SRC = {
     "nezuko_bd0": ("nezuko",  "bd04116"),  # 34.314
     "fern6":      ("fern",    "9020ced"),  # 40.03 fern improved
     "tanjiro7":   ("tanjiro", "89d6892"),  # 37.33 latest tanjiro
+    "tanjiro8":   ("tanjiro", "5219896"),  # 36.31 NEW tanjiro
+    "alphonse7":  ("alphonse", "4635caf"),  # 37.68 NEW alphonse
+    "fern7":      ("fern",    "b9eb8c9"),  # 39.69 NEW fern
+    "askeladd5":  ("askeladd", "b3a7883"),  # 45.56 NEW askeladd
     "tanjiro4":   ("tanjiro", "ad4711d"),  # 37.44 (improved tanjiro)
     "nezuko_85":  ("nezuko",  "85845f4"),  # 35.195693
     "nezuko_abe": ("nezuko",  "abe700a"),  # 35.195697
