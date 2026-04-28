@@ -131,3 +131,10 @@ Keep entries short. Link W&B run URLs when useful.
 - **Result:** Best `avg_surf_p = 45.94` at epoch 8 (mostly monotonic, small bumps at epochs 3-4). **1.9% over v15 (46.81→45.94), 87% over baseline.** W&B `alphonse/v16-warm-lr5e5` (`gdszjp48`).
 - **Verdict:** Kept. Chain is plateauing (gain shrinking 4.8→3.3→2.4→1.9).
 - **Notes:** Try slight LR-up to 7e-5 next (in v3-style, a small bump avoiding v14's 1e-4 disaster).
+
+### 2026-04-28 — v17-warm-lr7e5
+- **Hypothesis:** Slight LR-up restart 5e-5 → 7e-5 (avoiding v14's catastrophic 1e-4) for a fresh signal.
+- **Change:** `--resume model-gdszjp48 --lr 7e-5 --surf_weight 50 --surf_p_l1_weight 30 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `avg_surf_p = 45.44` at epoch 8. **1.1% over v16 (45.94→45.44), 87% over baseline.** Per-split p MAE: single_in_dist=49, geom_camber_rc=56, geom_camber_cruise=37, re_rand=40. W&B `alphonse/v17-warm-lr7e5` (`zlag2ysu`).
+- **Verdict:** Kept (small gain, oscillating early). Plateau confirmed.
+- **Notes:** Leaderboard now rank 5 (fern caught up). Next: try ensemble of v15+v16+v17 at predict time.
