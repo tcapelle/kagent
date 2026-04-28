@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter16: bigger subsample (50k) for train/test alignment — **RANK 4!**
+- **Hypothesis:** Train/test distribution mismatch (training on 25k vol points but testing on 100k+) is leaving accuracy on the table. Doubling the train subsample to 50k should reduce that gap.
+- **Change:** train_max_volume 25000→50000. lr 3e-5→2e-5. epochs 40→22 (compute budget).
+- **Result:** Trained 22 epochs in 28.8 min (79s/epoch — 1.6× slower as expected). VRAM 18.7GB. Best epoch 10, val/loss=1.5162. Val mae_surf_p: single=36.5, geom_rc=59.6, geom_cruise=31.7, re_rand=47.2 (avg=43.75). **Test 40.89 — rank 4 (passed edward 41.11)**. Commit e49f4af.
+- **Verdict:** kept (clear win — 1.6 points off test, jumped one rank).
+- **Notes:** Bigger subsample wins. Try iter17 with full mesh (no subsample) at small batch + warm-start; or iter17 with 50k vol but more epochs.
+
 ### 2026-04-28 — iter15: longer cycle (40 epochs at lr=3e-5)
 - **Hypothesis:** Stretch the cosine cycle to 40 epochs to extract more from each chain step.
 - **Change:** epochs 30→40. Initial = iter14 (model-6t65htqq), lr=3e-5.
