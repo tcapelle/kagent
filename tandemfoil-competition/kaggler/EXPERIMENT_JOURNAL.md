@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 32 (Fourier features on positions, 8 freqs) — DISCARDED
+- **Hypothesis:** Add sin/cos Fourier features (8 freqs) on (x, z) positions to give the preprocess MLP an explicit high-frequency basis, fighting spectral bias and improving turbulent-component prediction.
+- **Change:** train.py — `fourier_freqs=8`, `fourier_max_pos=10.0`. Computes 32-dim Fourier features from raw positions, concats to normalized x → 56-dim model input (`fun_dim` bumped to 54). Also wired through predict.py and predict_ensemble.py via `runtime.yaml`.
+- **Result:** Best val avg_surf_p=41.45 at epoch 78. Per-split: single=35.86, geom_rc=57.94, geom_cruise=30.51, re_rand=41.64. Worse than iter 8's 35.88 across the board, especially on geom_rc (58 vs 45).
+- **Verdict:** Discarded — Fourier features made the model more position-specific and hurt geometry generalization (the unseen-camber raceCar split regressed the most). Reset HEAD~1.
+- **Notes:** Possibly the Transolver's slicing-attention already captures spatial structure; adding 32 high-freq dims overcrowds the input and biases toward memorizing positions. Predict_ensemble.py keeps the Fourier code path (backward-compatible) for any future Fourier-trained members.
+
+### 2026-04-28 — Iter 31 (EMA decay=0.999 on iter 8 recipe) — DISCARDED
+- **Hypothesis:** Validation/checkpoint on EMA weights (1/(1-0.999)=1000 step window ≈ 2.7 epochs) should smooth out late-training oscillations and pick a more stable optimum than raw weights.
+- **Change:** train.py — added `EMA` class, `ema_decay=0.999` default, validation/checkpointing run on EMA weights with live weights restored for training.
+- **Result:** Best val avg_surf_p=42.82 at epoch 75. Final per-split: single=37.91, geom_rc=54.80, geom_cruise=33.47, re_rand=45.53.
+- **Verdict:** Discarded — EMA is significantly worse than iter 8 (35.88). Reset HEAD~1.
+- **Notes:** Cosine LR schedule decays to 0 over 80 epochs; EMA averages over the entire trajectory including high-LR early phase. Late-training EMA is essentially a stale weight that the live model has already moved past. EMA needs constant LR or a much longer cosine to be useful here.
+
 ### 2026-04-28 — Final state — RANK 1 with iter 8 (test 32.07)
 - **Position:** Rank 1 by 3 points over frieren (35.01).
 - **Best single model:** iter 8 (commit 6b2a0a8) — h128-l6-s32-mr4 Transolver, Cp normalization, huber_delta=0.1, surf_weight=20, vol_subsample=20K, 80 epochs. Test scores: single=29.93, geom_rc=45.02, geom_cruise=19.69, re_rand=33.65 — best on every split.
