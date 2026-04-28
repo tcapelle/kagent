@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — noise04 (DISCARDED)
+- **Hypothesis:** input_noise=0.04 (between successful 0.03 and failed 0.05) might give a model that's diverse from iter8 in error pattern, useful as a 4th ensemble member.
+- **Change:** `input_noise=0.04`, ran fresh training.
+- **Result:** standalone val 106.21. 4-model ensemble adding it (variants 0.65/0.12/0.12/0.11 and 0.7/0.10/0.10/0.10) gave 93.41 / 93.34 — both worse than the 3-model best of 93.13.
+- **Verdict:** discarded — `git reset --hard HEAD~1`. iter17 was too correlated with iter8 (same noise direction, slightly more) to add useful diversity; the 3-model ensemble (93.13) stays the best. Predictions still saved at `apr27-4/fern/a5911a9` for reference.
+- **Notes:** ensemble diversity comes from DIFFERENT loss recipes (iter10 had higher noise, iter16 had higher surf_weight) rather than just different seeds with the same recipe.
+
 ### 2026-04-28 — 3-model ensemble iter8/iter10/iter16 -> 93.13
 - **Hypothesis:** even though iter16 (`surfw30-pw5`) standalone scored 98.62 (worse than iter8), it might be a useful diverse third model in a weighted ensemble — its different loss recipe should yield different errors than iter8 + 63ry1pjo.
 - **Change:** evaluated weighted 3-model ensembles. Best: iter8(uqh1ky00) + 63ry1pjo (iter10) + iter16(69oedz30) at weights ~0.74/0.13/0.13. Regenerated test predictions to `apr27-4/fern/df5ac5d` using these weights.
