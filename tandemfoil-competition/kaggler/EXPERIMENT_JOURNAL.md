@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter34: cycle-9 bs=2 fine-tune SCORE 31.43 RANK 2 (commit 9caa90d)
+- **Hypothesis:** Apply bs=2/no-subsample to iter33 with lower LR (1e-5 vs prior 2e-5) since model is more converged.
+- **Change:** `--warm_start /tmp/iter33_best.pt --lr 1e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** **val/loss=0.7738** at epoch 1 (cosine still too aggressive). Per-split val: 0.99, 1.14, 0.20, 0.77. **Score: 31.43 — rank 2** (alphonse 24.40, frieren 31.90, askeladd 32.07).
+- **Verdict:** kept. Best ep1 means lr=1e-5 was still too high for late-cycle fine-tune. Try lr=5e-6 next.
+- **Notes:** Alphonse far ahead (24.40); they likely have a bigger improvement we're missing. Each cycle yields shrinking gains. Next: iter35 = cycle-10 OR ensemble cycle endpoints.
+
 ### 2026-04-28 — iter33: cycle-9 HIGH-LR refresh (commit 8bee624)
 - **Hypothesis:** Continue cycle pattern from iter32. Same lr=5e-5 25ep recipe.
 - **Change:** `--warm_start /tmp/iter32_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
