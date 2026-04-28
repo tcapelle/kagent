@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter82 NEW FLOOR 34.3200 (#1)
+- **Hypothesis:** thorfinn/9e38615 has new best cruise (20.0510). Route OO for cruise.
+- **Change:** added `thorfinnOO=9e38615`. Routing: s/rc=LL, cruise=OO, re=NN.
+- **Result:** commit `b36bcc7` scored avg=34.3200. Thorfinn's 08c97fd matched my iter81 (34.3234) but didn't pick up OO yet.
+- **Verdict:** kept. +0.0034 from iter81. Lead over thorfinn = 0.0034.
+
 ### 2026-04-28 — iter81 NEW FLOOR 34.3234 (#1)
 - **Hypothesis:** thorfinn/c799824 (avg 34.3493 single source) has best cruise (20.0646) and best re (33.8647). Route those splits to NN.
 - **Change:** added `thorfinnNN=c799824`. Routing: s/rc=LL, cruise/re=NN.
