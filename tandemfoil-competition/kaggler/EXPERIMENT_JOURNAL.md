@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter28: polish iter27 (lr=5e-6, pw=22, sw=22)
+- **Hypothesis:** Standard polish.
+- **Change:** Resume iter27; --lr 5e-6 (other unchanged).
+- **Result:** **surf_p 38.07 → 37.95** (~0.3%, best ep10). W&B `liljm33n`.
+- **Verdict:** Kept (best). Polish gain getting tiny.
+- **Notes:** iter29 12th warm-restart with pw=25, sw=25 (slight bump).
+
 ### 2026-04-28 — iter27: 11th warm-restart (lr=3e-5, pw=22, sw=22)
 - **Hypothesis:** Continue cycling.
 - **Change:** Resume iter26; --lr 3e-5 --p_weight 22 --surf_weight 22.
