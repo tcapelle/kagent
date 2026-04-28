@@ -44,6 +44,8 @@ class Config:
     agent: str | None = None
     batch_size: int = 2
     use_amp: bool = True
+    re_norm_k: float = 0.0  # match training; if >0 scales pressure prediction by Re factor
+    re_ref_log: float = 14.58
 
 
 cfg = sp.parse(Config)
@@ -113,6 +115,15 @@ for split in TEST_SPLITS:
             else:
                 pred_norm = model({"x": x_norm})["preds"]
             pred = pred_norm * y_std + y_mean
+
+            if cfg.re_norm_k > 0:
+                # Apply Re factor to pressure (channel 2) — must match training scaling
+                log_re_per_sample = torch.zeros(B, device=device)
+                for j, x in enumerate(xs):
+                    log_re_per_sample[j] = x[:, 13].mean().to(device)
+                re_factor = torch.exp(cfg.re_norm_k * (log_re_per_sample - cfg.re_ref_log)).view(B, 1)
+                pred = pred.clone()
+                pred[..., 2] = pred[..., 2] * re_factor  # broadcasts [B, N] * [B, 1]
 
             for j, x in enumerate(xs):
                 predictions.append(pred[j, :x.shape[0]].cpu())

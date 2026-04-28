@@ -50,6 +50,8 @@ class Config:
     save_per_epoch: bool = False  # save model state dict every epoch (for SWA)
     num_pos_freqs: int = 0  # 0 = no Fourier features; 4-8 = NeRF-style positional encoding
     pos_dims_to_encode: int = 4  # encode position (0,1) and saf (2,3) by default
+    re_norm_k: float = 0.0  # if >0, divide pressure target by (Re/Re_ref)^k before normalization
+    re_ref_log: float = 14.58  # log(Re_ref); 14.58 ≈ training mean log(Re)
     epochs: int = 50
     grad_clip: float = 1.0
     warmup_steps: int = 100
@@ -274,8 +276,18 @@ def run_validation(model_to_eval):
                 x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
                 is_surface = is_surface.to(device, non_blocking=True)
                 mask = mask.to(device, non_blocking=True)
+                # Compute Re factor per sample (before input normalization)
+                if cfg.re_norm_k > 0:
+                    log_re_per_node = x[..., 13]
+                    log_re_per_sample = (log_re_per_node * mask.float()).sum(dim=1, keepdim=True) / mask.float().sum(dim=1, keepdim=True).clamp(min=1)
+                    re_factor = torch.exp(cfg.re_norm_k * (log_re_per_sample - cfg.re_ref_log))  # [B, 1]
+                else:
+                    re_factor = None
                 x = (x - stats["x_mean"]) / stats["x_std"]
-                y_norm = (y - stats["y_mean"]) / stats["y_std"]
+                y_for_loss = y.clone()
+                if re_factor is not None:
+                    y_for_loss[..., 2] = y_for_loss[..., 2] / re_factor
+                y_norm = (y_for_loss - stats["y_mean"]) / stats["y_std"]
 
                 with torch.amp.autocast("cuda", dtype=amp_dtype):
                     pred = model_to_eval({"x": x})["preds"]
@@ -288,7 +300,11 @@ def run_validation(model_to_eval):
                 val_surf += (sq_err * surf_mask.unsqueeze(-1)).sum().item() / surf_mask.sum().clamp(min=1).item()
                 n_vb += 1
 
+                # Reverse the Re scaling for physical pressure prediction
                 pred_orig = pred * stats["y_std"] + stats["y_mean"]
+                if re_factor is not None:
+                    pred_orig = pred_orig.clone()
+                    pred_orig[..., 2] = pred_orig[..., 2] * re_factor
                 err = (pred_orig - y).abs()
                 mae_surf += (err * surf_mask.unsqueeze(-1)).sum(dim=(0, 1))
                 mae_vol += (err * vol_mask.unsqueeze(-1)).sum(dim=(0, 1))
@@ -334,6 +350,13 @@ for epoch in range(MAX_EPOCHS):
         x, y, is_surface, mask = subsample_batch(
             x, y, is_surface, mask, cfg.train_max_nodes, cfg.keep_surface_nodes
         )
+        # Re factor per sample (computed BEFORE input normalization)
+        if cfg.re_norm_k > 0:
+            log_re_per_node = x[..., 13]  # raw log(Re), broadcasts to all nodes equally
+            log_re_per_sample = (log_re_per_node * mask.float()).sum(dim=1, keepdim=True) / mask.float().sum(dim=1, keepdim=True).clamp(min=1)  # [B, 1]
+            re_factor = torch.exp(cfg.re_norm_k * (log_re_per_sample - cfg.re_ref_log))  # [B, 1]
+            y = y.clone()
+            y[..., 2] = y[..., 2] / re_factor  # divide pressure by Re factor
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
 
@@ -506,6 +529,8 @@ if best_metrics and not cfg.debug:
     pred_cmd = ["python", "predict.py", "--checkpoint", str(model_path)]
     if cfg.agent:
         pred_cmd += ["--agent", cfg.agent]
+    if cfg.re_norm_k > 0:
+        pred_cmd += ["--re_norm_k", str(cfg.re_norm_k), "--re_ref_log", str(cfg.re_ref_log)]
     result = subprocess.run(pred_cmd, capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
