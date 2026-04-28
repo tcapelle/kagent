@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter25 lower p_weight (20 → 10) for loss rebalance
+- **Hypothesis:** Chain locked into a heavy-pressure-only regime. Drop p_weight from 20 → 10 to let the optimizer learn better volume features (which propagate to surface predictions).
+- **Change:** No code; flags `--lr 1.2e-4 --resume /tmp/iter23_best.pt --p_weight 10 --feature_noise 0.04 --ema_decay 0.999 --epochs 30 --warmup_epochs 1 --n_vol_subsample 50000`. Run `ge0ljc2j`.
+- **Result:** Best epoch 20, val/loss=0.7882, **avg_surf_p=40.02** (val splits: in_dist=0.84, geom_rc=1.21, geom_cruise=0.24, re_rand=0.88).
+- **Verdict:** Kept (commit 83db2f6). −0.27 vs iter23. Loss rebalancing did unlock more progress — iter23 was indeed stuck in a p-weight-induced local optimum.
+- **Notes:** train surf went UP slightly (0.18 → 0.09) but val improved → less p-weighted loss generalizes better. Try iter26 with p_weight 5 (even lower) to push further, or polish at 1e-5.
+
 ### 2026-04-28 — iter24 strong noise=0.08 — DISCARDED
 - **Hypothesis:** Larger feature noise (0.04 → 0.08) to genuinely escape the iter23 local optimum.
 - **Change:** No code; flags `--feature_noise 0.08 --lr 1.2e-4 --resume /tmp/iter23_best.pt ...`. Run `o16zqgts`.
