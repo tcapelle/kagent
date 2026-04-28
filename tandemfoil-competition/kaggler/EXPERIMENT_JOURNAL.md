@@ -22,6 +22,26 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — v21/v22/v23/v24/v25/v26 polish + 3rd basin attempts (diminishing returns)
+- **Hypothesis:** continued chain-training of v18 (val 38.53) and a third fresh-init basin (v23)
+  should each yield ensemble components that improve on v22a (4 ckpts, val 34.68).
+- **Change:**
+  * v21 = polish v18 at lr=1e-6 → val 38.33 (–0.20).
+  * v22a = swap v18→v21 in v20d → val 34.68 (–0.03 vs v20d 34.70). Submitted.
+  * v23 = third fresh-init base from scratch → val 85.62.
+  * v24 = chain-train v23 (lr=2e-5, p_weight=3) → val 45.74.
+  * v25/v26 = swept ensembles adding v24 and frieren's new ckpts (1ls2mmbf 57.34, 2nvznlkm 43.34,
+    fmjp5i5q 39.93). All worse than or equal to v22a (34.68 best).
+- **Result:** v22a (val 34.68) → leaderboard test = **29.83** (#1, frieren 30.99, +1.16).
+- **Verdict:** kept v22a as the live submission. v24 (3rd basin) does not add useful diversity at
+  full or partial weights; the chain-train didn't go deep enough for it to be informative.
+  Frieren's fmjp5i5q (val 39.93) also doesn't improve the ensemble, confirming v22a is at the
+  plateau for this set of components.
+- **Notes:** v24's failure is the main lesson — adding *any* checkpoint with val > ~40 to a v22a-style
+  ensemble dilutes signal. Useful additions need val ≤ 40 and a different basin. Three of my
+  components (v21, n0v, 6vti) are already val ≤ 40 from my+frieren's main basins; finding a *fourth*
+  decorrelated basin at val ≤ 40 is the bottleneck.
+
 ### 2026-04-27 — v17/v18/v19/v20 second fresh-init basin + minimal 4-ckpt ensemble
 - **Hypothesis:** v16a took #1 at 31.24. To extend the lead, train a *second* fresh-init base
   (different seed) and chain-train, then check whether replacing v15 with the new component or
