@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter32: cycle-8 bs=2 fine-tune NEW BEST (commit 4f844f0)
+- **Hypothesis:** Apply bs=2/no-subsample to iter31. Continue cycle pattern.
+- **Change:** `--warm_start /tmp/iter31_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** **val/loss=0.8416** at epoch 5. Per-split val: 1.19, 1.20, 0.20, 0.78. NEW BEST locally.
+- **Verdict:** kept. Score should drop below 31.
+- **Notes:** Cosine peaked at ep5 then drifted up — lr=2e-5 still slightly aggressive at this convergence level. Next: iter33 = cycle-9 high-LR refresh.
+
 ### 2026-04-28 — iter31: cycle-8 HIGH-LR refresh 🥈 RANK 2 (commit cf1a207)
 - **Hypothesis:** Continue cycle-8 refresh pattern from iter30.
 - **Change:** `--warm_start /tmp/iter30_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
