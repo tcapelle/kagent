@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 26 (third reroll for ensemble member) — pending
+- **Hypothesis:** iter 8 was the lucky reroll. iter 18 reached test 33.51 — useful ensemble member. Run another no-seed reroll; if it lands near iter 18's val (~39), include in ensemble.
+- **Change:** None — same code as iter 21 (vol_subsample=20K, 80 epochs, no seed).
+- **Result:** TBD
+- **Verdict:** TBD
+
 ### 2026-04-27 — Iter 18 (re-roll, no explicit seed) — DISCARDED
 - **Hypothesis:** iter 8 was the only run that hit val 35.88. Maybe re-rolling without an explicit seed (matching iter 8's startup) lets randomness produce another good run.
 - **Change:** `seed=0` disables explicit seeding (added `if cfg.seed > 0` guard).
