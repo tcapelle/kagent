@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter22: polish iter21 (lr=5e-6, pw=18, sw=18)
+- **Hypothesis:** Standard polish.
+- **Change:** Resume iter21; --lr 5e-6 (other unchanged).
+- **Result:** **surf_p 40.52 → 40.16** (~0.9%, best ep8). W&B `ae3ypatq`.
+- **Verdict:** Kept (best). Now 4.6% below frieren's 42.11.
+- **Notes:** iter23 9th warm-restart with pw=20 sw=20 (slight bump from 18).
+
 ### 2026-04-28 — iter21: 8th warm-restart (lr=3e-5, pw=18, sw=18)
 - **Hypothesis:** Same recipe as iter19 worked — repeat for 8th cycle.
 - **Change:** Resume iter20; --lr 3e-5 --p_weight 18 --surf_weight 18.
