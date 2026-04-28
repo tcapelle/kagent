@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter30: cycle-7 bs=2 fine-tune SCORE 32.60 rank 4 (commit 556549c)
+- **Hypothesis:** Apply bs=2/no-subsample to iter29 (val 0.936). Continue the proven cycle pattern.
+- **Change:** `--warm_start /tmp/iter29_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
+- **Result:** **val/loss=0.9230** at epoch 8. Per-split val: 1.46, 1.20, 0.21, 0.82. **Score: 32.60 — rank 4** (alphonse 25.53, askeladd 32.07, frieren 32.49 — only 0.11 behind!).
+- **Verdict:** kept. ~1.4 score improvement per cycle pair.
+- **Notes:** Field tightening — frieren keeps improving too. Next: iter31 = cycle-8 high-LR refresh from iter30.
+
 ### 2026-04-28 — iter29: cycle-7 HIGH-LR refresh NEW BEST (commit ee04bf9)
 - **Hypothesis:** Continue the high-LR refresh cycling pattern. Each iter at ~3% gain.
 - **Change:** `--warm_start /tmp/iter28_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
