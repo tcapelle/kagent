@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter25: cycle-5 HIGH-LR refresh 🚀 NEW BEST 36.96 (commit eabda69)
+- **Hypothesis:** Cycle-3 (iter16) + cycle-4 (iter18) saturated at val ~1.16. Maybe the model is stuck in a local minimum. A higher LR (5e-5 vs prior 1e-5) cycle should "shake" the weights into a different/better basin.
+- **Change:** `--warm_start /tmp/iter16_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`. Same arch.
+- **Result:** **val/loss=1.1062** at epoch 21 (26.3 min). Per-split val: 1.83, 1.36, 0.26, 0.97. **Score: 36.96 — NEW BEST** (was 38.60 with iter16). All splits improved.
+- **Verdict:** **NEW BEST.** Confirms intuition: when chain saturates at low LR, a higher-LR refresh can escape the basin.
+- **Notes:** This is the second big breakthrough after iter9→iter10. Next: iter26 = bs=2 fine-tune from iter25 → expect val ~1.04 and score below 35.
+
+### 2026-04-28 — iter24: slice diversity ensemble iter16+iter23 (commit 8d1254c)
+- **Hypothesis:** Mix slice=64 (iter16) and slice=128 (iter23) for architectural ensemble diversity at 0.85/0.15.
+- **Change:** `python ensemble.py --sources db4d762 8f852ee --weights 0.85 0.15`.
+- **Result:** **39.07** — slightly *worse* than iter16 alone (38.60). iter23 too weak to help.
+- **Verdict:** discarded. slice=128 fresh is too undertrained for ensemble use.
+
 ### 2026-04-28 — iter23: slice=128 mature — warm iter22 bs=2 no-sub L1 (commit 8f852ee)
 - **Hypothesis:** Apply bs=2/no-subsample to slice=128 base. Different physics-attention head capacity provides architectural ensemble diversity.
 - **Change:** `--warm_start /tmp/iter22_best.pt --slice_num 128 --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`. 217s/ep due to slice=128.
