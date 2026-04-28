@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter15: WARM-RESTART lr=1e-5 (escape plateau!)
+- **Hypothesis:** "Final" plateau at 44.02 was a local minimum, not the architectural ceiling. A warm-restart at much higher lr should kick the model into a new region. Inspired by SGDR / cyclic LR — annealing then re-warming has historically broken plateaus on similar problems.
+- **Change:** `--lr 1e-5` (100× higher than iter13/14) `--warmup_frac 0.1` `--subsample_n 100000 --batch_size 2`. No code change.
+- **Result:** Best E8/9, avg_p = **43.18** (from 44.02, **-1.9%**). Per-split: single=43.45, rc=58.58, cruise=26.76, re_rand=43.94. 30.9 min, 9 epochs. W&B `aotp7u7b`.
+- **Verdict:** **KEEP**. The "plateau" was a saddle/local minimum that small lr couldn't escape. Warm restart at lr=1e-5 with 100k subsample escaped it cleanly. E5=43.63 already beat the prior best — fast escape.
+- **Notes:** This is the largest single-step jump since iter6 (-5.2%). All four splits improved by ~1-2 pts. Expected test ~36.2 — within striking distance of leaders (34.58). **Next:** chain again at lr=2e-6 to consolidate, then maybe a second warm-restart with different params for a third regime.
+
 ### 2026-04-28 — iter13/iter14: chain sub200k/sub240k (final plateau)
 - **Hypothesis:** Push subsample even larger to see if gradient quality improvements continue.
 - **Change:** iter13 `--subsample_n 200000 --lr 1e-7`; iter14 `--subsample_n 240000 --lr 1e-7` (max possible — most train samples are <240k anyway).
