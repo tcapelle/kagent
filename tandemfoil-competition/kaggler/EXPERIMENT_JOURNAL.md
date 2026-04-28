@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter25: warm-restart with boost (8, 10)
+
+- **Hypothesis:** Continue chain — warm-restart cycle with single=8, tandem=10.
+- **Change:** WARMSTART=vtrw7ret, lr=2e-5, single_boost=8, tandem_boost=10.
+- **Result:** 13 epochs in 32 min. 37.54 → epoch 13 = **37.19** (best, -0.35). Predictions at `cb2b64d/`. Run `aqn4nqnz`.
+- **Verdict:** kept. Expected test ~31.4.
+- **Notes:** chain still slowly improving. iter26 chain step.
+
 ### 2026-04-28 — iter24: chain step (6, 6) lr=5e-6
 
 - **Hypothesis:** chain step at lr=5e-6 with balanced boosts.
