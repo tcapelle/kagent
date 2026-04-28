@@ -156,3 +156,4 @@ Keep entries short. Link W&B run URLs when useful.
 - **Notes:** Strong vol_loss decrease (0.73→0.20) but surf_loss plateaus around 0.13. Pattern suggests model is fitting field but not pressure peaks on surface. Next: try fp32, lr 5e-4, longer effective training.
 
 
+
