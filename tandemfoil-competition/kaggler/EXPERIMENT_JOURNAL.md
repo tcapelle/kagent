@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter21: tandem-heavy boost (3, 10)
+
+- **Hypothesis:** geom_rc gap (4.47) is dominant. Crank tandem_boost to 10, drop single_boost to 3 to focus the loss on tandem geometries.
+- **Change:** WARMSTART=ajeb0647, single_boost=3, tandem_boost=10, lr=2e-5.
+- **Result:** 12 epochs in 32 min. 38.92 → epoch 12 = **38.71** (best, -0.21). Predictions at `c49466f/`. Run `z3yt7sfv`.
+- **Verdict:** kept but small gain. val_geom_camber_rc improved (1.12→1.10) while val_single_in_dist slightly regressed (1.65→1.66). Trade-off.
+- **Notes:** the tandem-heavy strategy moved the needle on geom_rc but the absolute val gain was small. Single is closer to optimum; geom_rc has more headroom but also harder generalization. Iter22 chain step at lr=5e-6.
+
 ### 2026-04-28 — iter20: chain step + balanced boosts (6, 4)
 
 - **Hypothesis:** Iter19 hurt re_rand by over-boosting; restore balanced boosts (6, 4) and chain at lr=5e-6.

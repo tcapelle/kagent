@@ -230,13 +230,13 @@ class EMA:
 # ---------------------------------------------------------------------------
 
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT_MIN", 30.0))
-# Iter21: warm-restart with TANDEM-heavy boost — geom_rc is my biggest test gap (4.47).
-WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-ajeb0647/checkpoint.pt"
+# Iter22: chain step from iter21 best (z3yt7sfv, val=38.71), low LR.
+WARMSTART_PATH = "/mnt/new-pvc/kagent/apr27/frieren/checkpoints/model-z3yt7sfv/checkpoint.pt"
 
 
 @dataclass
 class Config:
-    lr: float = 2e-5
+    lr: float = 5e-6
     min_lr: float = 1e-7
     weight_decay: float = 1e-4
     batch_size: int = 2
@@ -248,8 +248,8 @@ class Config:
     l2_weight: float = 1.0
     p_weight: float = 5.0
     ema_decay: float = 0.99
-    single_boost: float = 3.0
-    tandem_boost: float = 10.0  # heavy tandem to push geom_rc generalization
+    single_boost: float = 5.0
+    tandem_boost: float = 6.0
     warmstart: str = WARMSTART_PATH
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
