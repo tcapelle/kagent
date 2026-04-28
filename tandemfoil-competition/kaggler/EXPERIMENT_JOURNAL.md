@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter16: continue chain at sb=8 + lr=1e-6
+- **Hypothesis:** Same recipe as iter15. Confirm sb=8 isn't a one-shot win.
+- **Change:** None.
+- **Result:** 7 epochs, best val/avg_surf_p=53.48 at epoch 7 (-0.29 vs iter15). Trajectory: 54.27 → 54.35 → 54.51 → 53.87 → 53.85 → 53.58 → 53.48. Predictions at `askeladd/557e861`. W&B: askeladd/iter16-chain-sb8.
+- **Verdict:** kept (-0.29). val_single_in_dist 2.29 → 2.25; tiny improvements across all splits.
+- **Notes:** iter17 continues same recipe.
+
 ### 2026-04-27 — iter15: bump single_boost 5 → 8
 - **Hypothesis:** sb=5 gain plateaued (-0.16 in iter14). Push to sb=8 to keep the racecar_single signal dominant — model may have absorbed sb=5 already.
 - **Change:** `--single_boost 8.0`. Same lr=1e-6 otherwise.
