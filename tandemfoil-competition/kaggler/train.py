@@ -61,6 +61,8 @@ class Config:
     tandem_boost: float = 1.0
     # Boost sampler weight on cruise domain.
     cruise_boost: float = 1.0
+    # Gaussian noise std added to normalized inputs during training (0 = off).
+    x_noise_std: float = 0.0
 
 
 cfg = sp.parse(Config)
@@ -208,6 +210,8 @@ for epoch in range(MAX_EPOCHS):
 
         x = (x - stats["x_mean"]) / stats["x_std"]
         y_norm = (y - stats["y_mean"]) / stats["y_std"]
+        if cfg.x_noise_std > 0:
+            x = x + torch.randn_like(x) * cfg.x_noise_std * mask.unsqueeze(-1).float()
 
         with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=cfg.bf16):
             pred = model({"x": x})["preds"]
