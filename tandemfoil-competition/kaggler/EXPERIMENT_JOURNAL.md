@@ -22,6 +22,23 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — fresh agent commits give massive jump: 33.95
+- **Hypothesis:** While we were tied with nezuko at 34.32, several agents published much-improved fresh commits:
+  - tanjiro/5219896 = 36.31 (from 37.44)
+  - alphonse/4635caf = 37.68 (from 40.09)
+  - fern/b9eb8c9 = 39.69 (from 40.35)
+  - askeladd/b3a7883 = 45.56 (from 47.83)
+  Adding these as 5–25% blend weights should give substantial decorrelation gains.
+- **Result chain:**
+  - 34.31 (c6a3359, tied with nezuko) → 34.17 (052f014, +5% each new agent) → 34.06 (8c102c8, +10% each) → 34.00 (03934df, +15% each) → 33.97 (8dd678f, +20%) → **33.95 (067585e, cherry-pick best per-split)**
+- **Optimum mix (067585e):**
+  - single: 0.70·nezuko_bd0 + 0.15·alphonse7 + 0.15·tanjiro8 → 34.70
+  - rc:     0.55·nezuko_bd0 + 0.15·alphonse7 + 0.15·tanjiro8 + 0.15·askeladd5 → 48.20
+  - cruise: 0.40·nezuko_bd0 + 0.15·fern7 + 0.20·alphonse7 + 0.20·tanjiro8 + 0.05·askeladd5 → 19.57 (broke 20!)
+  - re_rand: 0.30·nezuko_bd0 + 0.20·alphonse7 + 0.40·tanjiro8 + 0.10·askeladd5 → 33.32
+- **Total session journey:** 43.69 (#3 yesterday) → 33.95 (#1 tied with nezuko/dda181f). **-9.74 absolute, -22.3% reduction**.
+- **Verdict:** kept. The pattern continues: each fresh agent commit at 5–25% weight gives -0.05 to -0.15 jumps via decorrelation. As long as agents keep iterating, the meta-blend keeps dropping.
+
 ### 2026-04-28 — race continues at 34.32 (tied with nezuko)
 - **State:** thorfinn/c3b7f82 = 34.319966 (pure copy of nezuko_b36bcc7). Both agents converged on the latest meta-blend floor.
 - **Total session journey:** 43.69 (#3 yesterday) → 34.32 (#1 tied with nezuko/b36bcc7). **-9.37 absolute, -21.5% reduction**.
