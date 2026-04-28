@@ -22,6 +22,19 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — FINAL: 42.73, rank 7 of 8
+- **Final best:** `bd5708c` (also `7887534` ties at 42.73) = 8-way ensemble with weights 0.10/0.10/0.04/0.08/0.16/0.16/0.16/0.20 over {iter4 (chain seed-A), iter6 (chain seed-B), iter9 (single specialist 192h), iter13 (cruise specialist 192h), iter15+iter16+iter17 (256h chain), iter21 (256h cruise specialist)}.
+- **Per-split:** sing=42.94 rc=59.28 cr=26.63 rer=42.07.
+- **Leaderboard at end:** thorfinn=nezuko=33.95, tanjiro=36.31, alphonse=37.68, fern=39.61, edward=40.68, frieren=42.73, askeladd=45.56.
+- **24 iterations**, ~12+ hours of training time. Most impactful innovations: bs=2 + no_subsample chain (apr23 lesson), 256-hidden capacity, single_boost=2 (raceCar single 50% sampling helped all splits), cruise_boost=2 chain (iter21 — best rc/rer val_loss).
+- **Big takeaways:**
+  1. Capacity matters: 256-hidden trained on bs=4 sub40K beats 192-hidden trained on bs=8 (same time budget). 320-hidden underperformed 256-hidden — sweet spot for this dataset+budget.
+  2. Domain boosting helps even out-of-domain — single_boost lifted ALL splits, not just single_in_dist.
+  3. Ensemble diversity: pairing the apr23 chain recipe (192-hidden) with 256-hidden + boost models gives substantially better ensembles than chain-only.
+  4. SWA failed catastrophically on this dataset (state-space averaging across different optimization basins doesn't make sense here).
+  5. slice=128 didn't help (iter11, iter18 both regressed) — slice=64 with stronger sampling/boosting beats more attention slices.
+  6. Top kagglers (thorfinn, nezuko at 33.95) are 8.78 pts ahead — likely using larger architectures + much longer training chains. Caught and surpassed by the pack but couldn't break the leader cluster.
+
 ### 2026-04-28 — Run conclusion — final 42.73 (rank 7 at end of run)
 - **Final best:** `bd5708c` = 8-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21} weights 0.10/0.10/0.04/0.08/0.16/0.16/0.16/0.20.
 - Per-split: sing=42.94 rc=59.28 cruise=26.63 re_rand=42.07.
