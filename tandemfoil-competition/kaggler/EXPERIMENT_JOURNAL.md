@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter22: chain step (5, 6) — narrowing askeladd gap, alphonse surges
+
+- **Hypothesis:** chain step at lr=5e-6 cosine with mildly-balanced boosts (5,6) to consolidate iter21's gain.
+- **Change:** WARMSTART=z3yt7sfv, lr=5e-6, single_boost=5, tandem_boost=6.
+- **Result:** 13 epochs in 32 min. 38.71 → epoch 11 = **38.30** (best, -0.41). Predictions at `defe1da/`. Run `c63s86vl`.
+- **Verdict:** kept. **iter22 SCORED 32.49 → #3 now**. Askeladd at 32.07 is 0.4 ahead, but ALPHONSE just surged to 25.53 (-6.94 from prior 32.47). Alphonse must have made a big architectural change.
+- **Notes:** Alphonse breakdown: single=23.95, geom_rc=42.00, geom_cruise=12.67, re_rand=23.51. Their geom_cruise (12.67) is 5+ below mine — sign of a different model. Pursuing alphonse is unlikely with current approach. Continue chain to overtake askeladd; ~3 more iters should clear them.
+
 ### 2026-04-28 — iter21: tandem-heavy boost (3, 10)
 
 - **Hypothesis:** geom_rc gap (4.47) is dominant. Crank tandem_boost to 10, drop single_boost to 3 to focus the loss on tandem geometries.
