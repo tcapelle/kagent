@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — v20: fresh p_weight=10 surf_weight=15 (30ep) — didn't help
+- **Hypothesis:** Higher surface-pressure loss weighting (p_weight 3→10, surf_weight 10→15) might specialize a model for surface p prediction (the only metric on the leaderboard), giving ensemble diversity.
+- **Change:** `--p_weight 10 --surf_weight 15 --slice_num 64 --epochs 30`. Run `k03kkpr6`.
+- **Result:** v20 alone val=72.13 — worse than v15 (61.79) and v17 (65.22). 4-way per-split (v7+v10+v19+v20) gives v20=0 weight everywhere — no improvement, ensemble stuck at 43.454.
+- **Verdict:** Discarded. STOPPING — confirmed hard plateau at val 43.45.
+- **Notes:** Higher loss weights didn't translate to better surface predictions — the model still got worse overall. p_weight=3 surf_weight=10 was already a good balance.
+
 ### 2026-04-28 — v19: chain v14 lr=5e-6 (5ep best) → per-split val=43.45
 - **Hypothesis:** A super-low LR refinement of v14 might squeeze a tiny bit more out, swapping v19 for v14 in the ensemble.
 - **Change:** `--warm_start v14 --slice_num 32 --lr 5e-6 --epochs 8`. Run `bxvp8448`.
