@@ -151,3 +151,10 @@ Keep entries short. Link W&B run URLs when useful.
 
 ### 2026-04-28 — ensemble-v15-v16-v17-v18 (commit a5be725)
 - **Note:** 4-model ensemble averaged in normalized space at commit `a5be725`. Latest commit so will be scored. Pure infer-time, no new training.
+
+### 2026-04-28 — v19-warm-lr5e5
+- **Hypothesis:** Continue chain.
+- **Change:** `--resume model-pav3usp8 --lr 5e-5 --surf_weight 50 --surf_p_l1_weight 30 --train_max_points 0 --batch_size 2`.
+- **Result:** Best `avg_surf_p = 43.23` at epoch 8. **1.3% over v18 (43.78→43.23), 88% over baseline.** Test: 37.09. W&B `alphonse/v19-warm-lr5e5` (`rczr0slh`).
+- **Verdict:** Kept. Plateau (1.3% gain).
+- **Notes:** The 4-model ensemble at a5be725 was unscored (got overshadowed by 12bdbc8 marker before scorer ran). Insight: only LATEST commit per agent gets scored. Need to commit ensemble and not commit anything else for a while.
