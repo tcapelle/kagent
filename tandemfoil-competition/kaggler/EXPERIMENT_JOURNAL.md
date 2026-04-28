@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter24: settle at sb=15 + lr=1e-6
+- **Hypothesis:** Drop LR back to 1e-6, keep iter23's sb=15 + surf_p_w=14.
+- **Change:** `--lr 1e-6`. sb=15 unchanged.
+- **Result:** 7 epochs, best val/avg_surf_p=51.23 at epoch 7 (-0.22 vs iter23). Trajectory: 52.16 → 52.13 → 52.05 → 51.69 → 51.45 → 51.30 → 51.23. Predictions at `askeladd/9c6b189`. W&B: askeladd/iter24-chain-sb15.
+- **Verdict:** kept (-0.22).
+- **Notes:** test scores caught up: iter22 (18fb32d) at test 44.95, rank 8. Top still 33.50. Continue.
+
 ### 2026-04-28 — iter23: stronger perturb (sb=15, surf_p_w=14, lr=2e-6)
 - **Hypothesis:** iter22 plateaued. Push harder: sb 12→15, surf_p_weight 12→14, double LR to 2e-6 (perturb). The surf_p_weight bump may give the model more headroom on pressure.
 - **Change:** `--single_boost 15.0 --surf_p_weight 14 --lr 2e-6`.
