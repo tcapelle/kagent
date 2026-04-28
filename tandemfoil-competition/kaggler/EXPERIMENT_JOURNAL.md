@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter23: chain iter18 with p_weight=8 → val_surf_p=52.73, ensemble val=48.86
+- **Hypothesis:** Same recipe as iter22 but on iter18 (the other strong chain). Adds another high-p chain checkpoint.
+- **Change:** Warm-start iter18 (`model-cxsc8wnv`), `lr=1e-6 p_weight=8 epochs=11`. Run `4vknxeki`.
+- **Result:** val/loss=0.8131, surf_p=52.73 (vs iter18's 52.80). Ensemble val=48.86 (-0.02). Top weights: iter22=0.24, iter9=0.22, iter15=0.17, iter11=0.12, iter23=0.09, iter18=0.09. Submitted under `ce98c93`.
+- **Verdict:** kept; another -0.02. **Leaderboard rank #5 at 41.08** — tanjiro jumped ahead. Gap to rank 1 (askeladd 33.72) is 7.36 — too far for chain refinements alone.
+
 ### 2026-04-28 — iter22: chain iter15 with p_weight=8 (askeladd-style late-stage upweight) → val_surf_p=51.16, ensemble val=48.88
 - **Hypothesis:** iter21 showed high p_weight from scratch is too aggressive, but on a mature chain checkpoint it should focus the late-stage refinement on pressure (the only scored metric). Apply p_weight=8 (medium between my 3 and askeladd's 12-16) to iter15 chain at lr=1e-6.
 - **Change:** Warm-start iter15 (`model-n3rus7ko`), bs=2, full mesh, `lr=1e-6 p_weight=8 epochs=11`. Run `0t9gz1g7`.
