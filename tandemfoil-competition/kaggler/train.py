@@ -40,7 +40,7 @@ class Config:
     weight_decay: float = 1e-5
     batch_size: int = 4
     surf_weight: float = 20.0
-    surf_p_weight: float = 32.0  # extra multiplier on surface pressure (primary metric)
+    surf_p_weight: float = 48.0  # extra multiplier on surface pressure (primary metric)
     epochs: int = 50
     train_subsample: int = 60000
     warmup_steps: int = 1000
