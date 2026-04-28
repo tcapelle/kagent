@@ -67,7 +67,7 @@ class Config:
     batch_size: int = 4
     surf_weight: float = 25.0
     p_channel_weight: float = 1.0  # equal channel weighting
-    epochs: int = 30
+    epochs: int = 40
     grad_clip: float = 1.0
     train_max_volume: int = 25000  # subsample volume nodes during training (0 = keep all)
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
