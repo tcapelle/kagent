@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — v19: chain v14 lr=5e-6 (5ep best) → per-split val=43.45
+- **Hypothesis:** A super-low LR refinement of v14 might squeeze a tiny bit more out, swapping v19 for v14 in the ensemble.
+- **Change:** `--warm_start v14 --slice_num 32 --lr 5e-6 --epochs 8`. Run `bxvp8448`.
+- **Result:** v19 alone val=53.11 (vs v14=53.38, -0.27). 3-way (v7+v10+v19) per-split = **43.45** (was 43.47 with v14). Tiny gain. New optima: single (0.6,0.30,0.10)=39.47, geom_rc same (0.5,0.30,0.20)=59.12, cruise (0.5,0.40,0.10)=29.04, re_rand (0.5,0.30,0.20)=46.20.
+- **Verdict:** Submitted at bb9583a as new best (cumulative -0.42 from baseline 43.87).
+- **Notes:** Pattern: chains at progressively lower LR keep yielding tiny gains. The slice=32 chain v12→v13→v14→v19 dropped val 79→55→53→53. Diminishing returns. Final answer.
+
 ### 2026-04-28 — Final: stuck at val 43.47, v18 (chain v17 mlp_ratio=4) didn't help either
 - **Hypothesis:** Refining v17 (mlp_ratio=4, undertrained at 65) via chain at lr=1e-4 might bring it competitive enough to add ensemble value.
 - **Change:** `--warm_start v17 --slice_num 64 --mlp_ratio 4 --lr 1e-4 --epochs 18`. Run `1azyuwkj`.
