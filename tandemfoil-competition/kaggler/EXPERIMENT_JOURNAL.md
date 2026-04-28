@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — wider-shallow-320x4 (kept, ensemble best 89.09)
+- **Hypothesis:** iter19 (256x4 wide-shallow) was the best single yet at 92.62; pushing width to 320 should improve further. Same recipe.
+- **Change:** model_config: n_hidden 256→320, n_layers=4, n_head=8.
+- **Result:** standalone val=92.01 (best single ever, 0.6 better than iter19). 42 epochs in 30 min (44s/epoch). 3-model ensemble iter20+iter19+iter8 at weights 0.35/0.35/0.30 → val 89.09 (best ensemble ever, 0.9 better than iter19+iter8 alone). Predictions saved at `apr27-4/fern/344dfe7`.
+- **Verdict:** kept (commit `390306e` for ckpt). Top-of-leaderboard (per latest official leaderboard: thorfinn 45.94, nezuko 79.95, edward 90.12) — we're now between nezuko and edward.
+- **Notes:** wide-shallow scales positively in width. 320 hits a sweet spot. The 3-model ensemble of three architecturally different models (320x4, 256x4, 192x8) is much better than any pair. Adding iter18 (narrow-deep 128x10) hurts: maybe too small. Could try 384x4 next, or push depth to 5 with width 256.
+
 ### 2026-04-28 — wide-shallow-256x4 (BIG WIN, kept)
 - **Hypothesis:** complementary architecture to iter18's narrow-deep — wide-shallow with n_hidden=256, n_layers=4, n_head=8 (head_dim=32). Same recipe otherwise. Should give different errors AND fast epochs (only 4 layers).
 - **Change:** model_config: n_hidden=256, n_layers=4, n_head=8.
