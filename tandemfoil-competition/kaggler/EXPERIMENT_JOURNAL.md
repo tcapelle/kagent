@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter27: cycle-6 HIGH-LR refresh 🥈 RANK 2 (commit a40c521)
+- **Hypothesis:** Repeat the iter25 trick (high-LR cycle refresh) from iter26's stronger base. Cycle-6 should keep climbing.
+- **Change:** `--warm_start /tmp/iter26_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
+- **Result:** **val/loss=1.0194** at epoch 23 (26 min). Per-split val: 1.65, 1.31, 0.24, 0.92. **Score: 34.43 — RANK 2!** (askeladd 32.07, me 34.43, frieren 35.01, thorfinn 36.20).
+- **Verdict:** **NEW BEST.** High-LR refresh strategy works repeatedly when alternated with bs=2 fine-tune.
+- **Notes:** Each cycle pair (high-LR coarse → bs=2 fine-tune) gives ~3-5% val improvement and ~2-3 score points. Next: iter28 = bs=2 fine-tune from iter27 → target rank 1 territory.
+
 ### 2026-04-28 — iter26: cycle-5 bs=2 fine-tune NEW BEST (commit d33081e)
 - **Hypothesis:** Apply bs=2/no-subsample to iter25 (val 1.106). Standard breakthrough recipe — same step that took iter9→iter10.
 - **Change:** `--warm_start /tmp/iter25_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
