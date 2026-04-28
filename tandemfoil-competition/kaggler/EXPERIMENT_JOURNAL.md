@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — surfw30-pw5 (DISCARDED)
+- **Hypothesis:** leaderboard scores only surface pressure, so heavily upweight that channel: surf_weight 15→30 and p_weight 3→5.
+- **Change:** Config defaults `surf_weight=30, p_weight=5`.
+- **Result:** 32 epochs in 30.6 min. Best epoch 32: avg_surf_p=98.62 (worse than iter8). val/loss inflated (2.55 vs 1.18 — different scaling) but absolute mae_surf_p went up.
+- **Verdict:** discarded — `git reset --hard HEAD~1`. Stronger surface focus hurts: model overfits surface patterns and loses the volumetric context that informs surface predictions.
+- **Notes:** the loss weighting was already at iter8's local optimum; volumetric supervision is necessary to learn the global flow pattern that determines surface pressure.
+
 ### 2026-04-28 — ensemble iter8(0.85)+63ry1pjo(0.15)
 - **Hypothesis:** single-model gains are exhausted; weighted ensemble of iter8 (93.62) with a diverse weaker model could improve val/test through error decorrelation. Tried equal-weight and several ratios.
 - **Change:** added comma-separated `--checkpoint` and `--weights` to `predict.py` and `eval_val.py` for weighted averaging in normalized space. Also retrained iter8 once for a seed-2 ensemble candidate (commit `2a05b00`, qfkke457, val=105.66 — worse so weak ensemble candidate). Evaluated several other iter8-arch ckpts left over from failed iters: 63ry1pjo (101.00, was iter10), n3zoxq9x (103.70, iter12), qptl90fw (109.00, iter11).
