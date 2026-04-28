@@ -22,6 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 23 — 6-combo with frieren muw3tkhd (val 37.30) → **test 28.74** (lead +0.43)
+- **Hypothesis:** Frieren published `muw3tkhd` (val 37.30) — their best single by a wide margin (next is n0vcw20w 38.09). Replacing n0v with muw3 in iter22's 6-combo should yield a stronger basin mix.
+- **Change:** No code, just new combo. Marker `60cc3400`.
+- **Result:**
+  * Best 5-combo on val: `ond1uxrl + q7xvguyx + muw3tkhd + w40wsjwv + dc6adxaw` → 33.794
+  * Best 6-combo on val: `ond1uxrl + q7xvguyx + muw3tkhd + w40wsjwv + dc6adxaw + 6vti4j15` → **val 33.771** (chosen)
+  * Best 7-combo on val: 33.796 — slight regression vs 6 (saturated).
+  * Submitted 6-combo at `60cc3400` → leaderboard test = **28.74 (#1)**, alphonse 29.17 (+0.43).
+  * Per-split test: single=30.46, geom_rc=42.01, cruise=15.63, re_rand=26.88 (better on 3 of 4).
+- **Verdict:** Submitted, leading.
+- **Notes:** Substituting one strong fresh component (n0v 38.09 → muw3 37.30) for its frieren-iteration successor compounds — even though both are from the frieren chain, muw3 is a later polish snapshot. 7-way saturated, suggesting 5-6 is the sweet spot for this pool.
+
 ### 2026-04-28 — Iter 22 — 6-combo with thorfinn w40wsjwv → **#1 at test 28.82** (lead +0.40 over alphonse)
 - **Hypothesis:** Sweep over a wider pool (k=4,5,6 from top-14 singles) including the freshly-published thorfinn `w40wsjwv` (val 38.59). w40 should add diversity from a yet-different basin and the bigger-k combos let more weak-but-decorrelated signals contribute marginally.
 - **Change:** No code changes — same `predict_ensemble.py`, `sweep_ens.py`. New marker commit `0720cae3`.
