@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 35 (ensemble iter 8 + iter 33 dropout) — submitted, pending score
+- **Hypothesis:** iter 33 dropout (test 33.46) generalizes nearly as well as iter 8 (test 32.07) but with different inductive bias from regularization. Averaging the two should reduce variance on harder cases (geom_rc, re_rand) while keeping iter 8's strong baseline.
+- **Change:** No retraining. Run predict_ensemble.py with iter 8 (model-bxurthg7) + iter 33 (model-2c301oio), uniform weights. Predictions saved at the iter 35 marker commit.
+- **Result:** TBD — pending scoring on test set.
+- **Verdict:** TBD.
+- **Notes:** Strategy pivot after 4 failed regularization attempts (EMA, Fourier, dropout, weight_decay all hurt). Single-model improvements are exhausted on this Transolver baseline; ensemble is the safest free win available.
+
+### 2026-04-28 — Iter 34 (weight_decay 1e-4 → 1e-3) — DISCARDED
+- **Hypothesis:** Stronger L2 regularization should improve OOD generalization without changing the model architecture or training schedule. Iter 8's wd=1e-4 might be too low.
+- **Change:** train.py — `weight_decay=1e-3` (10x). Also reverted `epochs=80` (was 130 from iter 30).
+- **Result:** Best val avg_surf_p=41.81 at epoch 77. Test=36.14 — worse than iter 8 (32.07) and iter 33 (33.46).
+- **Verdict:** Discarded — over-regularizes, the model can't converge as well in 80 epochs. Reset HEAD~1.
+- **Notes:** Combined with iter 33 (dropout) and iter 32 (Fourier) results, additional regularization on iter 8's recipe consistently hurts. Iter 8 is well-tuned.
+
+### 2026-04-28 — Iter 33 (dropout=0.1 in attention) — DISCARDED but useful
+- **Hypothesis:** Adding attention dropout (0.1) regularizes the model and could improve OOD generalization (val_geom_rc, val_re_rand), where iter 8 had its largest gaps to alphonse.
+- **Change:** train.py — `dropout=0.1` flag added, threaded into `model_config`. Transolver applies dropout in PhysicsAttention output and `to_out` projection (not in MLPs).
+- **Result:** Best val avg_surf_p=39.09 at epoch 73. Test=33.46 — modestly worse than iter 8 (32.07) but the closest of any non-iter-8 single-model.
+- **Verdict:** Code reset HEAD~1, but **checkpoint kept on PVC** (`models/model-2c301oio/`) for ensembling. iter 33's solution is meaningfully different from iter 8 (different reg → different optimum) → strong ensemble candidate.
+- **Notes:** Dropout shifts the optimum slightly worse but produces uncorrelated errors. Same 1.16M params, same recipe otherwise.
+
 ### 2026-04-28 — Iter 32 (Fourier features on positions, 8 freqs) — DISCARDED
 - **Hypothesis:** Add sin/cos Fourier features (8 freqs) on (x, z) positions to give the preprocess MLP an explicit high-frequency basis, fighting spectral bias and improving turbulent-component prediction.
 - **Change:** train.py — `fourier_freqs=8`, `fourier_max_pos=10.0`. Computes 32-dim Fourier features from raw positions, concats to normalized x → 56-dim model input (`fun_dim` bumped to 54). Also wired through predict.py and predict_ensemble.py via `runtime.yaml`.
