@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter24: chain step (6, 6) lr=5e-6
+
+- **Hypothesis:** chain step at lr=5e-6 with balanced boosts.
+- **Change:** WARMSTART=t3r6dkiw, lr=5e-6, single_boost=6, tandem_boost=6.
+- **Result:** 13 epochs in 31 min. 37.85 → epoch 13 = **37.54** (best, -0.31). Predictions at `2c6839c/`. Run `vtrw7ret`.
+- **Verdict:** kept. **iter24 SCORED 31.90 → #3** (just behind tanjiro 31.87 and ahead of askeladd 32.07). alphonse far ahead at 24.98 with a fundamentally better model.
+- **Notes:** Chain pattern continues to deliver ~0.3-0.5 per iter on val. Test follows similarly. iter25 next warm-restart.
+
 ### 2026-04-28 — iter23: warm-restart with balanced boosts (8, 8)
 
 - **Hypothesis:** equal-weight warm-restart cycle. Both single and tandem at 8.
