@@ -22,6 +22,27 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter14: huber_beta=0.3 (more L1) + surf_w=20 + p_w=3 (kept)
+- **Hypothesis:** Leaderboard ranks pure pressure MAE; my Huber loss with beta=1 acts mostly like L2 on small errors after many iters of fine-tuning. Pulling beta down to 0.3 makes most of the surface error region act like L1, gradient-aligned with the metric. Doubling the loss-balance for surface (15→20) and tripling pressure within surface (1.5→3) makes the gradient signal even more pressure-focused.
+- **Change:** train.py — exposed `huber_beta` as a cfg field (defaulted 0.3), bumped `surf_weight` 15→20, `surf_p_weight` 1.5→3, kept `rc_single_boost` at 8 (from 10) since per-split rc was creeping up at 10x.
+- **Result:** Best epoch 8 with **val avg_surf_p=44.67** (vs iter13 45.15 → -0.48 — biggest single-iter delta since iter5). Trajectory: 45.10, 45.03, 44.97, 44.85, 44.79, 44.74, 44.70, 44.67. Wall time 23.4 min. WandB run erdp8hh8.
+- **Verdict:** Kept. The loss-shape lever is much higher-leverage than another LR or boost notch.
+- **Notes:**
+  - **Leaderboard pivot at iter12:** askeladd vaulted from 39.55 to 34.56 in one round — 5 points improvement on every split (single 39→34, rc 54→50, cruise 26→21, re 39→34). That isn't fine-tuning, it's a structural change (bigger model? different architecture? distillation?). I'm now #3 (iter13: 39.03).
+  - To match askeladd I need ~5 points of test gain. My recent rate is ~0.5 val/iter ≈ ~0.4 test/iter ≈ 12 iterations. Possibly worth a structural pivot (bigger model from scratch is risky in 30 min though). Continuing the loss-tweaking direction first since iter14 just demonstrated it's still productive.
+
+### 2026-04-27 — iter12: rc_single boost 7x (kept)
+- **Hypothesis:** Curve still descending at iter11, push boost to 7x.
+- **Change:** train.py — `rc_single_boost` 5→7. Same lr/EMA.
+- **Result:** Best epoch 8 with **val avg_surf_p=45.29** (vs iter11 45.37 → -0.08). val_single_in_dist 2.6513→2.6155 (more single-split gain) but val_geom_camber_rc began creeping up (1.5129→1.5438). Wall time 24.1 min. WandB run m9eokni7.
+- **Verdict:** Kept, with caveat: boost is starting to trade off rc for single. 7x is near the saturation point.
+
+### 2026-04-27 — iter13: boost 10x + surf_p_weight=2.0 (kept)
+- **Hypothesis:** One more boost notch (10x) plus an explicit pressure-channel emphasis (1.5→2.0) in the surface loss should keep nudging avg_surf_p down even though rc is starting to push back.
+- **Change:** train.py — `rc_single_boost` 7→10, `surf_p_weight` 1.5→2.0, lr 3e-6→4e-6.
+- **Result:** Best epoch 8 with **val avg_surf_p=45.15** (vs iter12 45.29 → -0.14). val_single_in_dist 2.6155→2.6286 (slight regression on the targeted split! — but the avg_surf_p metric still improved because the pressure-channel re-weighting took priority over the velocity channels in the surface loss). Wall time 22.5 min. WandB run gyfbxp8b. **Test=39.03 (#3)**.
+- **Verdict:** Kept. The metric improved even when single's split-loss didn't, validating the surf_p_weight lever.
+
 ### 2026-04-27 — iter11: rc_single boost 5x, lr=3e-6, ema=0.9995 (kept)
 - **Hypothesis:** Iter10 confirmed the boost lever is monotone; one more notch (5x) plus ultra-slow EMA finishing should still push.
 - **Change:** train.py — `rc_single_boost` 4→5, lr 5e-6→3e-6, ema_decay 0.999→0.9995.
