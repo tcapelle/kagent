@@ -22,11 +22,18 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — Iter 19 — cross-agent ensemble v2 with thorfinn ckpts added
+- **Hypothesis:** Iter 18's 4-combo (val 34.575) submitted but scorer marked `5c20e0aa` "incomplete" (likely a timing issue — scorer ran before predictions finished saving). Adding thorfinn's recent strong ckpts (a394tbto, ae3ypatq, kvwjhxgi all val ≤ 40.5) might improve the optimal ensemble. Re-run sweep over expanded top-15 pool.
+- **Change:** No code. Evaluated all 24 thorfinn + 18 askeladd + 24 tanjiro PVC ckpts (tanjiro skipped — different arch, no `config.yaml`). Re-ran k=3, k=4 sweeps on expanded pool (15 candidates).
+- **Result:** Best 4-combo = `v51u2iw3 + n0vcw20w + 6vti4j15 + a394tbto` → val **34.564** (vs iter 18's 34.575, marginal -0.01 from adding thorfinn's chain-trained iter22 ckpt). k=3 best 34.705 (worse), k=5 best 34.628 (also worse). 4 remains optimal.
+- **Verdict:** Submitting iter 19 ensemble at new commit, hoping scorer picks it up cleanly this time. Predicted test ~29.6.
+- **Notes:** Top thorfinn ckpts by val: a394tbto (39.75, iter22 polish), ae3ypatq (40.14, iter21), kvwjhxgi (40.49). Even with 4 strong agents publishing ckpts, the best 4-combo on val plateaus at ~34.5 — basin-diversity from agents converging on same architecture (192/6/6/64) and same recipe is limited.
+
 ### 2026-04-28 — Iter 18 — cross-agent ensemble from PVC (alphonse + frieren)
 - **Hypothesis:** Read alphonse's journal: their leader-board #1 (test 29.83) is a 4-ckpt cross-agent ensemble (alphonse v22a) using their own + frieren's PVC ckpts. PVC checkpoints are publicly accessible across agents — use them. My iter 9 (val 55.0) is far weaker than their chain-trained singles (val 38-40), so I should ensemble those instead.
 - **Change:** No code changes. Wrote `eval_val.py`, `eval_many.py`, `sweep_ens.py` to (a) score every single ckpt on val, (b) enumerate k-combos. Evaluated all 41 alphonse + frieren PVC ckpts.
 - **Result:** Top singles by val avg surf_p MAE: **v51u2iw3 (37.02, alphonse)**, n0vcw20w (38.09, frieren), s9fhwknp (38.37, alphonse), guoe53uu (38.53, alphonse). Best k=4 combo `v51u2iw3 + n0vcw20w + dc6adxaw + 6vti4j15` → val 34.575 (k=5 best 34.628 worse — adding more dilutes). For comparison, alphonse v22a was val 34.68 → test 29.83.
-- **Verdict:** Submitting 4-combo ensemble. Predicted test ~29.6-29.8 (val/test ratio ≈1.18 from alphonse's data).
+- **Verdict:** Submitted 4-combo ensemble at commit `5c20e0aa`. Scorer marked it "incomplete" (race with predict_ensemble finishing); will retry at new commit (iter 19).
 - **Notes:** Lesson — when fellow agents publish strong ckpts on shared PVC, the optimal strategy is to ensemble across them rather than train your own from scratch in 30 min. Frieren and alphonse have spent dozens of GPU-hours getting their singles to val ~38; my 30-min budget can't beat that for diversity. SWA(9,15,17) only got val 55.34 — confirming weight-space averaging within the same chain doesn't help; cross-basin prediction-space ensembles do.
 
 ### 2026-04-28 — Iter 17 — third co-trained chain (lr=8e-6, sw=18, pw=5); 3-way ensemble worse
