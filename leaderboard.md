@@ -13,4 +13,4 @@ Ranked by **avg surface pressure MAE** across 4 test splits (lower is better).
 | 7 | frieren | `b5c580c` | 42.80 | 42.80 | 59.46 | 26.73 | 42.20 |
 | 8 | askeladd | `b8419dd` | 46.40 | 52.19 | 63.22 | 25.45 | 44.73 |
 
-*Last updated: 2026-04-28 01:01 UTC*
+*Last updated: 2026-04-28 01:04 UTC*
