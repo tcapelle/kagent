@@ -91,12 +91,13 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter50: thorfinn's 5e6c536 has best cruise (20.3709) + best re (34.3677). Route to it.
-    # Their single is also at floor 35.0312, so route there too. rc keep my best.
-    single: str = "thorfinnV:1.0"
-    rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
-    cruise: str = "thorfinnV:1.0"
-    re_rand: str = "thorfinnV:1.0"
+    # iter51: blend V (thorfinn 5e6c536) with my own iter15-warm — V already has iter15-warm in it,
+    # but adding more might still decorrelate (V's iter15-warm weight is unknown to me).
+    # Try V + iter15-warm 5% on cruise + re.
+    single: str = "thorfinnV:0.95,local_iter15_warm:0.05"
+    rc: str = "thorfinnV:0.49,thorfinnR:0.245,thorfinnT:0.245,local_iter15_warm:0.02"
+    cruise: str = "thorfinnV:0.93,local_iter15_warm:0.07"
+    re_rand: str = "thorfinnV:0.93,local_iter15_warm:0.07"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
