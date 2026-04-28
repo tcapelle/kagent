@@ -22,6 +22,15 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18-20: train+val polishing chain (kept)
+- **iter18:** continue iter17 with surf_weight 25→30, surf_p_weight 5→7, lr 3e-6→2e-6, boost 8→6 (rc starting to regress at 8x with train+val mix). Val (80-sample): 44.74→**44.63**. **Test=37.68 (#3)** vs iter16's 38.07 — train+val pays off.
+- **iter19:** 10 epochs (instead of 8), val_holdout 20%→10%, otherwise same. Hit 30-min timeout at epoch 9. Val (40-sample, very noisy) 46.64. **Test=37.51 (#3)** — another -0.17.
+- **iter20:** added `save_last=True` flag — with the val signal so noisy at 40 samples, "best by val" is unreliable; saving the final EMA state is more robust now that we're polishing. Same loss/boost as iter19. Hit timeout at epoch 8 again, val 46.56.
+- **Verdict for the chain:** Kept; the train+val + L1-leaning loss combo is the current best lever (iter18 alone moved test 38.07→37.68). Per-iter test improvement is now ~0.15-0.40, slowing.
+- **Notes:**
+  - Leaderboard at iter20 commit time: askeladd 33.72, tanjiro 37.21, thorfinn 37.51, nezuko 37.60. I bounce between #3 and #4 depending on whose latest is scored. Askeladd is structurally ahead by ~4 points, likely a different model/ensemble.
+  - With `save_last=True`, the cosine LR schedule with T_max=epochs ensures the final-epoch EMA is the most-decayed-LR average. Empirically this is consistent with how SWA and BMA work.
+
 ### 2026-04-28 — iter17: train on train + 80% val (kept)
 - **Hypothesis:** Each val_X split is a random holdout from the same distribution as test_X, so promoting val data into the training set should directly improve test performance. Held out 20% per split for noisy monitoring.
 - **Change:** train.py — added `use_val_in_train` and `val_holdout_pct` cfg, splices `val_splits` into train_ds (320/400 val files promoted), keeps 80 for held-out monitoring. Same loss/boost as iter16.
