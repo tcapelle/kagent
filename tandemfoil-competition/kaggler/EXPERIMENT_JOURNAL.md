@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter29: cycle-7 HIGH-LR refresh NEW BEST (commit ee04bf9)
+- **Hypothesis:** Continue the high-LR refresh cycling pattern. Each iter at ~3% gain.
+- **Change:** `--warm_start /tmp/iter28_best.pt --lr 5e-5 --epochs 25 --warmup_epochs 1 --batch_size 4 --train_subsample 60000`.
+- **Result:** **val/loss=0.9360** at epoch 16. Per-split val: 1.44, 1.24, 0.22, 0.84. Best yet — sub-1.0 in coarse mode.
+- **Verdict:** kept. Score should drop to ~32.
+- **Notes:** Cosine still descending at ep25; even more epochs would help. Next: iter30 = bs=2 fine-tune from iter29.
+
 ### 2026-04-28 — iter28: cycle-6 bs=2 fine-tune — broke 1.0 val (commit 248dd0e)
 - **Hypothesis:** Apply bs=2/no-subsample to iter27 (val 1.019). Following the pattern that paired iter25→iter26.
 - **Change:** `--warm_start /tmp/iter27_best.pt --lr 2e-5 --epochs 10 --warmup_epochs 0 --batch_size 2 --train_subsample 0`.
