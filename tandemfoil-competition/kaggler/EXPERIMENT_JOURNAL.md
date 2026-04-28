@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter23/24/25: chain6 finetune, 8-way ensemble (test 30.84), 7th base
+- **Iter23:** finetune iter22 → val=39.93 (run id `fmjp5i5q`).
+- **Iter24:** 8-way ensemble at `657963e` → **test 30.84** (improvement from 30.99). Per-split: single=33.27, rc=43.49, cruise=17.89, re=28.71.
+- **Iter25:** 7th base val=77.03 (run id `6qn4nsiz`) — worst base so far. Auto-submit overwrote `657963e`, restored.
+- alphonse stuck at 29.83. We're 1.01 behind. Need ~3-4 more chains to catch up at current 0.15-per-chain gain rate.
+
 ### 2026-04-28 — iter20/21/22: chain5 finetune, 7-way ensemble, 6th base
 - **Iter20:** finetune iter19 → val=43.33 (run id `2nvznlkm`).
 - **Iter21:** 7-way ensemble at `2e40b9b`.
