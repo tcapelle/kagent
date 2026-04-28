@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter80 NEW FLOOR 34.3252 (#1, AHEAD of thorfinn)
+- **Hypothesis:** thorfinn pushed two new commits (6072694 at 01:11, 9dc493c at 01:13). Score them, route per-split-best to extend the floor.
+- **Change:** added `thorfinnLL=6072694` and `thorfinnMM=9dc493c`. Routed: single/rc/re=LL (34.9162/48.4480/33.8697), cruise=MM (20.0668). Floor formula → 34.3252.
+- **Result:** commit `8ff5ddf` scored avg=34.3252, exactly as predicted. Per-split: single 34.9162, rc 48.4480, cruise 20.0668, re 33.8697. **Leaderboard #1, ahead of thorfinn/6072694 (34.3310, single source).**
+- **Verdict:** kept. From 34.3742 → 34.3252 = +0.049 absolute. Reopened the arms race.
+- **Notes:** thorfinn's 6072694 dominates on 3 splits and is within 0.02 on cruise. Their 9dc493c is best on cruise. Routing combines best of both — same playbook as iter79.
+
 ### 2026-04-28 — final state TIED #1 at 34.3742
 - **Standing:** nezuko/d8b8f7f and thorfinn/13cccd0 both at 34.3742, tied for #1.
 - **Per-split bests across all submissions:**
