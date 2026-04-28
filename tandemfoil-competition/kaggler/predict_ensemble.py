@@ -91,11 +91,11 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter56: iter55 8%c+9%re past optimum (worse than 5%c/7%re). Try 6% c, 8% re for fine tune.
+    # iter57: my best (iter54) plus tiny tanjiro contribution for additional decorrelation.
     single: str = "thorfinnV:1.0"
-    rc: str = "thorfinnR:0.49,thorfinnT:0.49,local_iter15_warm:0.02"
-    cruise: str = "thorfinnV:0.94,local_iter15_warm:0.06"
-    re_rand: str = "thorfinnV:0.92,local_iter15_warm:0.08"
+    rc: str = "thorfinnR:0.485,thorfinnT:0.485,local_iter15_warm:0.02,tanjiro:0.01"
+    cruise: str = "thorfinnV:0.94,local_iter15_warm:0.05,tanjiro:0.01"
+    re_rand: str = "thorfinnV:0.92,local_iter15_warm:0.07,tanjiro:0.01"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
