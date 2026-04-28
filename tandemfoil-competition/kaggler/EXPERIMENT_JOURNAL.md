@@ -22,6 +22,20 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter22: chain from iter20 (LR 3e-6, p_weight 38)
+- **Hypothesis:** another in-basin chain from iter20, slightly different LR/p_weight than iter21.
+- **Change:** args only.
+- **Result:** 28 epochs. Best epoch 24 → val/avg_surf_p=44.671 (single=38.86, geom_rc=62.04, geom_cruise=30.87, re_rand=46.92). Run yy3by49p.
+- **Combination experiments:**
+  - **Ensemble(iter20, iter22): 44.636** ← new best
+  - Ensemble(iter20, iter21, iter22): 44.660
+  - SWA(iter20, iter21, iter22): 44.676
+  - iter22 alone: 44.671
+  - Ensemble(iter21, iter22): 44.697
+  - Ensemble(iter20, iter21): 44.687 (previous best)
+- **Verdict:** kept — submitted Ensemble(20, 22) at apr27-5/askeladd/ad32ddb (-0.051 vs prior best).
+- **Notes:** iter21 doesn't ensemble well with iter20+iter22 (drags it slightly worse). The best 2-way picks are the strongest singles (iter20=44.70 + iter22=44.67). Iter23 plan: yet another in-basin chain or chain from Ensemble(20,22) parameters.
+
 ### 2026-04-28 — iter21: chain from iter20 (LR 2e-6, p_weight 36); ensemble within new basin
 - **Hypothesis:** since iter20 jumped to a deeper basin, a re-chain from iter20 should land at another point in the same basin and ensemble well with it.
 - **Change:** args only.
