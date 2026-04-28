@@ -97,12 +97,12 @@ SRC = {
 class Config:
     agent: str | None = None
     # Per-split blend weights as comma-separated "src:weight" pairs.
-    # iter67: thorfinn 59c4467 dominates all splits. Route to it.
-    # Per-split bests now ALL from thorfinn BB (59c4467). Floor matches their score 34.47.
-    single: str = "thorfinnBB:1.0"
-    rc: str = "thorfinnBB:1.0"
-    cruise: str = "thorfinnBB:1.0"
-    re_rand: str = "thorfinnBB:1.0"
+    # iter68: BB + iter15-warm small weight on each split for additional decorrelation gain.
+    # If BB doesn't have iter15-warm baked in, this should help.
+    single: str = "thorfinnBB:0.97,local_iter15_warm:0.03"
+    rc: str = "thorfinnBB:0.98,local_iter15_warm:0.02"
+    cruise: str = "thorfinnBB:0.95,local_iter15_warm:0.05"
+    re_rand: str = "thorfinnBB:0.93,local_iter15_warm:0.07"
 
 
 def parse_mix(spec: str) -> list[tuple[str, float]]:
