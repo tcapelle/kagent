@@ -22,6 +22,12 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter17 chain w_p=24, LR=5e-6 (KEPT, near-flat) + SWA experiment (no help)
+- **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 5e-6 --w_p 24.0`. Best epoch 11, **val=41.89, test=36.46** (Δ -0.27 test). Rank 3.
+- **SWA experiment:** added `swa.py` to weight-average state dicts. Tried averaging iter14+15+16+17 ckpts (4-way) → val=42.25, worse than iter17 alone. Tried iter16+17 (2-way) → val=41.90, also slightly worse. Conclusion: ckpts from chain trajectory are not on a flat basin; weight averaging hurts.
+- **Verdict:** Kept iter17 (commit `efad602`). Continue chain one more iter at LR=2e-6, then pivot.
+- **Notes:** Per-iter test improvements have decayed from −1.37 (iter11) → −1.19 (iter12) → −0.74 (iter13) → −2.34 (iter14) → −0.40 (iter15) → −0.35 (iter16) → −0.27 (iter17). Bouncy but trending to zero. Need a structural lever.
+
 ### 2026-04-28 — iter16 chain w_p=16, LR=5e-6 (KEPT, marginal)
 - **Run:** `--load_from checkpoints/best.pt --epochs 11 --batch_size 2 --subsample_n 0 --lr 5e-6 --w_p 16.0`.
 - **Result:** Best epoch 11, **val avg_surf_p=41.99** (Δ -0.50), **test avg_surf_p=36.73** (Δ -0.35). Rank 3.
