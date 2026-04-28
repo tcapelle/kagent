@@ -1,0 +1,46 @@
+# 7-way perf-softmax weights (T=5): [v3=0.253, v6=0.020, v7=0.265, v8=0.160, v10=0.177, v14=0.061, v19=0.064]
+# val per-split: single=39.836  geom_rc=59.558  cruise=29.217  re_rand=46.499  avg=43.778
+
+test_single_in_dist:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-l0nw6exf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-pnn6ips2/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-8fazsiug/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-mj69t5iv/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-bxvp8448/checkpoint.pt
+  weights: [0.253, 0.020, 0.265, 0.160, 0.177, 0.061, 0.064]
+
+test_geom_camber_rc:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-l0nw6exf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-pnn6ips2/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-8fazsiug/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-mj69t5iv/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-bxvp8448/checkpoint.pt
+  weights: [0.253, 0.020, 0.265, 0.160, 0.177, 0.061, 0.064]
+
+test_geom_camber_cruise:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-l0nw6exf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-pnn6ips2/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-8fazsiug/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-mj69t5iv/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-bxvp8448/checkpoint.pt
+  weights: [0.253, 0.020, 0.265, 0.160, 0.177, 0.061, 0.064]
+
+test_re_rand:
+  checkpoints:
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-l0nw6exf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-pnn6ips2/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-izweqran/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-f3s5vkhf/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-8fazsiug/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-mj69t5iv/checkpoint.pt
+    - /workspace/kagent/tandemfoil-competition/kaggler/models/model-bxvp8448/checkpoint.pt
+  weights: [0.253, 0.020, 0.265, 0.160, 0.177, 0.061, 0.064]
