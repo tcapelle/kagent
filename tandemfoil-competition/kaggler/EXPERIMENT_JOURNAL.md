@@ -22,6 +22,28 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter28: ensemble iter27+iter25+iter21+iter18 equal (38.54)
+
+- **Hypothesis:** add iter27 (sub60k after sub80k chain) for diversity.
+- **Change:** No new training. `--checkpoints iter27,iter25,iter21,iter18
+  --weights 1,1,1,1`.
+- **Result (bs=1 val):** **38.54** | single=33.55, geom_rc=56.78,
+  geom_cruise=23.64, re_rand=40.19. ~0.07 gain over iter26.
+- **Verdict:** kept — basically tied with iter26 but submit anyway.
+
+### 2026-04-28 — iter27: resume iter25 with sub60k (val_bs1=40.16 alone)
+
+- **Hypothesis:** sub80k was slow (only 14 epochs in iter25). Switch back
+  to sub60k for more cycles per 30 min while keeping the surf_p_w=24 win.
+- **Change:** `train.py:45` — `train_subsample 80000 → 60000`. Resume
+  iter25.
+- **Result:** ~24 epochs, best val_bs4 = 64.83 at epoch 4 (very early).
+  bs=1 val: **40.16** alone (slight regression from iter25's 39.96).
+  Run `8y8u8ng8`.
+- **Verdict:** kept ckpt for ensembling.
+- **Notes:** Best epoch was 4 — model converged immediately and just
+  oscillated. Ensemble still benefits marginally.
+
 ### 2026-04-28 — iter26: ensemble iter25*2+iter23+iter21*2+iter18*2 (38.61)
 
 - **Hypothesis:** add iter25 (the new best single, surf_p_w=24 basin) to
