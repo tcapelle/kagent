@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — TRUE FINAL: 42.44, rank 7
+- **Best:** `7034d32` (or tied `e514169`) = 9-way ensemble {iter4, iter6, iter9, iter13, iter15, iter16, iter17, iter21, iter24} weights 0.07/0.07/0.04/0.05/0.13/0.13/0.13/0.18/0.20.
+- **Per-split:** sing=41.39 rc=59.25 cr=26.90 rer=42.23.
+- **iter24 (320-hidden warm from iter23, val 55):** added unique diversity to 9-way ensemble — dropped surf_p from 42.73 → 42.44 (-0.29).
+- iter25 (chain iter24 lr=5e-6) val 54.44 — marginal; ensemble with iter25 instead of iter24 didn't beat iter24's diversity.
+- Ran 25 iterations across the session. Final rank 7/8 of all kagglers.
+
 ### 2026-04-28 — FINAL: 42.73, rank 7 of 8
 - **Final best:** `bd5708c` (also `7887534` ties at 42.73) = 8-way ensemble with weights 0.10/0.10/0.04/0.08/0.16/0.16/0.16/0.20 over {iter4 (chain seed-A), iter6 (chain seed-B), iter9 (single specialist 192h), iter13 (cruise specialist 192h), iter15+iter16+iter17 (256h chain), iter21 (256h cruise specialist)}.
 - **Per-split:** sing=42.94 rc=59.28 cr=26.63 rer=42.07.
