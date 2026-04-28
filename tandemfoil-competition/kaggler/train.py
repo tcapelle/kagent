@@ -38,6 +38,7 @@ class Config:
     weight_decay: float = 1e-4
     batch_size: int = 8
     surf_weight: float = 10.0
+    vol_weight: float = 1.0   # weight on volume loss term; set 0 for surface-only training
     epochs: int = 30
     splits_dir: str = "/mnt/new-pvc/datasets/tandemfoil/splits_v2"
     wandb_group: str | None = None
@@ -250,7 +251,7 @@ for epoch in range(MAX_EPOCHS):
         surf_mask = mask & is_surface
         vol_loss = (diff * vol_mask.unsqueeze(-1)).sum() / vol_mask.sum().clamp(min=1)
         surf_loss = (diff * surf_mask.unsqueeze(-1)).sum() / surf_mask.sum().clamp(min=1)
-        loss = vol_loss + cfg.surf_weight * surf_loss
+        loss = cfg.vol_weight * vol_loss + cfg.surf_weight * surf_loss
 
         optimizer.zero_grad()
         loss.backward()
