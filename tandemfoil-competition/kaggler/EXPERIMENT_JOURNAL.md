@@ -22,6 +22,14 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter18: chain step from iter17 (lr=5e-6)
+
+- **Hypothesis:** chain step at lr=5e-6 cosine to consolidate iter17's gains.
+- **Change:** WARMSTART=vfkimqs9, lr=5e-6.
+- **Result:** 14 epochs in 31 min. 40.19 → epoch 9 = **39.88** (best, -0.31). Predictions at `b20b7db/`. Run `nst3sd5u`.
+- **Verdict:** kept. Expected test ~33.6 (about 1.5 above askeladd's 32.07).
+- **Notes:** chain step gain pattern continues: ~0.3-0.5 per quiet step. Iter19 should be next warm-restart with even higher boosts.
+
 ### 2026-04-28 — iter17: another warm-restart cycle (single=8, tandem=5)
 
 - **Hypothesis:** continue the warm-restart pattern. Bump boosts again (single 6→8, tandem 4→5) and warm-restart lr=2e-5.
