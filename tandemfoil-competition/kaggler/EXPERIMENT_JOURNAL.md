@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — iter19 second jolt (lr=1.5e-4 + noise=0.04)
+- **Hypothesis:** iter17 jolt worked (-0.33). iter18 polish gave only -0.02. So the cycle is jolt → modest polish → another jolt. Try a slightly stronger jolt (lr 1.5e-4 instead of 1e-4, noise 0.04 instead of 0.03) from iter18.
+- **Change:** No code change; flags `--lr 1.5e-4 --resume /tmp/iter18_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.999 --p_weight 20.0 --feature_noise 0.04 --n_vol_subsample 50000`.
+- **Result:** Best epoch 21/30, val/loss=0.8231, **avg_surf_p=41.39** (val splits: in_dist=0.84, geom_rc=1.29, geom_cruise=0.25, re_rand=0.93). Run `rjnp8mr7`.
+- **Verdict:** Kept (commit 808492a). −0.34 vs iter18; the jolt cycle is *consistently* productive. iter19 alone (41.39) beats iter19+iter17 ensemble (41.51) — the latest jolt subsumes prior knowledge.
+- **Notes:** geom_camber_rc dropped further (1.30 → 1.29), continuing to crack the OOD generalization plateau. Pattern holding: each jolt iteration finds a slightly better basin. Try iter20 = polish, then iter21 = third jolt.
+
 ### 2026-04-28 — iter18 polish iter17 at lr=1e-5
 - **Hypothesis:** After the iter17 jolt, polish at lr=1e-5 with slow EMA to consolidate the new basin.
 - **Change:** No code change; flags `--lr 1e-5 --resume /tmp/iter17_best.pt --epochs 30 --warmup_epochs 1 --ema_decay 0.9999 --p_weight 20.0 --feature_noise 0.0 --n_vol_subsample 50000`.
