@@ -22,6 +22,13 @@ Keep entries short. Link W&B run URLs when useful.
 
 ## Entries
 
+### 2026-04-28 — wider-still-384x4 (DISCARDED)
+- **Hypothesis:** if 256→320 helped, 320→384 might help further.
+- **Change:** model_config n_hidden 320→384.
+- **Result:** 39 epochs in 30 min (slower, ~46s/epoch). Best epoch 36: avg_surf_p=100.72 — much worse than iter20. 4-model ensemble adding it (weights 0.10/0.30/0.30/0.30) gave 89.62, also worse than 89.09.
+- **Verdict:** discarded — `git reset --hard HEAD~1`. 384 is past the sweet spot for our budget — model can't fully converge in 39 epochs. 320 width is the limit at n_layers=4.
+- **Notes:** scaling laws hit a wall when budget is fixed. Could try mlp_ratio bumps (more params per parameter unit of training) instead.
+
 ### 2026-04-28 — wider-shallow-320x4 (kept, ensemble best 89.09)
 - **Hypothesis:** iter19 (256x4 wide-shallow) was the best single yet at 92.62; pushing width to 320 should improve further. Same recipe.
 - **Change:** model_config: n_hidden 256→320, n_layers=4, n_head=8.
