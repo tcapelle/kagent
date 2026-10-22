@@ -110,7 +110,7 @@ kagent/
 │   ├── pi-settings.json      pi packages (pinned) + subagent config
 │   ├── pi-weave/             pi extension: traces agent runs to Weave
 │   └── *.yaml, *.sh          K8s templates + entrypoints
-├── .agents/skills/           pi skills (W&B, Exa paper search, competition report)
+├── .agents/skills/           pi skills (W&B, competition report)
 ├── AGENTS.md                 Dev guidelines (loaded by pi as context)
 ├── config.yaml               Default launch configuration
 └── pyproject.toml
