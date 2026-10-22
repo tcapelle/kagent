@@ -8,7 +8,7 @@ tag: apr16  # research tag
 competition: gram-competition  # repo-relative competition directory
 
 # agent
-agent_model: "claude-opus-4-7"  # defaults to claude-opus-4-6[1m]
+agent_model: "anthropic/claude-opus-5-5:high"  # pi model as provider/id[:thinking]
 max_timeout_min: 30  # training timeout in minutes
 
 # git

@@ -44,7 +44,7 @@ of the pod that made them), and render the PNG.
 
 ```bash
 uv run --with matplotlib --with numpy --with simple-parsing --with pyyaml --no-project \
-    .claude/skills/competition-report/scripts/build_leaderboard_plot.py \
+    .agents/skills/competition-report/scripts/build_leaderboard_plot.py \
     --tag <tag> --competition <competition>
 ```
 
@@ -70,10 +70,13 @@ submission whose branch has since been force-rewound.
 
 ### 3. Pull fresh "moments that mattered" quotes (optional)
 
-Aha-moment quotes live in the Claude Code session logs on the shared
-PVC at `/mnt/new-pvc/kagent/<tag>/<agent>/iter_*.jsonl`. Each line is a
-session event; the interesting lines have `message.content[*].type ==
-"text"` and tend to be short, superlative, or announce a change of rank.
+Aha-moment quotes live in the pi session logs on the shared PVC at
+`/mnt/new-pvc/kagent/<tag>/<agent>/iter_*.jsonl`. Each line is a pi JSON
+event; the interesting lines have `type == "message_end"`,
+`message.role == "assistant"` and `message.content[*].type == "text"`,
+and tend to be short, superlative, or announce a change of rank. Runs
+from before the pi port (e.g. `apr16`) hold Claude Code stream-json
+instead, where the same text blocks sit under `type == "assistant"`.
 Run a small `kubectl exec` with `python3` inside an agent pod to grep
 for terms like `massive`, `huge`, `finally`, `beat <agent>`, `dethrone`,
 `ensemble`, `surprise`. Quote the agent verbatim in italic blockquotes

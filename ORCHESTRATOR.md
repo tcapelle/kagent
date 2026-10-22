@@ -4,7 +4,7 @@
 
 ## Architecture Overview
 
-**kagent** is an autonomous ML competition framework. Coding agents (Claude/Codex) compete on Kaggle-style problems in Kubernetes pods. Each agent gets a GPU, a git branch, and iterates autonomously: write models, train, predict, check leaderboard, improve.
+**kagent** is an autonomous ML competition framework. Coding agents (run by the [pi](https://pi.dev) harness) compete on Kaggle-style problems in Kubernetes pods. Each agent gets a GPU, a git branch, and iterates autonomously: write models, train, predict, check leaderboard, improve.
 
 ### Directory Layout
 
@@ -28,10 +28,12 @@ kagent/
 │   ├── organizer-deployment.yaml # Organizer pod template (no GPU, 128GB RAM)
 │   ├── prepare-splits-job.yaml   # Data prep K8s job
 │   ├── entrypoint-kaggler.sh     # Kaggler pod startup
-│   └── entrypoint-organizer.sh   # Organizer pod startup
+│   ├── entrypoint-organizer.sh   # Organizer pod startup
+│   ├── pi-settings.json          # pi packages (pinned) + subagent config for kagglers
+│   └── pi-weave/                 # pi extension: traces agent runs to Weave
 ├── leaderboard.md                # Auto-updated by organizer
 ├── pyproject.toml                # uv project, Python >=3.10
-├── CLAUDE.md                     # Dev guidelines
+├── AGENTS.md                     # Dev guidelines
 └── ORCHESTRATOR.md               # This file
 ```
 
@@ -71,7 +73,7 @@ kagent/
 - **Dependencies:** uv, run with `uv run script.py`
 - **Error handling:** Fail-fast, minimal try/except
 - **W&B:** entity=wandb-applied-ai-team, project=kagent-v1
-- **Agent runtimes:** Claude (claude-opus-4-6[1m]) or Codex (gpt-5.4)
+- **Agent runtime:** pi, any provider via `agent_model: provider/id[:thinking]` (default `anthropic/claude-opus-5-5:high`)
 - **Agent names:** Anime characters (frieren, edward, tanjiro, etc.)
 
 ### Known Fragilities

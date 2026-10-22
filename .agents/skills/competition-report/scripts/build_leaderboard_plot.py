@@ -7,7 +7,7 @@ per-agent running-best staircase with a black envelope for the current leader.
 
 Usage:
   uv run --with matplotlib --with numpy --no-project \\
-      .claude/skills/competition-report/scripts/build_leaderboard_plot.py \\
+      .agents/skills/competition-report/scripts/build_leaderboard_plot.py \\
       --tag apr16 --competition gram-competition \\
       --out gram-competition/leaderboard_evolution.png
 """

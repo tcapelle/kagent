@@ -31,8 +31,8 @@ tmp/
 *.jpg
 *.jpeg
 
-# Claude / Codex session state
-.claude/settings.local.json
+# pi extension dependencies
+node_modules/
 
 # Lock files
 uv.lock

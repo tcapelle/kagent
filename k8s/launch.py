@@ -11,7 +11,7 @@ TEMPLATES_DIR = Path(__file__).parent
 KAGGLER_TEMPLATE = TEMPLATES_DIR / "kaggler-deployment.yaml"
 ORGANIZER_TEMPLATE = TEMPLATES_DIR / "organizer-deployment.yaml"
 PREPARE_TEMPLATE = TEMPLATES_DIR / "prepare-splits-job.yaml"
-DEFAULT_AGENT_MODEL = "claude-opus-4-6[1m]"
+DEFAULT_AGENT_MODEL = "anthropic/claude-opus-5-5:high"
 
 KAGGLER_NAMES = [
     "frieren", "fern", "tanjiro", "nezuko", "alphonse", "edward",
@@ -26,7 +26,7 @@ class Args:
     """Launch kagent kaggler pods on Kubernetes."""
     tag: str  # research tag (e.g. mar18)
     competition: str = "tandemfoil-competition"  # repo-relative competition directory
-    agent_model: str = ""  # defaults to DEFAULT_AGENT_MODEL
+    agent_model: str = ""  # pi model as provider/id[:thinking]; defaults to DEFAULT_AGENT_MODEL
     names: str = ""  # comma-separated kaggler names (e.g. "frieren,fern")
     n_kagglers: int = 4  # number of kagglers (ignored if --names provided)
     repo_url: str = "https://github.com/tcapelle/kagent.git"

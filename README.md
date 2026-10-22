@@ -107,7 +107,11 @@ kagent/
 ├── k8s/
 │   ├── launch.py             Deploy kagglers + organizer
 │   ├── kill.py               Tear down deployments
+│   ├── pi-settings.json      pi packages (pinned) + subagent config
+│   ├── pi-weave/             pi extension: traces agent runs to Weave
 │   └── *.yaml, *.sh          K8s templates + entrypoints
+├── .agents/skills/           pi skills (W&B, Exa paper search, competition report)
+├── AGENTS.md                 Dev guidelines (loaded by pi as context)
 ├── config.yaml               Default launch configuration
 └── pyproject.toml
 ```
@@ -133,4 +137,33 @@ Each competition follows the same structure:
 
 **To add a new competition**: create `<name>-competition/` with `kaggler/{KAGGLER_AGENT.md, README.md, data.py, train.py, predict.py}` and `organizer/{prepare_splits.py, score.py}`, then launch with `--competition <name>-competition`.
 
-Required K8s secret: `kagent-secrets` with `anthropic-api-key`, `wandb-api-key`, `github-token`.
+Required K8s secret: `kagent-secrets` with `wandb-api-key`, `github-token`, plus the credential for your model provider (see below). `exa-api-key` is optional and enables web search.
+
+## Agent harness (pi)
+
+Kagglers run [pi](https://pi.dev) (`@earendil-works/pi-coding-agent`, baked into the image). Each loop iteration in `k8s/entrypoint-kaggler.sh` is one fresh, non-interactive run:
+
+```bash
+pi -p --mode json --approve --model "$AGENT_MODEL" "$PROMPT" > iter_<n>_<date>.jsonl
+```
+
+- **Model**: `agent_model` in `config.yaml` (or `--agent_model`) is a pi model string, `provider/id[:thinking]`, e.g. `anthropic/claude-opus-5-5:high` or `openai/gpt-5.4:high`. The entrypoint runs `pi auth check --model "$AGENT_MODEL"` and fails fast if the provider has no credential.
+- **Credentials**: the deployment passes these optional `kagent-secrets` keys through. Set the one your provider needs:
+
+  | Secret key | Env var |
+  |---|---|
+  | `anthropic-api-key` | `ANTHROPIC_API_KEY` |
+  | `anthropic-oauth-token` | `ANTHROPIC_OAUTH_TOKEN` (a Claude Pro/Max token) |
+  | `openai-api-key` | `OPENAI_API_KEY` |
+  | `gemini-api-key` | `GEMINI_API_KEY` |
+
+- **Fresh session per iteration**: pi compacts context automatically within a run. When a run exits, the next iteration starts cold and re-reads `KAGGLER_AGENT.md` and the experiment journal.
+- **Context and skills**: pi loads `AGENTS.md` from the repo root and discovers skills in `.agents/skills/` from the kaggler working directory. Skills under `.agents/` count as project resources, which is why the loop passes `--approve`. pi has no permission prompts, so there is no equivalent of a skip-permissions flag.
+- **Packages**: `k8s/pi-settings.json` is copied to `~/.pi/agent/settings.json` at pod start, and `pi list` installs what it declares. All versions are pinned, so bump them there:
+  - `pi_exa` (private, cloned with `GITHUB_TOKEN`): the `exa_search` and `web_fetch` tools for the main agent. Needs `EXA_API_KEY`.
+  - `pi-subagents`: a `subagent` tool with builtin `researcher`, `reviewer`, `scout`, `oracle`, `worker` and `delegate` agents. The kaggler prompt explicitly allows delegation, because pi-subagents only delegates when instructions authorize it. The builtin agents that shell out to the Claude Code, Codex and Cursor CLIs are disabled. In `pi -p` mode children run in the background, and the parent waits for them (`bg_wait`) before it exits.
+  - `pi-web-access`: installed with every resource filtered out of the main agent and loaded only in subagent children (`defaultSubagentOnlyExtensions`). The builtin `researcher` needs its `web_search`, `fetch_content` and `source_check` tools, plus PDF extraction and GitHub cloning. It also uses `EXA_API_KEY`.
+  - `k8s/pi-weave`: Weave tracing (below).
+- **Weave tracing**: `k8s/pi-weave` is a small pi extension built on the Weave GenAI SDK. Each run becomes an `invoke_agent <kaggler>` trace, with a `chat <model>` span per turn (output and token usage) and `execute_tool <name>` spans nested under the turn that issued them. The pi session id is the Weave conversation id. Background subagent children load the same extensions, so each child shows up as its own conversation under the kaggler's name. Traces go to `WANDB_ENTITY/WANDB_PROJECT` and appear in the project's Agents tab. Personal entities may reject Agents traces with a 403; team entities work.
+- **Logs**: stdout of every iteration is pi's JSON event stream on the PVC at `/mnt/new-pvc/kagent/<tag>/<kaggler>/`. pi's own diagnostics go to stderr, i.e. the pod log. Hivemind streams the session files in `~/.pi/agent/sessions`.
+- **Subagent artifacts**: child research briefs and outputs go under `~/.pi/agent/sessions/<cwd>/subagent-artifacts/`, and run state under `$TMPDIR/pi-subagents-uid-*/`.
