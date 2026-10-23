@@ -24,8 +24,8 @@ _config = yaml.safe_load(CONFIG_PATH.read_text())
 class Args:
     """Kill kagent deployments on Kubernetes."""
     tag: str = _config["tag"]  # research tag to kill
-    competition: str = _config["competition"]  # competition directory
-    clean_branches: bool = False  # delete agent git branches
+    competition_repo: str = _config["competition_repo"]  # competition repo holding the agent branches
+    clean_branches: bool = False  # delete agent + leaderboard branches in the competition repo
     clean_predictions: bool = False  # delete predictions from PVC
     dry_run: bool = False
 
@@ -42,7 +42,7 @@ def run(cmd: list[str], dry_run: bool = False, check: bool = False) -> subproces
 
 def main():
     args = sp.parse(Args)
-    comp_label = PurePosixPath(args.competition).name
+    comp_label = PurePosixPath(args.competition_repo).stem
 
     selector = f"research-tag={args.tag},competition={comp_label}"
     print(f"Killing: {selector}")
@@ -56,13 +56,13 @@ def main():
     if args.clean_branches:
         print("\nCleaning git branches...")
         result = subprocess.run(
-            ["git", "ls-remote", "--heads", "origin", f"refs/heads/{args.tag}/*"],
+            ["git", "ls-remote", "--heads", args.competition_repo, f"refs/heads/{args.tag}/*"],
             capture_output=True, text=True,
         )
         branches = [line.split("refs/heads/")[1] for line in result.stdout.strip().splitlines() if line]
         # Also check for leaderboard branch
         lb_result = subprocess.run(
-            ["git", "ls-remote", "--heads", "origin", f"refs/heads/{args.tag}-leaderboard"],
+            ["git", "ls-remote", "--heads", args.competition_repo, f"refs/heads/{args.tag}-leaderboard"],
             capture_output=True, text=True,
         )
         if lb_result.stdout.strip():
@@ -72,7 +72,7 @@ def main():
             for b in branches:
                 print(f"  deleting: {b}")
             if not args.dry_run:
-                run(["git", "push", "origin", "--delete"] + branches)
+                run(["git", "push", args.competition_repo, "--delete"] + branches)
         else:
             print("  No branches found")
 

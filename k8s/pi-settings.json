@@ -5,6 +5,7 @@
     { "source": "npm:pi-web-access@0.44.0", "extensions": [], "skills": [], "prompts": [], "themes": [] },
     "/workspace/kagent/k8s/pi-weave"
   ],
+  "skills": ["/workspace/kagent/.agents/skills/wandb-primary"],
   "subagents": {
     "defaultSubagentOnlyExtensions": ["/root/.pi/agent/npm/node_modules/pi-web-access/dist/index.js"],
     "agentOverrides": {

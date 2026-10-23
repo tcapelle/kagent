@@ -1,23 +1,23 @@
 set -e
 set -o pipefail
 
-: "${COMPETITION_DIR:?missing COMPETITION_DIR}"
+: "${COMPETITION_REPO:?missing COMPETITION_REPO}"
 : "${KAGGLER_NAME:?missing KAGGLER_NAME}"
 : "${RESEARCH_TAG:?missing RESEARCH_TAG}"
 : "${AGENT_MODEL:?missing AGENT_MODEL}"
 
 BRANCH="$RESEARCH_TAG/kaggler/$KAGGLER_NAME"
-KAGGLER_WORKDIR="${KAGGLER_WORKDIR:-/workspace/kagent/$COMPETITION_DIR/kaggler}"
-KAGGLER_PROMPT_FILE="${KAGGLER_PROMPT_FILE:-KAGGLER_AGENT.md}"
+KAGGLER_WORKDIR=/workspace/competition/kaggler
+KAGGLER_PROMPT_FILE=KAGGLER_AGENT.md
 
 echo "=== kagent Kaggler: $KAGGLER_NAME ==="
-echo "Competition: $COMPETITION_DIR"
+echo "Competition: $COMPETITION_REPO"
 echo "Model: $AGENT_MODEL"
 echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'none')"
 
-cd /workspace/kagent
+cd /workspace/competition
 
-# --- Branch setup (sparse: kaggler dir only, no organizer) ---
+# --- Branch setup in the competition repo (sparse: kaggler dir only, no organizer) ---
 if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
     git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH"
     git checkout -b "$BRANCH" "origin/$BRANCH"
@@ -25,10 +25,10 @@ else
     git checkout -b "$BRANCH"
     git push -u origin "$BRANCH"
 fi
-git sparse-checkout set "$COMPETITION_DIR/kaggler" k8s pyproject.toml .gitignore AGENTS.md .agents
+git sparse-checkout set kaggler .agents
 
-# --- Install ---
-uv pip install --system -e .
+# --- Install (shared deps live in kagent) ---
+uv pip install --system -e /workspace/kagent
 git config user.name "kagent-$KAGGLER_NAME"
 git config user.email "kagent-$KAGGLER_NAME@kagent"
 

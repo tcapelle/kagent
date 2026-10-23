@@ -5,7 +5,8 @@ description: Build or refresh a kagent competition summary report — regenerate
 
 # Competition Report Skill
 
-Use this skill to keep a competition summary (e.g. `<competition>/summary_<tag>.md`)
+Use this skill to keep a competition summary (e.g. `summary_<tag>.md` in a local
+checkout of the competition repo)
 in sync with the live state of a running or finished kagent experiment.
 The skill assumes the experiment is still deployed on Kubernetes and that the
 organiser pod and at least some kaggler pods are reachable via `kubectl`.
@@ -27,11 +28,12 @@ organiser pod and at least some kaggler pods are reachable via `kubectl`.
 
 - `tag` — the research tag (e.g. `apr16`). Defaults to the `tag` field in
   `config.yaml` at the repo root.
-- `competition` — the competition directory (e.g. `gram-competition`).
-  Defaults to the `competition` field in `config.yaml`.
+- `competition_dir` — a local checkout of the competition repo (the
+  `competition_repo` in `config.yaml`, e.g. `tcapelle/gram-competition`).
+  Reports live there, not in kagent. Ask the user where it is checked out.
 - `report_path` — the markdown file to update. If the user does not name
-  one, default to `<competition>/summary_<tag>.md`; if that file does not
-  exist, propose its path before creating it.
+  one, default to `<competition_dir>/summary_<tag>.md`; if that file does
+  not exist, propose its path before creating it.
 
 ## Workflow
 
@@ -45,13 +47,11 @@ of the pod that made them), and render the PNG.
 ```bash
 uv run --with matplotlib --with numpy --with simple-parsing --with pyyaml --no-project \
     .agents/skills/competition-report/scripts/build_leaderboard_plot.py \
-    --tag <tag> --competition <competition>
+    --tag <tag> --out <competition_dir>/leaderboard_evolution.png
 ```
 
-You can override `--out` and `--title` when writing to a non-default
-location or for a multi-tag comparison plot. Without overrides, the
-plot lands at `<competition>/leaderboard_evolution.png` — the path the
-summary markdown embeds.
+`<competition_dir>/leaderboard_evolution.png` is the path the summary
+markdown embeds. Override `--title` for a multi-tag comparison plot.
 
 ### 2. Refresh the leaderboard table
 

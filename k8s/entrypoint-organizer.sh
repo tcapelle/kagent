@@ -1,22 +1,22 @@
 set -e
 set -o pipefail
 
-: "${COMPETITION_DIR:?missing COMPETITION_DIR}"
+: "${COMPETITION_REPO:?missing COMPETITION_REPO}"
 : "${RESEARCH_TAG:?missing RESEARCH_TAG}"
 
-REPO_DIR="/workspace/kagent"
-WORKDIR="${ORGANIZER_WORKDIR:-$REPO_DIR/$COMPETITION_DIR/organizer}"
+REPO_DIR=/workspace/competition
+WORKDIR=$REPO_DIR/organizer
 POLL_INTERVAL=60  # 1 minute — keep the leaderboard near-live for the agents
 LEADERBOARD_PVC="/mnt/new-pvc/predictions/${RESEARCH_TAG}/leaderboard.md"
 LEADERBOARD_BRANCH="${RESEARCH_TAG}-leaderboard"
 
 echo "=== kagent Organizer ==="
 echo "Tag: $RESEARCH_TAG"
-echo "Competition: $COMPETITION_DIR"
+echo "Competition: $COMPETITION_REPO"
 echo "Polling every ${POLL_INTERVAL}s"
 
 cd "$REPO_DIR"
-uv pip install --system -e .
+uv pip install --system -e /workspace/kagent
 git config user.name "kagent-organizer"
 git config user.email "kagent-organizer@kagent"
 

@@ -27,10 +27,10 @@ spec:
         - |
           set -e
           git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-          git clone --branch "$REPO_BRANCH" "$REPO_URL" /workspace/kagent
-          cd /workspace/kagent
-          uv pip install --system -e .
-          cd "$ORGANIZER_WORKDIR"
+          git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" /workspace/kagent
+          git clone --depth 1 --branch "$COMPETITION_BRANCH" "$COMPETITION_REPO" /workspace/competition
+          uv pip install --system -e /workspace/kagent
+          cd /workspace/competition/organizer
           python prepare_splits.py
         envFrom:
         - configMapRef:

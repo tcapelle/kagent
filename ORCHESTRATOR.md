@@ -10,18 +10,6 @@
 
 ```
 kagent/
-├── cfd-competition/              # Current competition (CFD Surrogate)
-│   ├── kaggler/                  # What agents get (read-only contract for data.py)
-│   │   ├── KAGGLER_AGENT.md      # Agent loop instructions
-│   │   ├── README.md             # Competition rules & data format
-│   │   ├── data.py               # Data loader — READ-ONLY, agents must not modify
-│   │   ├── train.py              # Training template — agents fill in model
-│   │   ├── predict.py            # Prediction template — agents fill in model loading
-│   │   └── viz.py                # Visualization helpers
-│   └── organizer/                # Organizer-only infrastructure
-│       ├── prepare_splits.py     # One-time data preprocessing
-│       ├── score.py              # Score predictions, update leaderboard
-│       └── train.py              # Baseline Transolver model (reference)
 ├── k8s/                          # Kubernetes orchestration
 │   ├── launch.py                 # Deploy kagglers + organizer
 │   ├── kaggler-deployment.yaml   # Kaggler pod template (1 GPU, 96GB RAM)
@@ -31,13 +19,14 @@ kagent/
 │   ├── entrypoint-organizer.sh   # Organizer pod startup
 │   ├── pi-settings.json          # pi packages (pinned) + subagent config for kagglers
 │   └── pi-weave/                 # pi extension: traces agent runs to Weave
-├── leaderboard.md                # Auto-updated by organizer
 ├── pyproject.toml                # uv project, Python >=3.10
 ├── AGENTS.md                     # Dev guidelines
 └── ORCHESTRATOR.md               # This file
 ```
 
-### Module Boundaries
+Competitions live in their own repos (e.g. `tcapelle/tandemfoil-competition`, `tcapelle/gram-competition`) with `kaggler/` + `organizer/` at the root. `config.yaml: competition_repo` selects one; pods clone it to `/workspace/competition`, and kaggler and leaderboard branches are pushed there, not to kagent.
+
+### Module Boundaries (inside a competition repo)
 
 | Module | Owner | Purpose | Touchable? |
 |--------|-------|---------|------------|

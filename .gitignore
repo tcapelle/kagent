@@ -13,10 +13,6 @@ checkpoints/
 *.pkl
 *.pickle
 
-# Exception: commit best-checkpoint mirror so submissions carry weights
-!gram-competition/kaggler/checkpoints/
-!gram-competition/kaggler/checkpoints/best.pt
-
 # Logs
 *.log
 logs/
