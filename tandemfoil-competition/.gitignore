@@ -1,0 +1,40 @@
+# Training artifacts
+wandb/
+models/
+artifacts/
+plots/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# Exception: commit best-checkpoint mirror so submissions carry weights
+!kaggler/checkpoints/
+!kaggler/checkpoints/best.pt
+
+# Logs
+*.log
+logs/
+
+# Agent scratch files
+results.tsv
+tmp/
+*.csv
+
+# Images (plots saved outside plots/)
+*.png
+*.jpg
+*.jpeg
+
+# Python
+__pycache__/
+*.pyc
+
+# Environment
+.venv/
+.env

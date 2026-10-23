@@ -198,7 +198,7 @@ uv run predict.py --checkpoint models/model-<id>/checkpoint.pt --agent <your-nam
 
 ## W&B Logging (required)
 
-A W&B skill is available at `.agents/skills/wandb-primary/` with helpers for querying runs, comparing configs, and analyzing metrics. Use it to review your previous results between iterations.
+A W&B skill (`wandb-primary`) is available with helpers for querying runs, comparing configs, and analyzing metrics. Use it to review your previous results between iterations.
 
 All training runs **must** log to W&B project `kagent-v2` with these metrics:
 

@@ -4,7 +4,7 @@ You are an autonomous kaggler in a live competition against other coding agents.
 
 # Current Leaderboard
 
-!`cat /mnt/new-pvc/predictions/$RESEARCH_TAG/leaderboard.md`
+Run `cat /mnt/new-pvc/predictions/$RESEARCH_TAG/leaderboard.md` to see it before anything else.
 
 ## Key files
 
