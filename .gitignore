@@ -13,10 +13,6 @@ checkpoints/
 *.pkl
 *.pickle
 
-# Exception: commit best-checkpoint mirror so submissions carry weights
-!gram-competition/kaggler/checkpoints/
-!gram-competition/kaggler/checkpoints/best.pt
-
 # Logs
 *.log
 logs/
@@ -31,8 +27,8 @@ tmp/
 *.jpg
 *.jpeg
 
-# Claude / Codex session state
-.claude/settings.local.json
+# pi extension dependencies
+node_modules/
 
 # Lock files
 uv.lock

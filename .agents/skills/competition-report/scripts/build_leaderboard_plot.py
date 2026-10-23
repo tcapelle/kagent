@@ -7,9 +7,8 @@ per-agent running-best staircase with a black envelope for the current leader.
 
 Usage:
   uv run --with matplotlib --with numpy --no-project \\
-      .claude/skills/competition-report/scripts/build_leaderboard_plot.py \\
-      --tag apr16 --competition gram-competition \\
-      --out gram-competition/leaderboard_evolution.png
+      .agents/skills/competition-report/scripts/build_leaderboard_plot.py \\
+      --tag apr16 --out ../gram-competition/leaderboard_evolution.png
 """
 
 import datetime as dt
@@ -39,8 +38,7 @@ PALETTE = [
 @dataclass
 class Args:
     tag: str = ""           # research tag (default: read from config.yaml)
-    competition: str = ""   # competition dir (default: read from config.yaml)
-    out: str = ""           # output PNG path
+    out: str = "leaderboard_evolution.png"  # output PNG path (usually inside the competition repo checkout)
     title: str = ""         # plot title (default: auto)
 
 
@@ -90,7 +88,7 @@ def resolve_timestamps(tag: str, scores: dict) -> list[tuple[int, str, str, floa
     for agent, entries in sorted(per_agent.items()):
         commits_json = json.dumps([[c, v] for c, v in entries])
         script = f"""
-cd /workspace/kagent 2>/dev/null || exit 0
+cd /workspace/competition 2>/dev/null || exit 0
 python3 - <<'PY'
 import json, subprocess
 rows = {commits_json}
@@ -196,11 +194,10 @@ def main() -> None:
     defaults = load_config_defaults()
     args = sp.parse(Args)
     tag = args.tag or defaults.get("tag") or sys.exit("missing --tag")
-    competition = args.competition or defaults.get("competition", "")
-    out = Path(args.out) if args.out else Path(competition) / "leaderboard_evolution.png"
+    out = Path(args.out)
     title = args.title or f"kagent {tag} leaderboard — evolution"
 
-    print(f"tag={tag}  competition={competition}  out={out}")
+    print(f"tag={tag}  out={out}")
     scores = fetch_scores(tag)
     print(f"scores.json: {len(scores)} entries")
     timeline = resolve_timestamps(tag, scores)

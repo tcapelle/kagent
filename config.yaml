@@ -5,13 +5,14 @@
 tag: apr16  # research tag
 
 # competition
-competition: gram-competition  # repo-relative competition directory
+competition_repo: https://github.com/tcapelle/gram-competition.git  # repo with kaggler/ + organizer/; kaggler branches are pushed here
+competition_branch: main  # branch kagglers start from
 
 # agent
-agent_model: "claude-opus-4-7"  # defaults to claude-opus-4-6[1m]
+agent_model: "anthropic/claude-opus-5-5:high"  # pi model as provider/id[:thinking]
 max_timeout_min: 30  # training timeout in minutes
 
-# git
+# git (kagent infra: k8s/, pi config, shared python deps)
 repo_url: https://github.com/tcapelle/kagent.git
 repo_branch: main
 

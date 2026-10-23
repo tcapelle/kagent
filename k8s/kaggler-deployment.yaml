@@ -34,10 +34,9 @@ spec:
         - |
           set -e
           git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-          git clone --depth 1 --sparse --branch "$REPO_BRANCH" "$REPO_URL" /workspace/kagent
-          cd /workspace/kagent
-          git sparse-checkout set "$COMPETITION_DIR/kaggler" k8s pyproject.toml .gitignore CLAUDE.md .claude
-          bash k8s/entrypoint-kaggler.sh
+          git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" /workspace/kagent
+          git clone --depth 1 --sparse --branch "$COMPETITION_BRANCH" "$COMPETITION_REPO" /workspace/competition
+          bash /workspace/kagent/k8s/entrypoint-kaggler.sh
         envFrom:
         - configMapRef:
             name: kagent-{{RESEARCH_TAG}}-config-{{KAGGLER_NAME}}
@@ -47,11 +46,30 @@ spec:
             secretKeyRef:
               name: kagent-secrets
               key: wandb-api-key
-        - name: CLAUDE_CODE_OAUTH_TOKEN
+        - name: ANTHROPIC_API_KEY
           valueFrom:
             secretKeyRef:
               name: kagent-secrets
-              key: claude-oauth-token
+              key: anthropic-api-key
+              optional: true
+        - name: ANTHROPIC_OAUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: kagent-secrets
+              key: anthropic-oauth-token
+              optional: true
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kagent-secrets
+              key: openai-api-key
+              optional: true
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kagent-secrets
+              key: gemini-api-key
+              optional: true
         - name: EXA_API_KEY
           valueFrom:
             secretKeyRef:

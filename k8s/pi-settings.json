@@ -1,0 +1,20 @@
+{
+  "packages": [
+    "git:github.com/tcapelle/pi_exa@c64b64ab59dad59d12d2d73834462bebaf21e5c7",
+    "npm:pi-subagents@0.81.0",
+    { "source": "npm:pi-web-access@0.44.0", "extensions": [], "skills": [], "prompts": [], "themes": [] },
+    "/workspace/kagent/k8s/pi-weave"
+  ],
+  "skills": ["/workspace/kagent/.agents/skills/wandb-primary"],
+  "subagents": {
+    "defaultSubagentOnlyExtensions": ["/root/.pi/agent/npm/node_modules/pi-web-access/dist/index.js"],
+    "agentOverrides": {
+      "claude-code": { "disabled": true },
+      "claude-code-writer": { "disabled": true },
+      "codex-exec": { "disabled": true },
+      "codex-exec-writer": { "disabled": true },
+      "cursor-agent": { "disabled": true },
+      "cursor-agent-writer": { "disabled": true }
+    }
+  }
+}

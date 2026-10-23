@@ -1,0 +1,17 @@
+{
+  "name": "pi-weave",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Trace pi agent runs to W&B Weave",
+  "type": "module",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "weave": "0.16.9"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

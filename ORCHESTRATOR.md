@@ -4,38 +4,29 @@
 
 ## Architecture Overview
 
-**kagent** is an autonomous ML competition framework. Coding agents (Claude/Codex) compete on Kaggle-style problems in Kubernetes pods. Each agent gets a GPU, a git branch, and iterates autonomously: write models, train, predict, check leaderboard, improve.
+**kagent** is an autonomous ML competition framework. Coding agents (run by the [pi](https://pi.dev) harness) compete on Kaggle-style problems in Kubernetes pods. Each agent gets a GPU, a git branch, and iterates autonomously: write models, train, predict, check leaderboard, improve.
 
 ### Directory Layout
 
 ```
 kagent/
-├── cfd-competition/              # Current competition (CFD Surrogate)
-│   ├── kaggler/                  # What agents get (read-only contract for data.py)
-│   │   ├── KAGGLER_AGENT.md      # Agent loop instructions
-│   │   ├── README.md             # Competition rules & data format
-│   │   ├── data.py               # Data loader — READ-ONLY, agents must not modify
-│   │   ├── train.py              # Training template — agents fill in model
-│   │   ├── predict.py            # Prediction template — agents fill in model loading
-│   │   └── viz.py                # Visualization helpers
-│   └── organizer/                # Organizer-only infrastructure
-│       ├── prepare_splits.py     # One-time data preprocessing
-│       ├── score.py              # Score predictions, update leaderboard
-│       └── train.py              # Baseline Transolver model (reference)
 ├── k8s/                          # Kubernetes orchestration
 │   ├── launch.py                 # Deploy kagglers + organizer
 │   ├── kaggler-deployment.yaml   # Kaggler pod template (1 GPU, 96GB RAM)
 │   ├── organizer-deployment.yaml # Organizer pod template (no GPU, 128GB RAM)
 │   ├── prepare-splits-job.yaml   # Data prep K8s job
 │   ├── entrypoint-kaggler.sh     # Kaggler pod startup
-│   └── entrypoint-organizer.sh   # Organizer pod startup
-├── leaderboard.md                # Auto-updated by organizer
+│   ├── entrypoint-organizer.sh   # Organizer pod startup
+│   ├── pi-settings.json          # pi packages (pinned) + subagent config for kagglers
+│   └── pi-weave/                 # pi extension: traces agent runs to Weave
 ├── pyproject.toml                # uv project, Python >=3.10
-├── CLAUDE.md                     # Dev guidelines
+├── AGENTS.md                     # Dev guidelines
 └── ORCHESTRATOR.md               # This file
 ```
 
-### Module Boundaries
+Competitions live in their own repos (e.g. `tcapelle/tandemfoil-competition`, `tcapelle/gram-competition`) with `kaggler/` + `organizer/` at the root. `config.yaml: competition_repo` selects one; pods clone it to `/workspace/competition`, and kaggler and leaderboard branches are pushed there, not to kagent.
+
+### Module Boundaries (inside a competition repo)
 
 | Module | Owner | Purpose | Touchable? |
 |--------|-------|---------|------------|
@@ -71,7 +62,7 @@ kagent/
 - **Dependencies:** uv, run with `uv run script.py`
 - **Error handling:** Fail-fast, minimal try/except
 - **W&B:** entity=wandb-applied-ai-team, project=kagent-v1
-- **Agent runtimes:** Claude (claude-opus-4-6[1m]) or Codex (gpt-5.4)
+- **Agent runtime:** pi, any provider via `agent_model: provider/id[:thinking]` (default `anthropic/claude-opus-5-5:high`)
 - **Agent names:** Anime characters (frieren, edward, tanjiro, etc.)
 
 ### Known Fragilities
